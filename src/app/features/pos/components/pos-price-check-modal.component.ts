@@ -81,7 +81,7 @@ import { Product } from '../../../core/models';
                 <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span class="text-[10px] text-slate-500 block uppercase">Απόθεμα</span>
                   <span class="text-lg font-bold" [class.text-emerald-400]="(prod.stockQuantity || 0) > 5" [class.text-rose-400]="(prod.stockQuantity || 0) <= 5">
-                    {{ prod.stockQuantity ?? prod.stock ?? 0 }}
+                    {{ prod.stockQuantity }}
                   </span>
                 </div>
               </div>

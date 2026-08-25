@@ -63,6 +63,7 @@ export class SpoilageService {
     };
 
     // 1. Add log entry in Dexie DB
+    if (!product.id) return null as any;
     await marketDb.spoilageLogs.add(log);
 
     // 2. Decrement physical stock in database

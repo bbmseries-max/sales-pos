@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { marketDb } from '../db/market-db';
-import { TransactionRecord, MarketCompanyProfile, CashLog } from '../models/market.models';
+import { TransactionRecord, MarketCompanyProfile, CashLog } from '../models';
 import { ZReportAudit, VatSummaryTier } from '../models/z-report.model';
 import { EscPosPrinterService } from './esc-pos-printer.service';
 
@@ -65,17 +65,24 @@ export class ZReportService {
     }
 
     // VAT Breakdown
-    if (tx.vatBreakdown) {
-      for (const [rateStr, data] of Object.entries(tx.vatBreakdown)) {
-        const rateKey = String(rateStr);
-        if (!vatAnalysis[rateKey]) {
-          vatAnalysis[rateKey] = { rate: Number(rateKey), net: 0, vat: 0, gross: 0 };
-        }
-        vatAnalysis[rateKey].net += data.net || 0;
-        vatAnalysis[rateKey].vat += data.vat || 0;
-        vatAnalysis[rateKey].gross += data.gross || 0;
-      }
+if (tx.vatBreakdown) {
+  for (const [rateKey, data] of Object.entries(tx.vatBreakdown) as [string, { net: number; vat: number; gross: number }][]) {
+    if (!vatAnalysis[rateKey]) {
+      // Parse numeric rate from key (e.g., "13" -> 13, "24" -> 24)
+      const numericRate = parseFloat(rateKey) || 0;
+
+      vatAnalysis[rateKey] = { 
+        rate: numericRate, 
+        net: 0, 
+        vat: 0, 
+        gross: 0 
+      };
     }
+    vatAnalysis[rateKey].net += data.net || 0;
+    vatAnalysis[rateKey].vat += data.vat || 0;
+    vatAnalysis[rateKey].gross += data.gross || 0;
+  }
+}
 
     // Refunds
     for (const item of tx.items) {

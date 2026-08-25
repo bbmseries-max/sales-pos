@@ -59,7 +59,7 @@ export class SupplierOrderService {
     let subtotalCost = 0;
     let totalTax = 0;
 
-    const items: PurchaseOrderItem[] = (po.items || []).map(item => {
+    const items: PurchaseOrderItem[] = (po.items || []).map((item: PurchaseOrderItem) => {
       const lineCost = item.orderedQty * item.unitCost;
       const lineVat = lineCost * (item.vatRate / 100);
       subtotalCost += lineCost;

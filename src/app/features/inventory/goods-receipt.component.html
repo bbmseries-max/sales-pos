@@ -20,7 +20,7 @@
     </button>
   </div>
 
-  <!-- Orders Table View -->
+<!-- Orders Table View -->
   <div class="flex-1 bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-xl">
     <div class="flex-1 overflow-y-auto min-h-0">
       <table class="w-full text-left border-collapse text-xs font-mono">
@@ -52,12 +52,12 @@
               </td>
               <td class="p-4 text-slate-400">{{ po.orderDate }}</td>
               <td class="p-4">{{ po.items.length }} προϊόντα</td>
-              <td class="p-4 font-black text-emerald-400">€{{ po.grandTotalCost.toFixed(2) }}</td>
+              <td class="p-4 font-black text-emerald-400">€{{ (po.grandTotalCost || 0).toFixed(2) }}</td>
               <td class="p-4">
                 <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border"
-                  [class.bg-amber-950]="po.status === 'ORDERED'"
-                  [class.border-amber-700]="po.status === 'ORDERED'"
-                  [class.text-amber-400]="po.status === 'ORDERED'"
+                  [class.bg-amber-950]="po.status === 'ORDERED' || po.status === 'DRAFT'"
+                  [class.border-amber-700]="po.status === 'ORDERED' || po.status === 'DRAFT'"
+                  [class.text-amber-400]="po.status === 'ORDERED' || po.status === 'DRAFT'"
                   [class.bg-emerald-950]="po.status === 'RECEIVED'"
                   [class.border-emerald-700]="po.status === 'RECEIVED'"
                   [class.text-emerald-400]="po.status === 'RECEIVED'"
@@ -68,6 +68,7 @@
               <td class="p-4 text-right">
                 @if (po.status !== 'RECEIVED') {
                   <button 
+                    type="button"
                     (click)="openReceiveDelivery(po)"
                     class="h-8 px-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black rounded-lg transition active:scale-95 cursor-pointer shadow-md"
                   >

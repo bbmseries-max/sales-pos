@@ -26,17 +26,17 @@ export interface TransactionRecord {
   cashierName?: string;
   cashTendered?: number;
   changeDue?: number;
-  vatBreakdown?: Record<string | number, { rate?: number; net: number; vat: number; gross: number }>;
-  
-  // Customer & Loyalty Fields
+  vatBreakdown?: Record<string | number, { net: number; vat: number; gross: number }>;
+
+  // Customer & Loyalty
   customerId?: string;
   customerPhone?: string;
   customerName?: string;
   pointsEarned?: number;
   pointsRedeemed?: number;
   discountApplied?: number;
-  
-  // AADE myDATA Fields
+
+  // AADE myDATA
   mydataMark?: string;
   mydataUid?: string;
   mydataQrUrl?: string;

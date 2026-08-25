@@ -110,7 +110,7 @@ public getSelectedSupplierName(): string {
     this.activePO.set(po);
     this.deliveryInvoiceNo.set(po.invoiceNumber || '');
     // Clone items with defaults
-    const cloned: PurchaseOrderItem[] = po.items.map(i => ({
+    const cloned: PurchaseOrderItem[] = po.items.map((i: PurchaseOrderItem) => ({
       ...i,
       receivedQty: i.receivedQty || i.orderedQty // default to ordered qty for fast check
     }));
@@ -124,7 +124,7 @@ public getSelectedSupplierName(): string {
 
     const item = this.receivingItems().find(i => i.barcode === code);
     if (item) {
-      item.receivedQty += 1;
+      item.receivedQty = (item.receivedQty ?? 0) + 1;
       this.receivingItems.set([...this.receivingItems()]);
     }
     this.scanReceivingBarcode.set('');

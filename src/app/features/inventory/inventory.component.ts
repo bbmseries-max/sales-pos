@@ -3,7 +3,12 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { marketDb } from '../../core/db/market-db';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
-import { Product } from '../../core/models/market.models';
+import { 
+  Product, 
+  Category,
+  SUPERMARKET_DEPARTMENTS, 
+  MasterCategory
+} from '../../core/models/market.models';
 
 export interface CategoryTab {
   id: string;
@@ -11,7 +16,7 @@ export interface CategoryTab {
   count: number;
 }
 
-type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
+export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
 
 @Component({
   selector: 'app-inventory',
@@ -22,6 +27,9 @@ type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
 export class InventoryComponent implements OnInit {
   public catalogService = inject(MarketCatalogService);
   private router = inject(Router);
+
+  // Single Source of Truth for Departments
+  public masterDepartments: MasterCategory[] = SUPERMARKET_DEPARTMENTS;
 
   // State Signals
   public allProducts = signal<Product[]>([]);
@@ -39,34 +47,39 @@ export class InventoryComponent implements OnInit {
   public editingProduct = signal<Product | null>(null);
   public feedbackMsg = signal<string | null>(null);
 
-  // 1. DYNAMIC CATEGORIES: Computed directly from allProducts
-  public categories = computed<CategoryTab[]>(() => {
-    const prods = this.allProducts();
-    const map = new Map<string, { name: string; count: number }>();
+  // 1. DYNAMIC CATEGORIES: Extracts categories & counts directly from items in DB
+ public categories = computed(() => {
+  const prods = this.allProducts();
+  const countMap = new Map<string, number>();
 
-    for (const p of prods) {
-      const catId = p.categoryId || (p.categoryName ? `cat-${p.categoryName}` : 'cat-general');
-      const catName = p.categoryName || (p.categoryId ? this.catalogService.getCategoryName(p.categoryId) : 'Γενικά');
-
-      if (!map.has(catId)) {
-        map.set(catId, { name: catName, count: 0 });
-      }
-      map.get(catId)!.count++;
+  // Count items per category ID (including legacy / Greek ID aliases)
+  for (const p of prods) {
+    let catId = p.categoryId || 'cat-pantry';
+    if (catId === 'cat-Ζοοτροφές' || catId === 'cat-zootrofes') {
+      catId = 'cat-pets';
     }
+    countMap.set(catId, (countMap.get(catId) || 0) + 1);
+  }
 
-    const tabs: CategoryTab[] = [
-      { id: 'all', name: 'Όλα τα Είδη', count: prods.length }
-    ];
+  // Always starts with "All" (1) + All 8 Departments = 9 total tabs
+  const tabs = [
+    { id: 'all', name: '📦 Όλα τα Είδη', count: prods.length }
+  ];
 
-    map.forEach((value, key) => {
-      tabs.push({ id: key, name: value.name, count: value.count });
+  // Force iterate directly over SUPERMARKET_DEPARTMENTS
+  for (const dept of SUPERMARKET_DEPARTMENTS) {
+    tabs.push({
+      id: dept.id,
+      name: `${dept.icon} ${dept.name}`,
+      count: countMap.get(dept.id) || 0
     });
+  }
 
-    return tabs;
-  });
+  return tabs;
+});
 
-  // 2. DISPLAYED PRODUCTS: Computed reactive filter for instant rendering
-  public displayedProducts = computed<Product[]>(() => {
+  // 2. FILTERED PRODUCTS: Provides `products()` to the template
+  public products = computed<Product[]>(() => {
     let items = this.allProducts();
     const term = this.searchQuery().trim().toLowerCase();
     const catId = this.selectedCategoryId();
@@ -108,7 +121,7 @@ export class InventoryComponent implements OnInit {
       });
     }
 
-    // Cap at 150 items for instant 60fps scrolling when showing everything
+    // Cap at 150 items for smooth 60fps scrolling when all items are shown without query
     if (!term && catId === 'all' && tab === 'all') {
       return items.slice(0, 150);
     }
@@ -124,7 +137,7 @@ export class InventoryComponent implements OnInit {
     const all = await marketDb.products.toArray();
     this.allProducts.set(all);
 
-    // Update Counts
+    // Update Header Counts
     this.totalCount.set(all.length);
     this.lowStockCount.set(all.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
     this.pinnedCount.set(all.filter(p => !!p.isPinned).length);
@@ -142,7 +155,20 @@ export class InventoryComponent implements OnInit {
     );
   }
 
-  public selectTab(tab: FilterTab): void {
+  // Handles category change inside the edit modal
+  public onCategoryChange(newCatId: string): void {
+  const current = this.editingProduct();
+  if (!current) return;
+
+  const found = this.masterDepartments.find(d => d.id === newCatId);
+  this.editingProduct.set({
+    ...current,
+    categoryId: newCatId,
+    categoryName: found ? found.name : 'Παντοπωλείο & Τρόφιμα'
+  });
+}
+
+  public setTab(tab: FilterTab): void {
     this.selectedTab.set(tab);
   }
 
@@ -154,13 +180,34 @@ export class InventoryComponent implements OnInit {
     this.searchQuery.set(term);
   }
 
-  // Fast inline stock modifier (+1 / -1 / custom)
+  public async promptRenameCategory(cat: Category | CategoryTab): Promise<void> {
+    const newName = prompt(`Εισάγετε νέο όνομα για την κατηγορία:`, cat.name);
+    if (newName && newName.trim() !== '') {
+      await this.catalogService.updateCategoryName(cat.id, newName.trim());
+      await this.loadAllInventory();
+      this.showToast(`Η κατηγορία μετονομάστηκε σε "${newName.trim()}"`);
+    }
+  }
+
+  public onExpireDateChange(dateValue: string): void {
+  const current = this.editingProduct();
+  if (!current) return;
+
+  this.editingProduct.set({
+    ...current,
+    expire: dateValue || undefined,
+    statusDate: dateValue || undefined
+  });
+}
+
   public async updateInlineStock(product: Product, delta: number): Promise<void> {
     const current = product.stockQuantity ?? 0;
     const newQty = Math.max(0, parseFloat((current + delta).toFixed(3)));
     product.stockQuantity = newQty;
     
-    await marketDb.products.update(product.id, { stockQuantity: newQty });
+    if (product.id) {
+  await marketDb.products.update(product.id, { stockQuantity: newQty });
+}
     await this.loadAllInventory();
   }
 
@@ -169,13 +216,14 @@ export class InventoryComponent implements OnInit {
     return this.catalogService.getCategoryName(categoryId);
   }
 
-  // Toggle Pinned status on POS
   public async togglePin(product: Product, event: Event): Promise<void> {
     event.stopPropagation();
     const newStatus = !product.isPinned;
     product.isPinned = newStatus;
     
-    await marketDb.products.update(product.id, { isPinned: newStatus });
+    if (product.id) {
+  await marketDb.products.update(product.id, { isPinned: newStatus });
+}
     await this.loadAllInventory();
     this.showToast(newStatus ? `Καρφιτσώθηκε: "${product.name}"` : `Ξεκαρφιτσώθηκε: "${product.name}"`);
   }

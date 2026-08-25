@@ -1,50 +1,37 @@
 export interface Category {
   id: string;
   name: string;
+  tenantId?: string;
   icon?: string;
-  color?: string;
+  count?: number;
 }
 
 export interface Product {
-  id: string;
-  barcode?: string;
-  sku?: string;
+  id?: string;
+  barcode: string;
   name: string;
+  price: number;
+  costPrice?: number;
+  purchasePrice?: number;
+  vatRate: number;
+  stockQuantity: number;
+  stock?: number;
   categoryId: string;
   categoryName?: string;
   brand?: string;
-  price: number;
-  costPrice?: number;
-  isActive?: boolean;
-  vatRate: number; // e.g. 6, 13, 24
-  stockQuantity?: number;
-  stock?: number;
-  minStockWarning?: number;
+  packageSize?: string;
+  imageUrl?: string;
+  image?: string;
   shelfLocation?: string;
+  minStockWarning?: number;   // <-- Added
+  isActive?: boolean;
+  createdAt?: string;
+  expire?: string;
+  statusDate?: string;
   isWeighted?: boolean;
   isPinned?: boolean;
-  expire?: string;
-  image?: string;
+  sku?: string;
+  tenantId?: string;
   updatedAt?: string;
-  createdAt?: string;
   notes?: string;
-}
-
-export interface ScaleBarcodeResult {
-  isScaleBarcode: boolean;
-  itemCode?: string;
-  weightKg?: number;
-  priceTotal?: number;
-  lookupBarcodes: string[];
-}
-
-export interface ParsedScaleBarcode {
-  isScaleBarcode: boolean;
-  prefix?: string;
-  itemCode?: string;
-  mode?: 'weight' | 'price';
-  weightKg?: number;
-  embeddedPrice?: number;
-  priceTotal?: number;
-  lookupBarcodes: string[];
 }

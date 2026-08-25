@@ -114,6 +114,7 @@ export class BarcodeScannerService {
         externalMatch: {
           barcode: clean,
           name: `Νέο Προϊόν (${clean})`,
+          categoryId:'cat-pantry',
           categoryName: 'General',
           suggestedVatRate: 13,
           suggestedPrice: 1.50

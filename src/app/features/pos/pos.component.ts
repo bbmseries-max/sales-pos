@@ -24,9 +24,9 @@ import {
   QuickRegisterConfirmEvent 
 } from './components/quick-register-modal.component';
 import { PosPriceCheckModalComponent } from './components/pos-price-check-modal.component';
+import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-modal.component';
 
 // Directives & Services
-import { AutoScanInputDirective } from '../../core/directives/auto-scan-input.directive';
 import { BarcodeScannerDirective } from '../../core/directives/barcode-scanner.directive';
 import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { MarketCatalogService, ExternalProductMatch } from '../../core/services/market-catalog.service';
@@ -36,20 +36,19 @@ import { EscPosPrinterService } from '../../core/services/esc-pos-printer.servic
 import { MyDataService } from '../../core/services/mydata.service';
 import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.service';
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
-import { marketDb } from '../../core/db/market-db';
-import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-modal.component';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
-import { HubCatalogSyncService } from '../../core/services/hub-catalog-sync.service';
+import { marketDb } from '../../core/db/market-db';
 import { 
   Product, 
   TransactionRecord, 
   MarketCompanyProfile, 
-  Customer 
+  Customer
 } from '../../core/models';
-import { FirebaseStoreSyncService } from '../../core/services/firebase-store-sync.service';
 
 export type UiPaymentMethod = 'CASH' | 'CARD' | 'SPLIT';
 export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
+
+
 
 @Component({
   selector: 'app-pos',
@@ -58,7 +57,6 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     CommonModule, 
     FormsModule, 
     BarcodeScannerDirective,
-    AutoScanInputDirective,
     PosQuickRegisterModalComponent,
     PosPriceCheckModalComponent,
     PosCashDrawerModalComponent,
@@ -72,7 +70,7 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
 export class PosComponent implements OnInit, AfterViewInit {
   @ViewChild('barcodeInput') barcodeInputRef!: ElementRef<HTMLInputElement>;
 
-  // Services
+  // Core Services
   public catalogService = inject(MarketCatalogService);
   public cart = inject(CartService);
   public scanner = inject(BarcodeScannerService);
@@ -81,11 +79,8 @@ export class PosComponent implements OnInit, AfterViewInit {
   public myDataService = inject(MyDataService);
   public loyaltyService = inject(CustomerLoyaltyService);
   public shiftService = inject(CashierShiftService);
-  private router = inject(Router);
-  public hubSync = inject(HubCatalogSyncService);
   public tenantConfig = inject(TenantConfigService);
-  public showStoreModal = signal<boolean>(false);
-  public firebaseSync = inject(FirebaseStoreSyncService);
+  private router = inject(Router);
 
   // Search & Hardware Barcode State
   public searchQuery = signal<string>('');
@@ -95,6 +90,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public scanFeedback = signal<string | null>(null);
 
   // Modals Visibility
+  public showStoreModal = signal<boolean>(false);
   public showCashDrawerModal = signal<boolean>(false);
   public showCustomerModal = signal<boolean>(false);
   public showPaymentModal = signal<boolean>(false);
@@ -104,7 +100,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public showWeightModal = signal<boolean>(false);
   public showMyDataConfig = signal<boolean>(false);
 
-  // Sub-Component / State Payloads
+  // Payloads & Transient States
   public discoveredExternalProduct = signal<ExternalProductMatch | null>(null);
   public priceCheckInput = signal<string>('');
   public priceCheckResult = signal<Product | null>(null);
@@ -131,6 +127,11 @@ export class PosComponent implements OnInit, AfterViewInit {
   public feedbackMessage = signal<string>('');
   public feedbackType = signal<'success' | 'error' | 'info'>('success');
   private feedbackTimer: any = null;
+
+  // Debounce & Re-entry Lock
+  private isProcessingScan = false;
+  private lastScannedCode = '';
+  private lastScannedTimestamp = 0;
 
   // Computed Values
   public pointsDiscountAmount = computed(() => {
@@ -167,7 +168,9 @@ export class PosComponent implements OnInit, AfterViewInit {
       const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
                              this.showPriceCheckModal() || this.showCashDrawerModal() || 
                              this.showCustomerModal() || this.showShiftHandoverModal() || 
-                             this.shiftService.isLocked();
+                             this.showStoreModal() || this.showWeightModal() ||
+                             this.showMyDataConfig() || this.shiftService.isLocked();
+
       if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
         this.barcodeInputRef.nativeElement.focus();
       }
@@ -186,26 +189,13 @@ export class PosComponent implements OnInit, AfterViewInit {
     }, 2500);
   }
 
-public async syncLiveFirebase(): Promise<void> {
-  this.flashFeedback('⏳ Συγχρονισμός σε εξέλιξη...', 'info');
-  try {
-    // Replace with your Vercel products API URL:
-    const vercelUrl = 'https://your-maranth-app.vercel.app/api/products';
-    const count = await this.firebaseSync.syncFromApi(vercelUrl, 'mar-market');
-
-    await this.catalogService.loadInitialCatalog();
-    this.flashFeedback(`✔ Ενημερώθηκαν ${count} προϊόντα για το mar-market!`, 'success');
-  } catch (err) {
-    this.flashFeedback('✖ Σφάλμα κατά τον συγχρονισμό', 'error');
-  }
-}
-
   @HostListener('window:keydown', ['$event'])
   onGlobalKey(event: KeyboardEvent): void {
     const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
                         this.showPriceCheckModal() || this.showCashDrawerModal() || 
                         this.showCustomerModal() || this.showShiftHandoverModal() || 
-                        this.shiftService.isLocked();
+                        this.showStoreModal() || this.showWeightModal() ||
+                        this.showMyDataConfig() || this.shiftService.isLocked();
 
     this.scanner.handleGlobalKey(event, isModalOpen, (code) => this.onBarcodeScanned(code));
 
@@ -228,18 +218,28 @@ public async syncLiveFirebase(): Promise<void> {
   }
 
   public async onBarcodeScanned(explicitCode?: string): Promise<void> {
-    const code = explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value;
+    const code = (explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value || '').trim();
+
     this.searchQuery.set('');
     if (this.barcodeInputRef?.nativeElement) {
       this.barcodeInputRef.nativeElement.value = '';
     }
 
-    if (!code || !code.trim()) {
+    if (!code) {
       this.focusBarcodeInput();
       return;
     }
 
+    const now = Date.now();
+    if (this.isProcessingScan || (code === this.lastScannedCode && (now - this.lastScannedTimestamp) < 400)) {
+      return;
+    }
+
+    this.isProcessingScan = true;
+    this.lastScannedCode = code;
+    this.lastScannedTimestamp = now;
     this.isBarcodeProcessing.set(true);
+
     try {
       const res = await this.scanner.resolveBarcode(code);
 
@@ -253,8 +253,76 @@ public async syncLiveFirebase(): Promise<void> {
         this.discoveredExternalProduct.set(res.externalMatch);
         this.showQuickRegisterModal.set(true);
       }
+    } catch (err) {
+      console.error('Barcode resolution error:', err);
     } finally {
       this.isBarcodeProcessing.set(false);
+      this.isProcessingScan = false;
+      this.focusBarcodeInput();
+    }
+  }
+
+  public async onSearch(query: string): Promise<void> {
+    this.searchQuery.set(query);
+    const term = query.trim().toLowerCase();
+    
+    if (term.length >= 2) {
+      const all = this.catalogService.products();
+      const matches = all.filter(p =>
+        (p.name && p.name.toLowerCase().includes(term)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(term)) ||
+        (p.sku && p.sku.toLowerCase().includes(term)) ||
+        (p.id && String(p.id).toLowerCase() === term)
+      ).slice(0, 12);
+      this.searchResults.set(matches);
+    } else {
+      this.searchResults.set([]);
+    }
+  }
+
+  public onSearchEnter(): void {
+    const query = this.searchQuery().trim();
+    if (!query) return;
+
+    const exact = this.catalogService.getByBarcode(query) || this.catalogService.getProductByAnyIdentifier(query);
+    if (exact) {
+      this.selectProduct(exact);
+      return;
+    }
+
+    const results = this.searchResults();
+    if (results.length > 0) {
+      this.selectProduct(results[0]);
+    } else {
+      this.onBarcodeScanned(query);
+    }
+  }
+
+  public selectProduct(product: Product): void {
+    if (product.isWeighted) {
+      this.promptWeight(product);
+    } else {
+      this.cart.addItem(product, 1);
+    }
+    
+    this.searchQuery.set('');
+    this.searchResults.set([]);
+    this.focusBarcodeInput();
+  }
+
+  public promptWeight(product: Product): void {
+    this.activeWeightedProduct.set(product);
+    this.inputWeightKg.set(1.0);
+    this.showWeightModal.set(true);
+  }
+
+  public confirmWeight(): void {
+    const product = this.activeWeightedProduct();
+    if (product && this.inputWeightKg() > 0) {
+      this.cart.addProduct(product, this.inputWeightKg());
+      this.showWeightModal.set(false);
+      this.activeWeightedProduct.set(null);
+      this.flashFeedback('✔ ' + product.name + ' (' + this.inputWeightKg() + ' kg)', 'success');
       this.focusBarcodeInput();
     }
   }
@@ -298,9 +366,6 @@ public async syncLiveFirebase(): Promise<void> {
     this.focusBarcodeInput();
   }
 
-  /**
-   * Switches the active shop/tenant context and refreshes products
-   */
   public async handleStoreSwitch(newStoreCode: string): Promise<void> {
     const prev = this.tenantConfig.activeShop().code;
     if (prev === newStoreCode) {
@@ -308,27 +373,13 @@ public async syncLiveFirebase(): Promise<void> {
       return;
     }
 
-    // 1. Clear active cart to prevent cross-store price/stock contamination
     this.cart.clear();
-
-    // 2. Switch tenant in service & persist
     this.tenantConfig.switchShop(newStoreCode);
     this.showStoreModal.set(false);
-
-    // 3. Reload catalog for the new shop
     await this.catalogService.loadInitialCatalog();
 
     const active = this.tenantConfig.activeShop();
     this.flashFeedback(`✔ Ενεργό Κατάστημα: ${active.name} [${active.code}]`, 'success');
-    this.focusBarcodeInput();
-  }
-
-  public async submitCashLog(): Promise<void> {
-    const amt = Number(this.cashLogAmount());
-    if (amt <= 0) return;
-    await this.shiftService.recordCashMovement(this.cashLogType(), amt, this.cashLogReason() || 'Κίνηση Ταμείου');
-    this.showCashDrawerModal.set(false);
-    this.flashFeedback('✔ Καταχωρήθηκε: €' + amt.toFixed(2), 'success');
     this.focusBarcodeInput();
   }
 
@@ -384,73 +435,6 @@ public async syncLiveFirebase(): Promise<void> {
     const bytes = this.printerService.buildEscPosXReport(shift);
     await this.printerService.printViaSerial(bytes);
     this.flashFeedback('✔ Το Δελτίο "Χ" εκτυπώθηκε!', 'success');
-  }
-
-  public async onSearch(query: string): Promise<void> {
-    this.searchQuery.set(query);
-    const term = query.trim().toLowerCase();
-    
-    if (term.length >= 2) {
-      const all = this.catalogService.products();
-      const matches = all.filter(p =>
-        (p.name && p.name.toLowerCase().includes(term)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(term)) ||
-        (p.sku && p.sku.toLowerCase().includes(term)) ||
-        (p.id && String(p.id).toLowerCase() === term)
-      ).slice(0, 12);
-      this.searchResults.set(matches);
-    } else {
-      this.searchResults.set([]);
-    }
-  }
-
-  public onSearchEnter(): void {
-    const query = this.searchQuery().trim();
-    if (!query) return;
-
-    const exact = this.catalogService.getByBarcode(query) || this.catalogService.getProductByAnyIdentifier(query);
-    if (exact) {
-      this.selectProduct(exact);
-      return;
-    }
-
-    const results = this.searchResults();
-    if (results.length > 0) {
-      this.selectProduct(results[0]);
-    }
-  }
-
-  public selectProduct(product: Product): void {
-    if (product.isWeighted) {
-      if (this.cart.isExpired(product)) {
-        this.flashFeedback('⛔ BLOCKED: Expired on ' + product.expire + '!', 'error');
-        return;
-      }
-      this.promptWeight(product);
-    } else {
-      this.cart.addProduct(product);
-      this.flashFeedback('✔ ' + product.name, 'success');
-    }
-    this.searchQuery.set('');
-    this.searchResults.set([]);
-    this.focusBarcodeInput();
-  }
-
-  public promptWeight(product: Product): void {
-    this.activeWeightedProduct.set(product);
-    this.inputWeightKg.set(1.0);
-    this.showWeightModal.set(true);
-  }
-
-  public confirmWeight(): void {
-    const product = this.activeWeightedProduct();
-    if (product && this.inputWeightKg() > 0) {
-      this.cart.addProduct(product, this.inputWeightKg());
-      this.showWeightModal.set(false);
-      this.activeWeightedProduct.set(null);
-      this.flashFeedback('✔ ' + product.name + ' (' + this.inputWeightKg() + ' kg)', 'success');
-      this.focusBarcodeInput();
-    }
   }
 
   public toggleHoldTicket(): void {
@@ -605,91 +589,12 @@ public async syncLiveFirebase(): Promise<void> {
     this.router.navigate(['/labels']);
   }
 
-  public onImageError(event: Event): void {
-    const img = event.target as HTMLImageElement;
-    if (img) {
-      img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-    }
+public onImageError(event: Event): void {
+  const img = event.target as HTMLImageElement;
+  if (img) {
+    // Avoid infinite loop if placeholder fails
+    img.onerror = null;
+    img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
   }
-public async onCatalogFileSelected(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    if (!input.files || input.files.length === 0) return;
-
-    const file = input.files[0];
-    const text = await file.text();
-
-    this.flashFeedback?.('⏳ Φόρτωση καταλόγου...', 'info');
-
-    try {
-      let products: any[] = [];
-
-      if (file.name.endsWith('.json')) {
-        const parsed = JSON.parse(text);
-        const rawItems = Array.isArray(parsed) ? parsed : (parsed.products || Object.values(parsed));
-        products = rawItems.map((p: any) => ({
-          ...p,
-          id: String(p.id || p.barcode),
-          barcode: String(p.barcode || p.id).trim(),
-          categoryId: p.categoryId || 'cat-general',
-          categoryName: p.categoryName || 'Γενικά Τρόφιμα',
-          tenantId: 'mar-market'
-        }));
-      } else {
-        // Parse Tab-Delimited or Comma-Separated lines
-        const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-        const isHeader = lines[0].toLowerCase().includes('barcode');
-        const dataRows = isHeader ? lines.slice(1) : lines;
-        const delimiter = lines[0].includes('\t') ? '\t' : ',';
-
-        products = dataRows.map((row) => {
-          const cols = row.split(delimiter);
-          const vat = Number(cols[3]) || 24;
-          const barcode = cols[0]?.trim() || '';
-          const isScale = cols[9]?.trim() === '1' || cols[9]?.trim() === 'true' || barcode.startsWith('28');
-
-          return {
-            id: barcode,
-            barcode: barcode,
-            name: cols[1]?.trim() || `Είδος ${barcode}`,
-            price: Number(cols[2]) || 0,
-            vatRate: vat,
-            taxRate: 1 + (vat / 100),
-            stockQuantity: Number(cols[4]) || 0,
-            purchasePrice: Number(cols[5]) || 0,
-            categoryId: cols[6]?.trim() || 'cat-general',
-            categoryName: cols[7]?.trim() || 'Γενικά Τρόφιμα',
-            brand: cols[8]?.trim() || '',
-            isWeighted: isScale,
-            imageUrl: cols[10]?.trim() || '',
-            tenantId: 'mar-market',
-            updatedAt: new Date().toISOString()
-          };
-        });
-      }
-
-      if (products.length === 0) {
-        this.flashFeedback?.('✖ Το αρχείο είναι κενό', 'error');
-        return;
-      }
-
-      // Write in chunks to IndexedDB
-      const chunkSize = 500;
-      for (let i = 0; i < products.length; i += chunkSize) {
-        const chunk = products.slice(i, i + chunkSize);
-        await marketDb.products.bulkPut(chunk);
-      }
-
-      // Reload in-memory catalog
-      if (this.catalogService?.loadInitialCatalog) {
-        await this.catalogService.loadInitialCatalog();
-      }
-
-      this.flashFeedback?.(`✔ Φορτώθηκαν ${products.length} είδη με κατηγορίες!`, 'success');
-      input.value = ''; // Reset input so it can be re-triggered
-    } catch (err) {
-      console.error('Catalog import error:', err);
-      this.flashFeedback?.('✖ Σφάλμα κατά την εισαγωγή', 'error');
-    }
-  }
-
+}
 }

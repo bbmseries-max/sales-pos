@@ -6,12 +6,12 @@ export interface VatSummaryTier {
 }
 
 export interface CashDenominationCount {
-  denomination: number; // e.g., 50, 20, 10, 5, 2, 1, 0.50, 0.20, 0.10
+  denomination: number;
   count: number;
 }
 
 export interface ZReportAudit {
-  id: string; // e.g. "Z-0001"
+  id: string;
   zNumber: number;
   date: string;
   openedAt: string;
@@ -28,7 +28,7 @@ export interface ZReportAudit {
   grossTurnover: number;
   netTurnover: number;
   totalTax: number;
-  progressiveGrandTotal: number; // Προοδευτικό Γενικό Σύνολο
+  progressiveGrandTotal: number;
 
   // Payment Breakdown
   salesCash: number;
@@ -41,9 +41,9 @@ export interface ZReportAudit {
   cashOut: number;
   expectedDrawerCash: number;
   actualCountedCash: number;
-  variance: number; // Actual - Expected (Over/Short)
+  variance: number;
 
-  // VAT (ΦΠΑ) Breakdown
+  // VAT Breakdown
   vatAnalysis: Record<string, VatSummaryTier>;
 
   status: 'DRAFT' | 'CLOSED';
