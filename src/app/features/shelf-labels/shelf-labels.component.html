@@ -1,0 +1,180 @@
+<div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+  
+  <!-- Non-printable Admin Header -->
+  <header class="no-print h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-4">
+      <button 
+        (click)="backToPos()"
+        class="h-10 px-4 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+      >
+        <span>← Επιστροφή</span>
+      </button>
+      <div class="h-6 w-px bg-slate-800"></div>
+      <h1 class="text-sm font-black tracking-wider text-amber-400 uppercase">🏷️ Εκτύπωση Ετικετών Ραφιού (Shelf Price Tags)</h1>
+    </div>
+
+    <!-- Print & Format Controls -->
+    <div class="flex items-center gap-3">
+      <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+        <button 
+          (click)="labelSize.set('A4_SHEET')"
+          [class.bg-amber-500]="labelSize() === 'A4_SHEET'"
+          [class.text-slate-950]="labelSize() === 'A4_SHEET'"
+          [class.text-slate-400]="labelSize() !== 'A4_SHEET'"
+          class="px-3 py-1.5 rounded-lg transition"
+        >
+          A4 Φύλλο (3x8 - 24/σελίδα)
+        </button>
+        <button 
+          (click)="labelSize.set('THERMAL_ROLL')"
+          [class.bg-amber-500]="labelSize() === 'THERMAL_ROLL'"
+          [class.text-slate-950]="labelSize() === 'THERMAL_ROLL'"
+          [class.text-slate-400]="labelSize() !== 'THERMAL_ROLL'"
+          class="px-3 py-1.5 rounded-lg transition"
+        >
+          Ρολό Θερμικού (50x30mm)
+        </button>
+      </div>
+
+      <button 
+        (click)="printLabels()"
+        [disabled]="flattenedLabels().length === 0"
+        class="h-11 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 text-white text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950"
+      >
+        <span>🖨️ ΕΚΤΥΠΩΣΗ ({{ flattenedLabels().length }} Ετικέτες)</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Split Screen Area -->
+  <div class="flex-1 grid grid-cols-12 gap-6 p-6 overflow-hidden">
+    
+    <!-- LEFT: Product Search & Queue Panel (Col 4) -->
+    <section class="no-print col-span-4 bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex flex-col justify-between shadow-xl overflow-hidden">
+      
+      <!-- Search & Filters -->
+      <div class="space-y-3 pb-3 border-b border-slate-800">
+        <input 
+          type="text" 
+          placeholder="Αναζήτηση Προϊόντος / Barcode..."
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+        />
+
+        <div class="flex justify-between items-center gap-2">
+          <select 
+            [ngModel]="selectedCategory()"
+            (ngModelChange)="selectedCategory.set($event)"
+            class="flex-1 h-9 bg-slate-950 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-300 font-mono focus:outline-none"
+          >
+            <option value="ALL">Όλες οι Κατηγορίες</option>
+            @for (cat of catalogService.categories(); track cat.id) {
+              <option [value]="cat.id">{{ cat.name }}</option>
+            }
+          </select>
+          <button 
+            (click)="addEntireCategoryToQueue(selectedCategory())"
+            class="h-9 px-3 bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-400 rounded-lg border border-slate-700 shrink-0"
+          >
+            + Προσθήκη Όλων
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Search Results List -->
+      <div class="flex-1 overflow-y-auto py-2 space-y-1.5 max-h-[300px]">
+        @for (prod of filteredCatalog(); track prod.id) {
+          <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-slate-700">
+            <div class="min-w-0 flex-1 pr-2">
+              <span class="text-xs font-bold text-slate-200 block truncate">{{ prod.name }}</span>
+              <span class="text-[10px] font-mono text-slate-500">{{ prod.barcode }} • ΦΠΑ {{ prod.vatRate || 24 }}%</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-black text-emerald-400">€{{ (prod.price || 0).toFixed(2) }}</span>
+              <button 
+                (click)="addToQueue(prod)"
+                class="w-7 h-7 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-sm flex items-center justify-center cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- Selected Queue Summary -->
+      <div class="pt-3 border-t border-slate-800">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-black uppercase text-slate-400">Ουρά Εκτύπωσης ({{ queue().length }})</span>
+          <button (click)="clearQueue()" class="text-[10px] font-mono text-red-400 hover:underline">Καθαρισμός</button>
+        </div>
+        
+        <div class="max-h-[160px] overflow-y-auto space-y-1 pr-1">
+          @for (q of queue(); track q.product.id; let idx = $index) {
+            <div class="flex items-center justify-between text-xs font-mono bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800">
+              <span class="truncate max-w-[150px] text-slate-300">{{ q.product.name }}</span>
+              <div class="flex items-center gap-2">
+                <span class="text-slate-500">x{{ q.quantity }}</span>
+                <button (click)="removeQueueItem(idx)" class="text-slate-500 hover:text-red-400 font-bold">✕</button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT: Live Print Preview Canvas (Col 8) -->
+    <section class="col-span-8 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 overflow-y-auto flex justify-center items-start shadow-inner">
+      
+      <!-- A4 Page Container Simulation -->
+      <div 
+        id="printable-labels-area"
+        [class.a4-sheet-layout]="labelSize() === 'A4_SHEET'"
+        [class.thermal-roll-layout]="labelSize() === 'THERMAL_ROLL'"
+        class="bg-white text-black shadow-2xl transition-all"
+      >
+        @for (prod of flattenedLabels(); track $index) {
+          <div class="shelf-label-card">
+            
+            <!-- Top: Category / Shelf Location -->
+            <div class="label-top-row">
+              <span class="label-category truncate">{{ prod.categoryName || 'GENERAL' }}</span>
+              <span class="label-vat">ΦΠΑ {{ prod.vatRate || 24 }}%</span>
+            </div>
+
+            <!-- Middle: Product Name -->
+            <div class="label-product-name line-clamp-2">
+              {{ prod.name }}
+            </div>
+
+            <!-- Price & Barcode Section -->
+            <div class="label-bottom-grid">
+              
+              <!-- Left: Barcode Vector + Net Info -->
+              <div class="label-barcode-col">
+                <div class="label-barcode-svg" [innerHTML]="getBarcodeSvg(prod.barcode)"></div>
+                <div class="label-barcode-text">{{ prod.barcode || '—' }}</div>
+                <div class="label-net-unit">
+                  Καθ: €{{ getNetPrice(prod.price || 0, prod.vatRate || 24) }} • Τιμή/{{ prod.isWeighted ? 'kg' : 'τεμ' }}
+                </div>
+              </div>
+
+              <!-- Right: Big Bold Retail Price with Cents -->
+              <div class="label-price-box">
+                <div class="label-currency">€</div>
+                <div class="label-price-whole">{{ getPriceWhole(prod.price || 0) }}</div>
+                <div class="label-price-cents">,{{ getPriceCents(prod.price || 0) }}</div>
+              </div>
+
+            </div>
+
+          </div>
+        }
+      </div>
+
+    </section>
+
+  </div>
+</div>

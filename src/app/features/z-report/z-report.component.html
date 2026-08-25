@@ -1,0 +1,210 @@
+<div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+  
+  <!-- Header -->
+  <header class="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-4">
+      <button 
+        (click)="backToPos()"
+        class="h-10 px-4 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+      >
+        <span>← Επιστροφή στο POS</span>
+      </button>
+      <div class="h-6 w-px bg-slate-800"></div>
+      <div class="flex items-center gap-2">
+        <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+        <h1 class="text-base font-black tracking-wider text-amber-400 uppercase">Ημερήσιο Δελτίο "Ζ" &amp; Καταμέτρηση Ταμείου</h1>
+      </div>
+    </div>
+
+    <!-- Quick Action Controls -->
+    <div class="flex items-center gap-3">
+      <button 
+        (click)="printZReport()"
+        class="h-11 px-5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-100 text-xs font-black rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer shadow-md"
+      >
+        <span>🖨️ Εκτύπωση Δοκιμαστικού "Χ"</span>
+      </button>
+
+      <button 
+        (click)="closeDayAndLock()"
+        [disabled]="isClosed()"
+        class="h-11 px-6 bg-red-600 hover:bg-red-500 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-red-950"
+      >
+        <span>🔒 ΟΡΙΣΤΙΚΟ ΚΛΕΙΣΙΜΟ "Ζ"</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Grid -->
+  <div class="flex-1 grid grid-cols-12 gap-6 p-6 overflow-y-auto">
+    
+    <!-- LEFT: Cash Drawer Denomination Counter (Col 5) -->
+    <section class="col-span-5 bg-slate-900/60 border border-slate-800 rounded-3xl p-5 flex flex-col justify-between shadow-xl backdrop-blur-sm">
+      <div>
+        <div class="flex justify-between items-center pb-4 border-b border-slate-800">
+          <div>
+            <h2 class="text-sm font-black uppercase text-slate-200">Καταμέτρηση Μετρητών Συρταριού</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Εισάγετε τον αριθμό χαρτονομισμάτων &amp; κερμάτων</p>
+          </div>
+          <span class="text-xs font-mono font-bold px-2.5 py-1 bg-slate-800 text-emerald-400 rounded-lg border border-slate-700">
+            €{{ calculateDenominationsTotal().toFixed(2) }}
+          </span>
+        </div>
+
+        <!-- Initial Cash Adjustments -->
+        <div class="grid grid-cols-3 gap-3 py-4 border-b border-slate-800/80">
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Άνοιγμα (€)</label>
+            <input 
+              type="number" 
+              [(ngModel)]="openingFloat" 
+              (ngModelChange)="calculateAudit()"
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 font-mono font-bold text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Εισροές (+)</label>
+            <input 
+              type="number" 
+              [(ngModel)]="cashIn" 
+              (ngModelChange)="calculateAudit()"
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 font-mono font-bold text-sm text-emerald-400 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Εκροές (-)</label>
+            <input 
+              type="number" 
+              [(ngModel)]="cashOut" 
+              (ngModelChange)="calculateAudit()"
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 font-mono font-bold text-sm text-red-400 focus:outline-none focus:border-red-500"
+            />
+          </div>
+        </div>
+
+        <!-- Denominations Grid -->
+        <div class="mt-4 space-y-2 max-h-[380px] overflow-y-auto pr-1">
+          @for (d of denominations(); track d.denomination; let i = $index) {
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition">
+              <div class="flex items-center gap-3">
+                <span class="w-14 text-xs font-mono font-black text-slate-300">€{{ d.denomination >= 1 ? d.denomination.toFixed(0) : d.denomination.toFixed(2) }}</span>
+                <span class="text-xs text-slate-600">x</span>
+                <input 
+                  type="number" 
+                  min="0"
+                  [ngModel]="d.count"
+                  (ngModelChange)="onDenominationChange(i, $event)"
+                  class="w-20 h-9 bg-slate-900 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <span class="font-mono font-bold text-xs text-emerald-400">
+                €{{ (d.denomination * d.count).toFixed(2) }}
+              </span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Variance Box -->
+      @if (auditData(); as z) {
+        <div class="mt-4 p-4 rounded-2xl border" 
+             [class.bg-emerald-950/30]="z.variance >= 0" 
+             [class.border-emerald-800/60]="z.variance >= 0"
+             [class.bg-red-950/30]="z.variance < 0" 
+             [class.border-red-800/60]="z.variance < 0">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-black uppercase tracking-wider" [class.text-emerald-400]="z.variance >= 0" [class.text-red-400]="z.variance < 0">
+              {{ z.variance >= 0 ? '✔ Πλεόνασμα Ταμείου' : '⛔ Έλλειμμα Ταμείου' }}
+            </span>
+            <span class="text-xl font-mono font-black" [class.text-emerald-400]="z.variance >= 0" [class.text-red-400]="z.variance < 0">
+              {{ z.variance >= 0 ? '+' : '' }}€{{ z.variance.toFixed(2) }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center text-[11px] font-mono text-slate-400 mt-2">
+            <span>Αναμενόμενο: €{{ z.expectedDrawerCash.toFixed(2) }}</span>
+            <span>Καταμετρημένο: €{{ z.actualCountedCash.toFixed(2) }}</span>
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- RIGHT: Z-Report Thermal Preview & Audit Metrics (Col 7) -->
+    <section class="col-span-7 bg-slate-900/60 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between shadow-xl">
+      @if (auditData(); as z) {
+        <div class="space-y-6">
+          
+          <!-- Key Turnover Metric Cards -->
+          <div class="grid grid-cols-3 gap-4">
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+              <span class="text-[11px] font-bold uppercase text-slate-500 block">Ακαθάριστος Τζίρος</span>
+              <span class="text-2xl font-mono font-black text-emerald-400 mt-1 block">€{{ z.grossTurnover.toFixed(2) }}</span>
+              <span class="text-[10px] font-mono text-slate-500">{{ z.transactionCount }} Αποδείξεις</span>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+              <span class="text-[11px] font-bold uppercase text-slate-500 block">Καθαρή Αξία</span>
+              <span class="text-2xl font-mono font-black text-slate-100 mt-1 block">€{{ z.netTurnover.toFixed(2) }}</span>
+              <span class="text-[10px] font-mono text-slate-500">Προ Φ.Π.Α.</span>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+              <span class="text-[11px] font-bold uppercase text-slate-500 block">Σύνολο Φ.Π.Α.</span>
+              <span class="text-2xl font-mono font-black text-amber-400 mt-1 block">€{{ z.totalTax.toFixed(2) }}</span>
+              <span class="text-[10px] font-mono text-slate-500">Απόδοση ΦΠΑ</span>
+            </div>
+          </div>
+
+          <!-- Payment Breakdown -->
+          <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+            <h3 class="text-xs font-black uppercase text-slate-400 tracking-wider">Ανάλυση Εισπράξεων Ανά Τρόπο Πληρωμής</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex justify-between items-center p-3 bg-slate-900 rounded-xl border border-slate-800">
+                <span class="text-xs font-bold text-slate-300">💵 Μετρητά (Cash)</span>
+                <span class="font-mono font-black text-emerald-400">€{{ z.salesCash.toFixed(2) }}</span>
+              </div>
+              <div class="flex justify-between items-center p-3 bg-slate-900 rounded-xl border border-slate-800">
+                <span class="text-xs font-bold text-slate-300">💳 Κάρτες / POS</span>
+                <span class="font-mono font-black text-sky-400">€{{ z.salesCard.toFixed(2) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Greek VAT Breakdown Table -->
+          <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+            <h3 class="text-xs font-black uppercase text-slate-400 tracking-wider mb-3">Φορολογική Ανάλυση Φ.Π.Α.</h3>
+            <table class="w-full text-left font-mono text-xs">
+              <thead class="text-slate-500 border-b border-slate-800">
+                <tr>
+                  <th class="pb-2">Συντελεστής</th>
+                  <th class="pb-2 text-right">Καθαρή Αξία</th>
+                  <th class="pb-2 text-right">Ποσό Φ.Π.Α.</th>
+                  <th class="pb-2 text-right">Σύνολο</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                @for (entry of z.vatAnalysis | keyvalue; track entry.key) {
+                  @if (entry.value.gross > 0) {
+                    <tr>
+                      <td class="py-2 font-bold text-amber-400">{{ entry.value.rate }}%</td>
+                      <td class="py-2 text-right">€{{ entry.value.net.toFixed(2) }}</td>
+                      <td class="py-2 text-right">€{{ entry.value.vat.toFixed(2) }}</td>
+                      <td class="py-2 text-right font-bold text-emerald-400">€{{ entry.value.gross.toFixed(2) }}</td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Progressive Grand Total Footer Banner -->
+          <div class="p-4 bg-amber-950/30 border border-amber-800/60 rounded-2xl flex justify-between items-center">
+            <span class="text-xs font-bold text-amber-300 uppercase">Γενικό Προοδευτικό Σύνολο (Grand Total):</span>
+            <span class="text-lg font-mono font-black text-amber-400">€{{ z.progressiveGrandTotal.toFixed(2) }}</span>
+          </div>
+
+        </div>
+      }
+    </section>
+
+  </div>
+</div>

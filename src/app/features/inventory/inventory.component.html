@@ -1,0 +1,354 @@
+<div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+
+  <!-- TOP ACTION & AUDIT BAR -->
+  <header class="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-4">
+      <button 
+        (click)="navigateToPos()" 
+        class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition"
+      >
+        <span>← POS Checkout</span>
+      </button>
+      <div>
+        <h1 class="text-base font-black text-emerald-400">INVENTORY & MASTER CATALOG</h1>
+        <p class="text-[11px] text-slate-400">{{ totalCount() }} Total Products • {{ catalogService.categories().length }} Categories</p>
+      </div>
+    </div>
+
+    <!-- Audit Navigation Tabs -->
+    <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+      <button 
+        (click)="setTab('all')"
+        [class.bg-emerald-500]="selectedTab() === 'all'"
+        [class.text-slate-950]="selectedTab() === 'all'"
+        [class.text-slate-400]="selectedTab() !== 'all'"
+        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+      >
+        <span>All Items</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'all'" [class.text-emerald-400]="selectedTab() === 'all'" [class.bg-slate-800]="selectedTab() !== 'all'">{{ totalCount() }}</span>
+      </button>
+
+      <button 
+        (click)="setTab('low-stock')"
+        [class.bg-amber-500]="selectedTab() === 'low-stock'"
+        [class.text-slate-950]="selectedTab() === 'low-stock'"
+        [class.text-slate-400]="selectedTab() !== 'low-stock'"
+        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+      >
+        <span>⚠️ Low Stock</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'low-stock'" [class.text-amber-400]="selectedTab() === 'low-stock'" [class.bg-slate-800]="selectedTab() !== 'low-stock'">{{ lowStockCount() }}</span>
+      </button>
+
+      <button 
+        (click)="setTab('expiring')"
+        [class.bg-red-500]="selectedTab() === 'expiring'"
+        [class.text-slate-950]="selectedTab() === 'expiring'"
+        [class.text-slate-400]="selectedTab() !== 'expiring'"
+        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+      >
+        <span>⏰ Expiring (&lt;30d)</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'expiring'" [class.text-red-400]="selectedTab() === 'expiring'" [class.bg-slate-800]="selectedTab() !== 'expiring'">{{ expiringCount() }}</span>
+      </button>
+
+      <button 
+        (click)="setTab('pinned')"
+        [class.bg-sky-500]="selectedTab() === 'pinned'"
+        [class.text-slate-950]="selectedTab() === 'pinned'"
+        [class.text-slate-400]="selectedTab() !== 'pinned'"
+        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+      >
+        <span>📌 Pinned at POS</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'pinned'" [class.text-sky-400]="selectedTab() === 'pinned'" [class.bg-slate-800]="selectedTab() !== 'pinned'">{{ pinnedCount() }}</span>
+      </button>
+
+      <button 
+  (click)="navigateToImport()"
+  class="h-10 px-4 bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-emerald-500/50 transition flex items-center gap-2 cursor-pointer"
+>
+  <span>📥 Μαζική Εισαγωγή CSV</span>
+</button>
+    </div>
+  </header>
+
+  <!-- Flash Toast -->
+  @if (feedbackMsg(); as msg) {
+    <div class="bg-emerald-950 border-b border-emerald-800 text-emerald-300 text-xs font-mono font-bold px-6 py-2">
+      ✔ {{ msg }}
+    </div>
+  }
+
+  <!-- MAIN SPLIT CONTENT -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT: Category Navigation Sidebar (260px) -->
+    <aside class="w-64 border-r border-slate-800 bg-slate-900/40 flex flex-col shrink-0">
+      <div class="p-3 border-b border-slate-800 flex justify-between items-center">
+        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Categories</span>
+        <button 
+          (click)="catalogService.autoInferCategoryNames()" 
+          title="Auto-generate names from products"
+          class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-700 font-mono"
+        >
+          ✨ Auto-Name
+        </button>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto p-2 space-y-1">
+        <!-- All Categories Button -->
+        <button 
+          (click)="selectCategory('all')"
+          [class.bg-emerald-500]="selectedCategoryId() === 'all'"
+          [class.text-slate-950]="selectedCategoryId() === 'all'"
+          [class.text-slate-300]="selectedCategoryId() !== 'all'"
+          class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition flex justify-between items-center cursor-pointer"
+        >
+          <span>All Categories</span>
+          <span class="text-[10px] font-mono opacity-80">{{ totalCount() }}</span>
+        </button>
+
+        <!-- Individual Categories with Quick Edit Prompt -->
+        @for (cat of catalogService.categories(); track cat.id) {
+          <div class="group flex items-center gap-1">
+            <button 
+              (click)="selectCategory(cat.id)"
+              [class.bg-emerald-500]="selectedCategoryId() === cat.id"
+              [class.text-slate-950]="selectedCategoryId() === cat.id"
+              [class.text-slate-300]="selectedCategoryId() !== cat.id"
+              [class.hover:bg-slate-800]="selectedCategoryId() !== cat.id"
+              class="flex-1 text-left px-3 py-2 rounded-xl text-xs font-medium transition flex justify-between items-center cursor-pointer truncate"
+            >
+              <span class="truncate pr-1">{{ cat.name }}</span>
+              <span class="text-[10px] font-mono text-slate-500">#{{ cat.id }}</span>
+            </button>
+
+            <!-- Pencil Edit Button -->
+            <button 
+              (click)="promptRenameCategory(cat)" 
+              title="Rename Category"
+              class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 text-xs transition"
+            >
+              ✏️
+            </button>
+          </div>
+        }
+      </div>
+    </aside>
+
+    <!-- RIGHT: Product Table & Filters -->
+    <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+      
+      <!-- Search & Quick Filters -->
+      <div class="p-3 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between gap-4">
+        <div class="flex-1 max-w-md">
+          <input
+            type="text"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="onSearchChange($event)"
+            placeholder="🔍 Search by name, barcode, or ID..."
+            class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+          />
+        </div>
+        <span class="text-xs text-slate-400 font-mono">Showing {{ products().length }} items</span>
+      </div>
+
+      <!-- Master Products Table -->
+      <div class="flex-1 overflow-y-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead class="bg-slate-900/80 text-slate-400 font-semibold border-b border-slate-800 sticky top-0 backdrop-blur-sm z-10">
+            <tr>
+              <th class="p-3 w-12 text-center">Pin</th>
+              <th class="p-3 w-14">Image</th>
+              <th class="p-3">Product Name &amp; Barcode</th>
+              <th class="p-3">Shelf</th>
+              <th class="p-3">VAT</th>
+              <th class="p-3 text-right">Cost (€)</th>
+              <th class="p-3 text-right">Retail (€)</th>
+              <th class="p-3 text-center">Stock</th>
+              <th class="p-3">Expiry Date</th>
+              <th class="p-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60">
+            @for (p of products(); track p.id) {
+              <tr class="hover:bg-slate-900/60 transition group">
+                <!-- Pin Toggle -->
+                <td class="p-3 text-center">
+                  <button 
+                    (click)="togglePin(p, $event)" 
+                    class="text-base transition hover:scale-125 cursor-pointer"
+                    [title]="p.isPinned ? 'Pinned at POS' : 'Click to Pin'"
+                  >
+                    {{ p.isPinned ? '📌' : '⚪' }}
+                  </button>
+                </td>
+
+                <!-- Thumbnail -->
+                <td class="p-3">
+                  <img 
+                    [src]="catalogService.getProductImageUrl(p)" 
+                    (error)="onImageError($event)"
+                    alt="" 
+                    class="w-10 h-10 rounded-lg bg-slate-900 object-contain p-1 border border-slate-800"
+                  />
+                </td>
+
+                <!-- Product Name & Barcode -->
+                <td class="p-3">
+                  <div class="font-bold text-slate-200 line-clamp-1 group-hover:text-emerald-300">{{ p.name }}</div>
+                  <div class="text-[11px] font-mono text-slate-500">{{ p.barcode || '—' }} • ID: {{ p.id }}</div>
+                </td>
+
+                <!-- Shelf -->
+                <td class="p-3 font-mono text-slate-400">
+                  {{ p.shelfLocation || '-' }}
+                </td>
+
+                <!-- VAT -->
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px]" [class.bg-emerald-950]="p.vatRate === 24" [class.text-emerald-400]="p.vatRate === 24" [class.bg-amber-950]="p.vatRate === 13" [class.text-amber-400]="p.vatRate === 13" [class.bg-blue-950]="p.vatRate === 6" [class.text-blue-400]="p.vatRate === 6">
+                    {{ p.vatRate  }}%
+                  </span>
+                </td>
+
+                <!-- Cost Price -->
+                <td class="p-3 text-right font-mono text-slate-400">
+                  €{{ (p.costPrice ?? 0).toFixed(2) }}
+                </td>
+
+                <!-- Retail Price -->
+                <td class="p-3 text-right font-mono font-bold text-emerald-400">
+                  €{{ p.price.toFixed(2) }}
+                </td>
+
+                <!-- Inline Stock Stepper -->
+                <td class="p-3 text-center">
+                  <div class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-lg p-0.5">
+                    <button (click)="updateInlineStock(p, -1)" class="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded font-bold text-slate-300">-</button>
+                    <span class="px-2 font-mono font-bold" [class.text-red-400]="(p.stockQuantity ?? 0) <= 5" [class.text-slate-200]="(p.stockQuantity ?? 0) > 5">
+                      {{ p.stockQuantity ?? 0 }}
+                    </span>
+                    <button (click)="updateInlineStock(p, +1)" class="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded font-bold text-slate-300">+</button>
+                  </div>
+                </td>
+
+                <!-- Expiry Date -->
+                <td class="p-3 font-mono">
+                  @if (p.expire) {
+                    <span [class.text-red-400]="isItemExpired(p.expire)" [class.font-bold]="isItemExpired(p.expire)" [class.text-slate-300]="!isItemExpired(p.expire)">
+                      {{ p.expire }}
+                      @if (isItemExpired(p.expire)) {
+                        <span class="text-[9px] bg-red-950 border border-red-800 text-red-300 px-1 rounded ml-1 font-bold">EXPIRED</span>
+                      }
+                    </span>
+                  } @else {
+                    <span class="text-slate-600">-</span>
+                  }
+                </td>
+
+                <!-- Actions -->
+                <td class="p-3 text-center">
+                  <button 
+                    (click)="openEditModal(p)"
+                    class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 transition"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="10" class="p-12 text-center text-slate-500">
+                  No products matched the active filters.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- EDIT PRODUCT MODAL -->
+  @if (editingProduct(); as item) {
+    <div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-2xl p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <h2 class="text-base font-black text-slate-100">EDIT PRODUCT DETAILS</h2>
+          <button (click)="closeEditModal()" class="text-slate-400 hover:text-slate-200 text-lg font-bold">✕</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Name -->
+          <div class="col-span-2">
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Product Name</label>
+            <input type="text" [(ngModel)]="item.name" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-bold" />
+          </div>
+
+          <!-- Barcode -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Barcode / EAN</label>
+            <input type="text" [(ngModel)]="item.barcode" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          <!-- Shelf -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Shelf Location (Rafti)</label>
+            <input type="text" [(ngModel)]="item.shelfLocation" placeholder="e.g. A3, B12" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          <!-- Retail Price -->
+          <div>
+            <label class="text-[11px] font-bold text-emerald-400 block mb-1">Retail Gross Price (€)</label>
+            <input type="number" step="0.01" [(ngModel)]="item.price" class="w-full bg-slate-950 border border-emerald-700/80 rounded-xl p-2.5 text-sm font-mono font-black text-emerald-400 focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          <!-- Wholesale Cost -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Wholesale Cost Price (€)</label>
+            <input type="number" step="0.01" [(ngModel)]="item.costPrice" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm font-mono text-slate-300 focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          <!-- VAT Rate -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Greek VAT Rate (ΦΠΑ)</label>
+            <select [(ngModel)]="item.vatRate" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500">
+              <option [ngValue]="24">24% (Standard)</option>
+              <option [ngValue]="13">13% (Food &amp; Essentials)</option>
+              <option [ngValue]="6">6% (Medical &amp; Special)</option>
+              <option [ngValue]="0">0% (Exempt)</option>
+            </select>
+          </div>
+
+          <!-- Expiry Date -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">Expiry Date (YYYY-MM-DD)</label>
+            <input type="date" [(ngModel)]="item.expire" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          <!-- Weighted / Scale Checkbox -->
+          <div class="flex items-center gap-2 pt-2">
+            <input type="checkbox" id="isWeightedCheck" [(ngModel)]="item.isWeighted" class="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0" />
+            <label for="isWeightedCheck" class="text-xs text-slate-300 font-bold">Weighed Product (Scale / Kg)</label>
+          </div>
+
+          <!-- Pinned Checkbox -->
+          <div class="flex items-center gap-2 pt-2">
+            <input type="checkbox" id="isPinnedCheck" [(ngModel)]="item.isPinned" class="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0" />
+            <label for="isPinnedCheck" class="text-xs text-slate-300 font-bold">Pin to POS Quick Tap</label>
+          </div>
+        </div>
+
+        <div class="flex gap-3 pt-3 border-t border-slate-800">
+          <button (click)="closeEditModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs">
+            Cancel
+          </button>
+          <button (click)="saveProductChanges()" class="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shadow-lg">
+            Save Product
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+</div>

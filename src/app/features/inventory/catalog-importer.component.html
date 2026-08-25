@@ -1,0 +1,189 @@
+<div class="h-full flex flex-col p-6 bg-slate-950 text-slate-100 space-y-5 overflow-hidden">
+  
+  <!-- Header & Action Bar -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-800 shrink-0">
+    <div class="flex items-center gap-3">
+      <button 
+      (click)="navigateTo('/pos')"
+      title="Επιστροφή στο Ταμείο"
+      class="h-10 px-3.5 bg-slate-800 hover:bg-slate-750 active:scale-95 text-xs font-mono font-bold rounded-xl border border-slate-700 text-slate-200 transition flex items-center gap-2 cursor-pointer shadow-sm"
+    >
+      <span>← POS</span>
+    </button>
+      <div class="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-xl">
+        📥
+      </div>
+      <div>
+        <h2 class="text-lg font-black tracking-wide text-slate-100 uppercase">Μαζική Εισαγωγή Καταλόγου &amp; Αποθέματος</h2>
+        <p class="text-xs font-mono text-slate-400">Εισαγωγή αρχείων CSV / Excel (Τιμές, ΦΠΑ, Stock, Λήξεις, Ράφια)</p>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-3">
+      <button 
+        type="button"
+        (click)="downloadTemplate()"
+        class="h-10 px-4 bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-emerald-500/50 transition flex items-center gap-2 cursor-pointer shadow-sm"
+      >
+        <span>📄 Κατέβασμα Προτύπου CSV</span>
+      </button>
+
+      @if (validCount() > 0) {
+        <button 
+          type="button"
+          (click)="executeImport()"
+          [disabled]="isProcessing()"
+          class="h-10 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-950/50 transition flex items-center gap-2 cursor-pointer"
+        >
+          <span>✔ ΟΛΟΚΛΗΡΩΣΗ ΕΙΣΑΓΩΓΗΣ ({{ validCount() }})</span>
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Status Toast -->
+  @if (statusMessage()) {
+    <div class="p-3 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-mono text-slate-200 flex justify-between items-center shrink-0">
+      <span>{{ statusMessage() }}</span>
+      <button (click)="statusMessage.set('')" class="text-slate-500 hover:text-slate-300 font-bold">✕</button>
+    </div>
+  }
+
+  <!-- Split Workspace: Dropzone / Paste Area (Top) + Validation Grid (Bottom) -->
+  <div class="flex-1 grid grid-cols-12 gap-5 overflow-hidden min-h-0">
+    
+    <!-- Left / Config Column: File Upload & Strategy (4 Cols) -->
+    <div class="col-span-12 lg:col-span-4 flex flex-col gap-4 overflow-y-auto pr-1">
+      
+      <!-- Drag & Drop Upload Zone -->
+      <div 
+        (dragover)="$event.preventDefault(); isDragOver.set(true)"
+        (dragleave)="isDragOver.set(false)"
+        (drop)="onFileDropped($event)"
+        class="p-6 rounded-3xl border-2 border-dashed transition flex flex-col items-center justify-center text-center gap-2 cursor-pointer"
+        [class.border-emerald-500]="isDragOver()"
+        [class.bg-emerald-950/20]="isDragOver()"
+        [class.border-slate-800]="!isDragOver()"
+        [class.bg-slate-900/60]="!isDragOver()"
+      >
+        <span class="text-4xl">📊</span>
+        <span class="text-xs font-black text-slate-200 uppercase tracking-wider">Σύρετε αρχείο CSV / Excel εδώ</span>
+        <span class="text-[11px] font-mono text-slate-500">ή επιλέξτε από τον υπολογιστή</span>
+        
+        <label class="mt-2 h-9 px-4 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 cursor-pointer flex items-center justify-center">
+          <span>Επιλογή Αρχείου</span>
+          <input type="file" accept=".csv, .txt, .tsv" (change)="onFileSelected($event)" class="hidden" />
+        </label>
+      </div>
+
+      <!-- Strategy Radio Selector -->
+      <div class="p-4 bg-slate-900/60 border border-slate-800 rounded-3xl space-y-3 font-mono text-xs">
+        <span class="font-bold text-slate-300 uppercase tracking-wider block text-[11px]">Στρατηγική Εισαγωγής</span>
+        
+        <label class="flex items-start gap-2.5 cursor-pointer p-2 rounded-xl hover:bg-slate-850 transition" [class.bg-slate-850]="importMode() === 'UPSERT'">
+          <input type="radio" name="importMode" value="UPSERT" [ngModel]="importMode()" (ngModelChange)="importMode.set($event)" class="mt-0.5 accent-emerald-500" />
+          <div>
+            <span class="font-bold text-slate-100 block">Ενημέρωση &amp; Προσθήκη (Upsert)</span>
+            <span class="text-[10px] text-slate-500">Ενημερώνει τις τιμές/απόθεμα στα υπάρχοντα barcodes και προσθέτει τα νέα.</span>
+          </div>
+        </label>
+
+        <label class="flex items-start gap-2.5 cursor-pointer p-2 rounded-xl hover:bg-slate-850 transition" [class.bg-slate-850]="importMode() === 'REPLACE'">
+          <input type="radio" name="importMode" value="REPLACE" [ngModel]="importMode()" (ngModelChange)="importMode.set($event)" class="mt-0.5 accent-rose-500" />
+          <div>
+            <span class="font-bold text-rose-400 block">Πλήρης Αντικατάσταση (Replace)</span>
+            <span class="text-[10px] text-slate-500">Διαγράφει όλο τον υπάρχοντα κατάλογο και εισάγει μόνο τα προϊόντα του αρχείου.</span>
+          </div>
+        </label>
+      </div>
+
+      <!-- Direct Text Area (Paste from Excel) -->
+      <div class="p-4 bg-slate-900/60 border border-slate-800 rounded-3xl space-y-2 flex-1 flex flex-col min-h-48">
+        <div class="flex justify-between items-center">
+          <span class="text-[11px] font-bold text-slate-300 uppercase">Επικόλληση από Excel</span>
+          <button (click)="parseContent()" class="text-[10px] font-mono text-emerald-400 hover:text-emerald-300 font-bold cursor-pointer">Ανάλυση</button>
+        </div>
+        <textarea 
+          [ngModel]="rawText()"
+          (ngModelChange)="rawText.set($event)"
+          (blur)="parseContent()"
+          placeholder="Επικολλήστε γραμμές CSV ή κελιά κατευθείαν από το Excel..."
+          class="w-full flex-1 bg-slate-950 border border-slate-800 rounded-2xl p-3 font-mono text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500 resize-none"
+        ></textarea>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Validation Preview Table (8 Cols) -->
+    <div class="col-span-12 lg:col-span-8 flex flex-col bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden shadow-xl min-h-0">
+      
+      <!-- Table Header & Counts -->
+      <div class="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center shrink-0 font-mono text-xs">
+        <div class="flex items-center gap-3">
+          <span class="font-bold text-slate-200 uppercase">Προεπισκόπηση Δεδομένων</span>
+          <span class="px-2.5 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded-md font-bold">
+            ✔ {{ validCount() }} Έγκυρα
+          </span>
+          @if (invalidCount() > 0) {
+            <span class="px-2.5 py-0.5 bg-rose-950 text-rose-400 border border-rose-800 rounded-md font-bold">
+              ✖ {{ invalidCount() }} Σφάλματα
+            </span>
+          }
+        </div>
+      </div>
+
+      <!-- Scrollable Preview Rows -->
+      <div class="flex-1 overflow-y-auto min-h-0">
+        <table class="w-full text-left border-collapse font-mono text-xs">
+          <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+            <tr>
+              <th class="p-3">Κατάσταση</th>
+              <th class="p-3">Barcode</th>
+              <th class="p-3">Όνομα Προϊόντος</th>
+              <th class="p-3">Κατηγορία</th>
+              <th class="p-3 text-right">Λιανική (€)</th>
+              <th class="p-3 text-right">Χονδρική (€)</th>
+              <th class="p-3 text-center">ΦΠΑ</th>
+              <th class="p-3 text-center">Απόθεμα</th>
+              <th class="p-3">Λήξη</th>
+              <th class="p-3">Ράφι</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-200">
+            @if (parsedRows().length === 0) {
+              <tr>
+                <td colspan="10" class="p-16 text-center text-slate-500 text-xs">
+                  Δεν έχουν φορτωθεί δεδομένα. Σύρετε ένα αρχείο ή επικολλήστε κείμενο αριστερά.
+                </td>
+              </tr>
+            }
+            @for (row of parsedRows(); track row.barcode + row.name) {
+              <tr class="hover:bg-slate-850/50 transition" [class.bg-rose-950/20]="!row.isValid">
+                <td class="p-3">
+                  @if (row.isValid) {
+                    <span class="text-emerald-400 font-bold">✔ OK</span>
+                  } @else {
+                    <span class="text-rose-400 font-bold" [title]="row.validationError || ''">✖ {{ row.validationError }}</span>
+                  }
+                </td>
+                <td class="p-3 font-bold text-slate-300">{{ row.barcode || '—' }}</td>
+                <td class="p-3 font-bold text-slate-100 max-w-[180px] truncate" [title]="row.name">{{ row.name }}</td>
+                <td class="p-3 text-slate-400">{{ row.categoryName }}</td>
+                <td class="p-3 text-right font-black text-emerald-400">€{{ row.price.toFixed(2) }}</td>
+                <td class="p-3 text-right text-slate-400">{{ row.costPrice ? '€' + row.costPrice.toFixed(2) : '—' }}</td>
+                <td class="p-3 text-center text-amber-400">{{ row.vatRate }}%</td>
+                <td class="p-3 text-center font-bold">{{ row.stockQuantity }}</td>
+                <td class="p-3 text-slate-400">{{ row.expire || '—' }}</td>
+                <td class="p-3 text-slate-400">{{ row.shelfLocation || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>

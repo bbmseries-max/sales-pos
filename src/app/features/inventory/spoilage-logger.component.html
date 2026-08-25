@@ -1,0 +1,268 @@
+<div class="h-full flex flex-col p-6 bg-slate-950 text-slate-100 space-y-5 overflow-hidden">
+  
+  <!-- Header & Loss Metrics Banner -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-800 shrink-0">
+    <div class="flex items-center gap-3">
+      <button 
+      (click)="navigateTo('/pos')"
+      title="Επιστροφή στο Ταμείο"
+      class="h-10 px-3.5 bg-slate-800 hover:bg-slate-750 active:scale-95 text-xs font-mono font-bold rounded-xl border border-slate-700 text-slate-200 transition flex items-center gap-2 cursor-pointer shadow-sm"
+    >
+      <span>← POS</span>
+    </button>
+      <div class="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-xl">
+        🗑️
+      </div>
+      <div>
+        <h2 class="text-lg font-black tracking-wide text-slate-100 uppercase">Πρωτόκολλο Απωλειών &amp; Καταστροφών</h2>
+        <p class="text-xs font-mono text-slate-400">Καταγραφή Φθαρμένων, Ληγμένων &amp; Απομείωση Αποθέματος</p>
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="flex items-center gap-3">
+      <div class="px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl font-mono text-xs">
+        <span class="text-slate-400 block text-[10px] uppercase">Τεμάχια / KG</span>
+        <span class="font-black text-rose-400 text-sm">{{ totalItemsSpoiled() }}</span>
+      </div>
+      <div class="px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl font-mono text-xs">
+        <span class="text-slate-400 block text-[10px] uppercase">Κόστος Ζημιάς</span>
+        <span class="font-black text-rose-400 text-sm">€{{ totalLossCost().toFixed(2) }}</span>
+      </div>
+      <button 
+        (click)="openNewLogModal()"
+        class="h-11 px-5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-black text-xs rounded-xl shadow-lg shadow-rose-950/50 transition flex items-center gap-2 cursor-pointer"
+      >
+        <span>+ ΝΕΑ ΚΑΤΑΓΡΑΦΗ ΑΠΩΛΕΙΑΣ</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter Pills -->
+  <div class="flex gap-2 overflow-x-auto pb-1 shrink-0">
+    <button 
+      (click)="filterReason.set('ALL')"
+      [class.bg-rose-600]="filterReason() === 'ALL'"
+      [class.text-white]="filterReason() === 'ALL'"
+      [class.bg-slate-900]="filterReason() !== 'ALL'"
+      [class.text-slate-400]="filterReason() !== 'ALL'"
+      class="px-3.5 py-1.5 rounded-xl border border-slate-800 font-mono text-xs font-bold transition cursor-pointer"
+    >
+      Όλα ({{ spoilageService.logs().length }})
+    </button>
+    <button 
+      (click)="filterReason.set('EXPIRED')"
+      [class.bg-amber-600]="filterReason() === 'EXPIRED'"
+      [class.text-white]="filterReason() === 'EXPIRED'"
+      [class.bg-slate-900]="filterReason() !== 'EXPIRED'"
+      [class.text-slate-400]="filterReason() !== 'EXPIRED'"
+      class="px-3.5 py-1.5 rounded-xl border border-slate-800 font-mono text-xs font-bold transition cursor-pointer"
+    >
+      ⏳ Ληγμένα
+    </button>
+    <button 
+      (click)="filterReason.set('DAMAGED')"
+      [class.bg-rose-600]="filterReason() === 'DAMAGED'"
+      [class.text-white]="filterReason() === 'DAMAGED'"
+      [class.bg-slate-900]="filterReason() !== 'DAMAGED'"
+      [class.text-slate-400]="filterReason() !== 'DAMAGED'"
+      class="px-3.5 py-1.5 rounded-xl border border-slate-800 font-mono text-xs font-bold transition cursor-pointer"
+    >
+      💥 Σπασμένα / Φθαρμένα
+    </button>
+    <button 
+      (click)="filterReason.set('THEFT')"
+      [class.bg-purple-600]="filterReason() === 'THEFT'"
+      [class.text-white]="filterReason() === 'THEFT'"
+      [class.bg-slate-900]="filterReason() !== 'THEFT'"
+      [class.text-slate-400]="filterReason() !== 'THEFT'"
+      class="px-3.5 py-1.5 rounded-xl border border-slate-800 font-mono text-xs font-bold transition cursor-pointer"
+    >
+      🥷 Κλοπή / Έλλειμμα
+    </button>
+    <button 
+      (click)="filterReason.set('INTERNAL_USE')"
+      [class.bg-emerald-600]="filterReason() === 'INTERNAL_USE'"
+      [class.text-white]="filterReason() === 'INTERNAL_USE'"
+      [class.bg-slate-900]="filterReason() !== 'INTERNAL_USE'"
+      [class.text-slate-400]="filterReason() !== 'INTERNAL_USE'"
+      class="px-3.5 py-1.5 rounded-xl border border-slate-800 font-mono text-xs font-bold transition cursor-pointer"
+    >
+      ☕ Εσωτερική Χρήση
+    </button>
+  </div>
+
+  <!-- Spoilage Table -->
+  <div class="flex-1 bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-xl">
+    <div class="flex-1 overflow-y-auto min-h-0">
+      <table class="w-full text-left border-collapse text-xs font-mono">
+        <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+          <tr>
+            <th class="p-4">Αρ. Πρωτοκόλλου</th>
+            <th class="p-4">Ημ/νία &amp; Ώρα</th>
+            <th class="p-4">Προϊόν</th>
+            <th class="p-4">Αιτιολογία</th>
+            <th class="p-4 text-center">Ποσότητα</th>
+            <th class="p-4 text-right">Κόστος Ζημιάς</th>
+            <th class="p-4">Υπεύθυνος</th>
+            <th class="p-4 text-right">Ενέργειες</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/60 text-slate-200">
+          @if (filteredLogs().length === 0) {
+            <tr>
+              <td colspan="8" class="p-12 text-center text-slate-500 text-sm">
+                Δεν υπάρχουν καταχωρημένες απώλειες ή καταστροφές.
+              </td>
+            </tr>
+          }
+          @for (log of filteredLogs(); track log.id) {
+            <tr class="hover:bg-slate-850/50 transition">
+  <td class="p-4 font-black text-slate-100">{{ log.id }}</td>
+  <td class="p-4 text-slate-400">{{ log.timestamp | date:'dd/MM/yyyy HH:mm' }}</td>
+  <td class="p-4">
+    <span class="font-bold text-slate-100 block">{{ log.name }}</span>
+    <span class="text-[10px] text-slate-500">Barcode: {{ log.barcode || '—' }}</span>
+  </td>
+  
+  <!-- Reason Badge -->
+  <td class="p-4">
+    @if (log.reason && spoilageService.reasonLabels[log.reason]; as badge) {
+      <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border" [ngClass]="badge.color">
+        {{ badge.icon }} {{ badge.label }}
+      </span>
+    } @else {
+      <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-slate-700 text-slate-400">
+        {{ log.reason }}
+      </span>
+    }
+  </td>
+
+  <td class="p-4 text-center font-bold text-rose-400">{{ log.quantity }}</td>
+  <td class="p-4 text-right font-black text-rose-400">€{{ (log.totalLossCost || 0).toFixed(2) }}</td>
+  <td class="p-4 text-slate-400">{{ log.cashierName || '—' }}</td>
+  <td class="p-4 text-right">
+    <button 
+      (click)="reprintSlip(log)"
+      title="Επανεκτύπωση Πρωτοκόλλου"
+      class="h-8 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg transition active:scale-95 cursor-pointer border border-slate-700"
+    >
+      🖨️ Εκτύπωση
+    </button>
+  </td>
+</tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- NEW SPOILAGE MODAL -->
+  @if (showModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+        
+        <!-- Modal Header -->
+        <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🗑️</span>
+            <h3 class="text-sm font-black text-rose-400 uppercase tracking-wider">Καταγραφή Απώλειας / Καταστροφής</h3>
+          </div>
+          <button (click)="showModal.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-lg cursor-pointer">✕</button>
+        </div>
+
+        <!-- Product Search & Selection -->
+        <div class="space-y-1.5">
+          <label class="text-[11px] font-bold text-slate-300 uppercase block">Επιλογή Προϊόντος (Όνομα ή Barcode)</label>
+          <input 
+            type="text" 
+            placeholder="Πληκτρολογήστε ή σκανάρετε είδος..."
+            [ngModel]="searchInput()"
+            (ngModelChange)="searchInput.set($event)"
+            class="w-full h-12 bg-slate-950 border-2 border-slate-700 focus:border-rose-500 rounded-xl px-4 text-xs font-mono text-slate-100 focus:outline-none"
+          />
+
+          <!-- Search Matches Dropdown -->
+          @if (productMatches().length > 0 && !selectedProduct()) {
+            <div class="p-1 bg-slate-950 border border-slate-800 rounded-xl max-h-36 overflow-y-auto space-y-1">
+              @for (p of productMatches(); track p.id) {
+                <button 
+                  type="button"
+                  (click)="selectProductForLog(p)"
+                  class="w-full p-2 text-left hover:bg-slate-900 rounded-lg flex justify-between items-center text-xs font-mono cursor-pointer"
+                >
+                  <span class="font-bold text-slate-200">{{ p.name }}</span>
+                 <span class="text-emerald-400">Απόθεμα: {{ p.stockQuantity ?? 0 }}</span>
+                </button>
+              }
+            </div>
+          }
+        </div>
+
+        @if (selectedProduct(); as p) {
+          <!-- Selected Product Info Card -->
+          <div class="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 flex justify-between items-center text-xs font-mono">
+            <div>
+              <span class="font-bold text-slate-100 block">{{ p.name }}</span>
+             <span class="text-slate-500 text-[10px]">Barcode: {{ p.barcode || '—' }} • Τρέχον Απόθεμα: {{ p.stockQuantity ?? 0 }}</span>
+            </div>
+            <button (click)="selectedProduct.set(null)" class="text-slate-500 hover:text-rose-400 font-bold">Αλλαγή</button>
+          </div>
+
+          <!-- Quantity & Reason Grid -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] font-bold text-slate-300 uppercase block mb-1">Ποσότητα προς Διαγραφή</label>
+              <input 
+                type="number" 
+                min="0.1" 
+                step="1"
+                [(ngModel)]="quantity"
+                class="w-full h-11 bg-slate-950 border border-slate-700 focus:border-rose-500 rounded-xl px-3 font-mono font-bold text-center text-slate-100"
+              />
+            </div>
+            <div>
+              <label class="text-[11px] font-bold text-slate-300 uppercase block mb-1">Αιτία Απώλειας</label>
+              <select 
+                [ngModel]="selectedReason()"
+                (ngModelChange)="selectedReason.set($event)"
+                class="w-full h-11 bg-slate-950 border border-slate-700 focus:border-rose-500 rounded-xl px-3 text-xs font-mono text-slate-100"
+              >
+                <option value="EXPIRED">⏳ Ληγμένο Προϊόν</option>
+                <option value="DAMAGED">💥 Σπασμένο / Φθαρμένο</option>
+                <option value="THEFT">🥷 Κλοπή / Έλλειμμα</option>
+                <option value="SAMPLE">🍷 Δειγματισμός</option>
+                <option value="INTERNAL_USE">☕ Εσωτερική Χρήση</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-300 uppercase block mb-1">Σημειώσεις / Αιτιολογία</label>
+            <input 
+              type="text" 
+              placeholder="π.χ. Έσπασε κατά την εκφόρτωση στο ράφι..."
+              [(ngModel)]="notes"
+              class="w-full h-11 bg-slate-950 border border-slate-700 focus:border-rose-500 rounded-xl px-3 text-xs font-mono text-slate-100"
+            />
+          </div>
+        }
+
+        <!-- Actions -->
+        <div class="flex justify-end gap-3 pt-2 border-t border-slate-800">
+          <button (click)="showModal.set(false)" class="h-11 px-5 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl cursor-pointer">Ακύρωση</button>
+          <button 
+            (click)="saveSpoilageLog()" 
+            [disabled]="!selectedProduct() || quantity() <= 0"
+            class="h-11 px-6 bg-rose-600 hover:bg-rose-500 active:scale-95 disabled:opacity-40 text-white font-black text-xs rounded-xl shadow-lg transition cursor-pointer"
+          >
+            ✔ ΚΑΤΑΓΡΑΦΗ &amp; ΜΕΙΩΣΗ ΑΠΟΘΕΜΑΤΟΣ
+          </button>
+        </div>
+
+      </div>
+    </div>
+  }
+
+</div>
