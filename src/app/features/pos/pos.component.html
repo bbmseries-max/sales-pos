@@ -1,4 +1,4 @@
-<div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden" appBarcodeScanner (barcodeScanned)="onBarcodeScanned($event)">
+<div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
 
   <!-- ================= 1. TOP APP HEADER ================= -->
   <header class="h-16 bg-slate-900 border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between shrink-0 shadow-md font-sans">
@@ -250,9 +250,9 @@
           }
         </div>
 
-        <!-- Cart Scrollable Item List (Enlarged Titles & Easy Touch) -->
+        <!-- Cart Scrollable Item List -->
         <div class="flex-1 overflow-y-auto my-2 space-y-2.5 pr-1 min-h-0 scrollbar-thin">
-          @for (item of cart.items(); track item.product.id) {
+          @for (item of cart.items(); track (item.product.id || item.product.barcode)) {
             <div class="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition gap-3">
               
               <!-- Thumbnail & Title -->
@@ -267,36 +267,73 @@
                 </div>
 
                 <div class="min-w-0 flex-1">
-                  <!-- Enlarged Product Title in Basket -->
+                  <!-- Product Title in Basket -->
                   <span class="text-base font-extrabold text-white block truncate leading-snug">
                     {{ item.product.name }}
                   </span>
-                  <span class="text-xs font-mono text-slate-400 mt-1 block font-semibold">
-                    {{ item.quantity }} × €{{ (item.product.price || 0).toFixed(2) }}
-                    @if (item.product.isWeighted) { <span>kg</span> }
-                  </span>
+
+                  <div class="flex flex-wrap items-center gap-2 mt-1">
+                    <span class="text-xs font-mono text-slate-400 font-semibold">
+                      @if (item.product.isWeighted) {
+                        <span>{{ item.quantity.toFixed(3) }} kg × €{{ (item.product.price || 0).toFixed(2) }}</span>
+                      } @else {
+                        <span>{{ item.quantity }} × €{{ (item.product.price || 0).toFixed(2) }}</span>
+                      }
+                    </span>
+
+                    <button 
+                      type="button" 
+                      (click)="openItemDiscountModal(item)"
+                      class="text-[10px] font-mono px-1.5 py-0.5 rounded border transition cursor-pointer"
+                      [class.bg-amber-950]="(item.discountPercent || 0) > 0"
+                      [class.text-amber-400]="(item.discountPercent || 0) > 0"
+                      [class.border-amber-700]="(item.discountPercent || 0) > 0"
+                      [class.bg-slate-800]="!(item.discountPercent || 0)"
+                      [class.text-slate-400]="!(item.discountPercent || 0)"
+                      [class.border-slate-700]="!(item.discountPercent || 0)"
+                    >
+                      {{ (item.discountPercent || 0) > 0 ? ('-' + item.discountPercent + '%') : '% Έκπτωση' }}
+                    </button>
+
+                    <!-- Expiration Alert Badge -->
+                    @if (item.product.expire) {
+                      @if (checkExpiryStatus(item.product.expire) === 'EXPIRED') {
+                        <span class="text-[10px] font-black font-mono bg-rose-950 text-rose-300 border border-rose-800 px-1.5 py-0.5 rounded">
+                          ⛔ ΛΗΞΑΝ ({{ item.product.expire }})
+                        </span>
+                      } @else if (checkExpiryStatus(item.product.expire) === 'WARNING') {
+                        <span class="text-[10px] font-bold font-mono bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.5 rounded">
+                          ⏰ Λήγει: {{ item.product.expire }}
+                        </span>
+                      }
+                    }
+                  </div>
                 </div>
               </div>
 
               <!-- Quantity Stepper Controls -->
               <div class="flex items-center bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shrink-0">
                 <button 
-  type="button"
-  (click)="cart.decreaseQuantity(item.product.id || item.product.barcode)" 
-  class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
->
-  -
-</button>
-<span class="w-10 text-center text-sm font-mono font-black text-emerald-400">
-  {{ item.quantity }}
-</span>
-<button 
-  type="button"
-  (click)="cart.increaseQuantity(item.product.id || item.product.barcode)" 
-  class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
->
-  +
-</button>
+                  type="button"
+                  (click)="cart.decreaseQuantity(item.product.id || item.product.barcode)" 
+                  class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
+                >
+                  -
+                </button>
+                <span class="w-12 text-center text-xs font-mono font-black text-emerald-400">
+                  @if (item.product.isWeighted) {
+                    {{ item.quantity.toFixed(3) }}
+                  } @else {
+                    {{ item.quantity }}
+                  }
+                </span>
+                <button 
+                  type="button"
+                  (click)="cart.increaseQuantity(item.product.id || item.product.barcode)" 
+                  class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
+                >
+                  +
+                </button>
               </div>
 
               <!-- Line Total -->
@@ -312,6 +349,8 @@
             </div>
           }
         </div>
+
+        
 
         <!-- Checkout Bottom Summary & Pay Button -->
         <div class="pt-3 border-t border-slate-800 space-y-2.5 shrink-0 bg-slate-900/90">
@@ -329,6 +368,32 @@
               <span class="text-3xl font-mono text-emerald-400">€{{ cart.grandTotal().toFixed(2) }}</span>
             </div>
           </div>
+
+          <!-- DISCOUNT BUTTON: Half-size (h-10) with Amber / Gold Theme -->
+          <button 
+            type="button"
+            (click)="openCartDiscountModal()"
+            [disabled]="cart.items().length === 0"
+            class="w-full h-10 px-4 rounded-xl border-2 font-mono font-black text-xs transition-all flex items-center justify-between cursor-pointer disabled:opacity-40 disabled:pointer-events-none active:scale-[0.99] shadow-md"
+            [class.bg-gradient-to-r]="true"
+            [class.from-amber-950]="cart.cartDiscountPercent() > 0"
+            [class.to-slate-900]="cart.cartDiscountPercent() > 0"
+            [class.border-amber-500]="cart.cartDiscountPercent() > 0"
+            [class.text-amber-300]="cart.cartDiscountPercent() > 0"
+            [class.from-slate-950]="cart.cartDiscountPercent() === 0"
+            [class.to-slate-900]="cart.cartDiscountPercent() === 0"
+            [class.border-slate-700]="cart.cartDiscountPercent() === 0"
+            [class.text-slate-300]="cart.cartDiscountPercent() === 0"
+            [class.hover:border-amber-400]="true"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-base">🏷️</span>
+              <span class="uppercase tracking-wider">ΕΚΠΤΩΣΗ ΚΑΛΑΘΙΟΥ</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-700 text-amber-400 font-bold">
+              {{ cart.cartDiscountPercent() > 0 ? ('-' + cart.cartDiscountPercent() + '%') : '+ Προσθήκη' }}
+            </span>
+          </button>
 
           <!-- Checkout Button -->
           <button 
@@ -387,9 +452,10 @@
                   <button 
                     type="button"
                     (click)="selectProduct(prod)"
-                    class="h-32 p-3.5 bg-slate-900 hover:bg-emerald-950/40 hover:border-emerald-500/80 active:scale-95 border-2 border-slate-800 rounded-2xl flex items-center gap-3.5 text-left transition cursor-pointer shadow-md group"
+                    class="h-28 p-3 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500 rounded-2xl flex items-center gap-3.5 text-left transition-all cursor-pointer shadow-lg group relative overflow-hidden"
                   >
-                    <div class="w-16 h-16 rounded-xl bg-slate-950 border border-slate-800 p-1 flex items-center justify-center shrink-0 shadow-inner">
+                    <!-- 1. Dedicated Thumbnail Left -->
+                    <div class="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
                       <img 
                         [src]="catalogService.getProductImageUrl(prod)" 
                         (error)="onImageError($event)"
@@ -397,15 +463,31 @@
                         class="w-full h-full object-contain"
                       />
                     </div>
-                    
+
+                    <!-- 2. Product Details Right -->
                     <div class="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5">
-                      <!-- Enlarged Search Hit Title -->
-                      <span class="text-sm font-extrabold text-white group-hover:text-emerald-300 line-clamp-2 leading-snug">
-                        {{ prod.name }}
-                      </span>
-                      <div class="flex justify-between items-baseline mt-1">
-                        <span class="text-xs font-mono text-slate-400 font-semibold">{{ prod.barcode || '—' }}</span>
-                        <span class="text-lg font-mono font-black text-emerald-400">€{{ (prod.price || 0).toFixed(2) }}</span>
+                      <div>
+                        <span class="text-base font-black text-white group-hover:text-emerald-300 line-clamp-2 leading-tight block">
+                          {{ prod.name }}
+                        </span>
+                        <span class="text-xs font-mono text-slate-400 font-semibold block mt-0.5 truncate">
+                          {{ prod.categoryName || 'Γενικά' }}
+                        </span>
+                      </div>
+
+                      <div class="flex justify-between items-end pt-1 border-t border-slate-800/80 w-full">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-xs font-mono text-slate-500">{{ prod.barcode || '—' }}</span>
+                          @if (prod.isWeighted) {
+                            <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 font-bold px-1.5 py-0.2 rounded font-mono">
+                              KG
+                            </span>
+                          }
+                        </div>
+                        
+                        <span class="text-xl font-mono font-black text-emerald-400 leading-none">
+                          €{{ (prod.price || 0).toFixed(2) }}
+                        </span>
                       </div>
                     </div>
                   </button>
@@ -414,53 +496,59 @@
             </div>
           }
 
-          <!-- 2. Fast-Tap Favorites -->
+          <!-- 2. Fast-Tap Favorites (Horizontal High-Legibility Tiles) -->
           <div>
             <div class="flex justify-between items-center mb-2.5">
               <h4 class="text-xs font-black text-slate-400 uppercase tracking-wider">📌 Fast-Tap Favorites</h4>
               <span class="text-xs font-mono text-slate-500">{{ pinnedProducts().length }} Προϊόντα</span>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               @for (prod of pinnedProducts(); track prod.id) {
                 <button 
                   type="button"
                   (click)="selectProduct(prod)"
-                  class="h-48 p-3.5 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500/80 rounded-2xl flex flex-col justify-between text-left transition cursor-pointer shadow-lg group relative overflow-hidden"
+                  class="h-28 p-3 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500/80 rounded-2xl flex items-center gap-3.5 text-left transition-all cursor-pointer shadow-lg group relative overflow-hidden"
                 >
-                  <!-- Thumbnail & Scale Badge -->
-                  <div class="flex items-start justify-between w-full gap-2">
-                    <div class="w-16 h-16 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
-                      <img 
-                        [src]="catalogService.getProductImageUrl(prod)" 
-                        (error)="onImageError($event)"
-                        alt="" 
-                        class="w-full h-full object-contain"
-                      />
+                  <!-- 1. Dedicated Large Left Thumbnail (80x80px) -->
+                  <div class="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
+                    <img 
+                      [src]="catalogService.getProductImageUrl(prod)" 
+                      (error)="onImageError($event)"
+                      alt="" 
+                      class="w-full h-full object-contain"
+                    />
+                  </div>
+
+                  <!-- 2. Right Side: Big Title & Bottom Metadata -->
+                  <div class="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5">
+                    
+                    <!-- Product Title & Department -->
+                    <div>
+                      <span class="text-base font-black text-white group-hover:text-emerald-300 line-clamp-2 leading-tight block">
+                        {{ prod.name }}
+                      </span>
+                      <span class="text-xs font-mono text-slate-400 font-semibold block mt-0.5 truncate">
+                        {{ prod.categoryName || 'Γενικά' }}
+                      </span>
                     </div>
 
-                    @if (prod.isWeighted) {
-                      <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 font-bold px-2 py-0.5 rounded-md font-mono shrink-0">
-                        SCALE / KG
+                    <!-- Bottom Bar: Barcode / KG Badge & Prominent Price -->
+                    <div class="flex justify-between items-end pt-1 border-t border-slate-800/80 w-full">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-mono text-slate-500">{{ prod.barcode || '—' }}</span>
+                        @if (prod.isWeighted) {
+                          <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 font-bold px-1.5 py-0.2 rounded font-mono">
+                            KG
+                          </span>
+                        }
+                      </div>
+                      
+                      <span class="text-xl font-mono font-black text-emerald-400 leading-none">
+                        €{{ (prod.price || 0).toFixed(2) }}
                       </span>
-                    }
-                  </div>
+                    </div>
 
-                  <!-- Product Name (Big & Readable) -->
-                  <div class="my-2 flex-1 flex items-center">
-                    <span class="text-base font-extrabold text-white group-hover:text-emerald-300 line-clamp-2 leading-snug">
-                      {{ prod.name }}
-                    </span>
-                  </div>
-
-                  <!-- Category & Price -->
-                  <div class="flex justify-between items-end pt-1.5 border-t border-slate-800/80 w-full">
-                    <span class="text-xs font-mono text-slate-400 font-semibold truncate max-w-[100px]">
-                      {{ prod.categoryName || 'General' }}
-                    </span>
-                    <span class="text-xl font-mono font-black text-emerald-400">
-                      €{{ (prod.price || 0).toFixed(2) }}
-                    </span>
                   </div>
                 </button>
               }
@@ -724,3 +812,120 @@
   />
 
 </div>
+<!-- Out of Stock Alert Modal -->
+  @if (showOutOfStockModal(); as isVisible) {
+    @if (outOfStockProduct(); as prod) {
+      <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-rose-600/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 text-center">
+          
+          <!-- Warning Icon & Header -->
+          <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center text-3xl mx-auto shadow-lg shadow-rose-950/50">
+            ⚠️
+          </div>
+
+          <div class="space-y-1">
+            <h3 class="text-xl font-black text-rose-400 uppercase tracking-wide">
+              ΕΞΑΝΤΛΗΜΕΝΟ ΑΠΟΘΕΜΑ
+            </h3>
+            <p class="text-xs font-mono text-slate-400">
+              Το προϊόν δεν μπορεί να προστεθεί στο καλάθι
+            </p>
+          </div>
+
+          <!-- Product Details Card -->
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2">
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
+                <img 
+                  [src]="catalogService.getProductImageUrl(prod)" 
+                  (error)="onImageError($event)" 
+                  alt="" 
+                  class="w-full h-full object-contain"
+                />
+              </div>
+              <div class="min-w-0 flex-1">
+                <span class="text-sm font-extrabold text-white block truncate">{{ prod.name }}</span>
+                <span class="text-xs font-mono text-slate-400 block mt-0.5">{{ prod.barcode || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-slate-800/80 text-xs font-mono">
+              <span class="text-slate-400">Διαθέσιμο Απόθεμα:</span>
+              <span class="px-2.5 py-1 rounded-lg font-black text-sm bg-rose-950 text-rose-400 border border-rose-800">
+                {{ prod.stockQuantity }} {{ prod.isWeighted ? 'kg' : 'τεμ' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Action Button -->
+          <button 
+            type="button" 
+            (click)="closeOutOfStockModal()"
+            class="w-full h-14 bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-base rounded-2xl transition cursor-pointer shadow-lg shadow-rose-600/30"
+            autofocus
+          >
+            ΕΝΤΑΞΕΙ (ΚΛΕΙΣΙΜΟ) [ENTER]
+          </button>
+
+        </div>
+      </div>
+    }
+  }
+
+  @if (showDiscountModal()) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5">
+      
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-black text-amber-400 uppercase tracking-wide">
+          🏷️ {{ discountScope() === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
+        </h3>
+        <button (click)="showDiscountModal.set(false)" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer">✕</button>
+      </div>
+
+      <!-- Preset Percentage Buttons -->
+      <div class="grid grid-cols-4 gap-2.5">
+        @for (pct of [5, 10, 20, 50]; track pct) {
+          <button 
+            type="button" 
+            (click)="applyDiscount(pct)"
+            class="h-14 bg-slate-950 border-2 border-slate-800 hover:border-amber-500 text-lg font-mono font-black text-slate-100 rounded-2xl transition cursor-pointer"
+          >
+            -{{ pct }}%
+          </button>
+        }
+      </div>
+
+      <!-- Custom Input -->
+      <div class="space-y-2">
+        <label class="text-xs font-bold text-slate-400 uppercase font-mono">Προσαρμοσμένο Ποσοστό (%)</label>
+        <div class="flex gap-2">
+          <input 
+            type="number" 
+            min="0" 
+            max="100" 
+            [(ngModel)]="customDiscountInput"
+            class="flex-1 h-12 bg-slate-950 border border-slate-700 rounded-xl px-4 text-center font-mono font-black text-xl text-amber-400 focus:outline-none"
+          />
+          <button 
+            type="button" 
+            (click)="applyDiscount(customDiscountInput())"
+            class="px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm transition"
+          >
+            Εφαρμογή
+          </button>
+        </div>
+      </div>
+
+      <!-- Remove Discount -->
+      <button 
+        type="button" 
+        (click)="applyDiscount(0)"
+        class="w-full h-11 bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 font-bold text-xs rounded-xl transition"
+      >
+        Κατάργηση Έκπτωσης (0%)
+      </button>
+
+    </div>
+  </div>
+}

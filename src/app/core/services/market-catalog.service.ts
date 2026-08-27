@@ -36,6 +36,10 @@ export class MarketCatalogService {
   }
 
   public async loadInitialCatalog(): Promise<void> {
+    const all = await marketDb.products.toArray();
+    const activeItems = all.filter(p => p.isActive !== false);
+  this.products.set(activeItems);
+    
     const [prods, cats] = await Promise.all([
       marketDb.products.toArray(),
       marketDb.categories.toArray()

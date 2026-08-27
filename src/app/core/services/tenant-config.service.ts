@@ -61,4 +61,13 @@ export class TenantConfigService {
       localStorage.setItem(STORAGE_KEY_ACTIVE, code);
     }
   }
+
+  public updateActiveShopDetails(updated: Partial<StoreTenant>): void {
+  this.activeShop.update(current => {
+    const next = { ...current, ...updated };
+    // Persist to localStorage
+    localStorage.setItem('active_tenant_shop', JSON.stringify(next));
+    return next;
+  });
+}
 }

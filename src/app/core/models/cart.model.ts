@@ -6,6 +6,8 @@ export interface CartItem {
   isRefund?: boolean;
   unitPrice?: number;
   lineTotal?: number;
+  discountPercent?: number;
+  discountAmount?: number;
 }
 
 export interface HeldTicket {

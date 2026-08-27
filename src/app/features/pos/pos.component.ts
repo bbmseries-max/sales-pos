@@ -42,7 +42,8 @@ import {
   Product, 
   TransactionRecord, 
   MarketCompanyProfile, 
-  Customer
+  Customer,
+  CartItem
 } from '../../core/models';
 
 export type UiPaymentMethod = 'CASH' | 'CARD' | 'SPLIT';
@@ -55,8 +56,7 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
   standalone: true,
   imports: [
     CommonModule, 
-    FormsModule, 
-    BarcodeScannerDirective,
+    FormsModule,
     PosQuickRegisterModalComponent,
     PosPriceCheckModalComponent,
     PosCashDrawerModalComponent,
@@ -122,6 +122,14 @@ export class PosComponent implements OnInit, AfterViewInit {
   public isCardProcessing = signal<boolean>(false);
   public cardTxSuccess = signal<boolean>(false);
   public pointsToRedeem = signal<number>(0);
+  public showOutOfStockModal = signal<boolean>(false);
+  public outOfStockProduct = signal<Product | null>(null);
+
+  // Discount
+  public showDiscountModal = signal<boolean>(false);
+  public selectedDiscountItem = signal<CartItem | null>(null);
+  public discountScope = signal<'ITEM' | 'CART'>('CART');
+  public customDiscountInput = signal<number>(10);
 
   // Feedback Notifications
   public feedbackMessage = signal<string>('');
@@ -163,19 +171,20 @@ export class PosComponent implements OnInit, AfterViewInit {
     this.focusBarcodeInput();
   }
 
-  public focusBarcodeInput(): void {
-    setTimeout(() => {
-      const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
-                             this.showPriceCheckModal() || this.showCashDrawerModal() || 
-                             this.showCustomerModal() || this.showShiftHandoverModal() || 
-                             this.showStoreModal() || this.showWeightModal() ||
-                             this.showMyDataConfig() || this.shiftService.isLocked();
+ public focusBarcodeInput(): void {
+  setTimeout(() => {
+    const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
+                           this.showPriceCheckModal() || this.showCashDrawerModal() || 
+                           this.showCustomerModal() || this.showShiftHandoverModal() || 
+                           this.showStoreModal() || this.showWeightModal() ||
+                           this.showMyDataConfig() || this.showOutOfStockModal() ||
+                           this.shiftService.isLocked();
 
-      if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
-        this.barcodeInputRef.nativeElement.focus();
-      }
-    }, 50);
-  }
+    if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
+      this.barcodeInputRef.nativeElement.focus();
+    }
+  }, 50);
+}
 
   public flashFeedback(msg: string, type: 'success' | 'error' | 'info' = 'success'): void {
     if (this.feedbackTimer) clearTimeout(this.feedbackTimer);
@@ -190,14 +199,21 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   @HostListener('window:keydown', ['$event'])
-  onGlobalKey(event: KeyboardEvent): void {
-    const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
-                        this.showPriceCheckModal() || this.showCashDrawerModal() || 
-                        this.showCustomerModal() || this.showShiftHandoverModal() || 
-                        this.showStoreModal() || this.showWeightModal() ||
-                        this.showMyDataConfig() || this.shiftService.isLocked();
+onGlobalKey(event: KeyboardEvent): void {
+  const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
+                      this.showPriceCheckModal() || this.showCashDrawerModal() || 
+                      this.showCustomerModal() || this.showShiftHandoverModal() || 
+                      this.showStoreModal() || this.showWeightModal() ||
+                      this.showMyDataConfig() || this.showOutOfStockModal() ||
+                      this.shiftService.isLocked();
 
-    this.scanner.handleGlobalKey(event, isModalOpen, (code) => this.onBarcodeScanned(code));
+  if (this.showOutOfStockModal() && (event.key === 'Enter' || event.key === 'Escape')) {
+    event.preventDefault();
+    this.closeOutOfStockModal();
+    return;
+  }
+
+  this.scanner.handleGlobalKey(event, isModalOpen, (code) => this.onBarcodeScanned(code));
 
     if (event.code === 'Space' && !this.showPaymentModal() && this.cart.items().length > 0) {
       const target = event.target as HTMLElement;
@@ -218,9 +234,12 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   public async onBarcodeScanned(explicitCode?: string): Promise<void> {
-    const code = (explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value || '').trim();
+    const raw = explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value || '';
+    const code = raw.trim();
 
+    // Immediately clear input fields to prevent enter re-trigger
     this.searchQuery.set('');
+    this.searchResults.set([]);
     if (this.barcodeInputRef?.nativeElement) {
       this.barcodeInputRef.nativeElement.value = '';
     }
@@ -231,7 +250,8 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
 
     const now = Date.now();
-    if (this.isProcessingScan || (code === this.lastScannedCode && (now - this.lastScannedTimestamp) < 400)) {
+    // 600ms debounce prevents double fire from hardware scanner + keydown.enter
+    if (this.isProcessingScan || (code === this.lastScannedCode && (now - this.lastScannedTimestamp) < 600)) {
       return;
     }
 
@@ -242,6 +262,7 @@ export class PosComponent implements OnInit, AfterViewInit {
 
     try {
       const res = await this.scanner.resolveBarcode(code);
+      
 
       if (res.type === 'added') {
         this.flashFeedback(res.message, 'success');
@@ -262,6 +283,29 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
+  public checkExpiryStatus(expireDate?: string): 'VALID' | 'WARNING' | 'EXPIRED' {
+  if (!expireDate) return 'VALID';
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(expireDate);
+  exp.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) return 'EXPIRED';
+  if (diffDays <= 3) return 'WARNING';
+  return 'VALID';
+}
+
+  public onSearchEnter(): void {
+    const query = this.searchQuery().trim();
+    if (!query) return;
+
+    // Delegate directly to onBarcodeScanned with single-entry debounce
+    this.onBarcodeScanned(query);
+  }
+
   public async onSearch(query: string): Promise<void> {
     this.searchQuery.set(query);
     const term = query.trim().toLowerCase();
@@ -280,35 +324,71 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-  public onSearchEnter(): void {
-    const query = this.searchQuery().trim();
-    if (!query) return;
+ public selectProduct(product: Product): void {
+  const currentStock = product.stockQuantity ?? 0;
 
-    const exact = this.catalogService.getByBarcode(query) || this.catalogService.getProductByAnyIdentifier(query);
-    if (exact) {
-      this.selectProduct(exact);
-      return;
-    }
-
-    const results = this.searchResults();
-    if (results.length > 0) {
-      this.selectProduct(results[0]);
-    } else {
-      this.onBarcodeScanned(query);
-    }
-  }
-
-  public selectProduct(product: Product): void {
-    if (product.isWeighted) {
-      this.promptWeight(product);
-    } else {
-      this.cart.addItem(product, 1);
-    }
-    
+  // 1. If stock is 0 or less, open the Warning Modal
+  if (currentStock <= 0) {
+    this.outOfStockProduct.set(product);
+    this.showOutOfStockModal.set(true);
     this.searchQuery.set('');
     this.searchResults.set([]);
-    this.focusBarcodeInput();
+    return;
   }
+
+  // 2. Check if item is already in cart and adding more exceeds stock
+  const currentInCart = this.cart.items().find(i => (i.product.id || i.product.barcode) === (product.id || product.barcode))?.quantity || 0;
+  if (!product.isWeighted && (currentInCart + 1) > currentStock) {
+    this.outOfStockProduct.set(product);
+    this.showOutOfStockModal.set(true);
+    this.searchQuery.set('');
+    this.searchResults.set([]);
+    return;
+  }
+
+  if (product.isWeighted) {
+    this.promptWeight(product);
+  } else {
+    this.cart.addItem(product, 1);
+  }
+
+  this.searchQuery.set('');
+  this.searchResults.set([]);
+  this.focusBarcodeInput();
+}
+
+public openCartDiscountModal(): void {
+  this.discountScope.set('CART');
+  this.selectedDiscountItem.set(null);
+  this.customDiscountInput.set(this.cart.cartDiscountPercent() || 10);
+  this.showDiscountModal.set(true);
+}
+
+public openItemDiscountModal(item: CartItem): void {
+  this.discountScope.set('ITEM');
+  this.selectedDiscountItem.set(item);
+  this.customDiscountInput.set(item.discountPercent || 10);
+  this.showDiscountModal.set(true);
+}
+
+public applyDiscount(percent: number): void {
+  if (this.discountScope() === 'CART') {
+    this.cart.setCartDiscount(percent);
+    this.flashFeedback(percent > 0 ? `✔ Έκπτωση Καλαθιού: ${percent}%` : 'Καθαρισμός Έκπτωσης', 'success');
+  } else if (this.selectedDiscountItem()) {
+    const prod = this.selectedDiscountItem()!.product;
+    this.cart.setItemDiscount(prod.id || prod.barcode, percent);
+    this.flashFeedback(percent > 0 ? `✔ Έκπτωση ${percent}% στο "${prod.name}"` : 'Καθαρισμός Έκπτωσης', 'success');
+  }
+  this.showDiscountModal.set(false);
+  this.focusBarcodeInput();
+}
+
+public closeOutOfStockModal(): void {
+  this.showOutOfStockModal.set(false);
+  this.outOfStockProduct.set(null);
+  this.focusBarcodeInput();
+}
 
   public promptWeight(product: Product): void {
     this.activeWeightedProduct.set(product);
@@ -319,6 +399,12 @@ export class PosComponent implements OnInit, AfterViewInit {
   public confirmWeight(): void {
     const product = this.activeWeightedProduct();
     if (product && this.inputWeightKg() > 0) {
+      const stock = product.stockQuantity ?? 0;
+      if (this.inputWeightKg() > stock) {
+        this.flashFeedback(`⚠️ Μη επαρκές απόθεμα (${stock.toFixed(3)} kg διαθέσιμα)`, 'error');
+        return;
+      }
+
       this.cart.addProduct(product, this.inputWeightKg());
       this.showWeightModal.set(false);
       this.activeWeightedProduct.set(null);

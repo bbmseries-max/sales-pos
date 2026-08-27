@@ -38,7 +38,7 @@ export class CashierShiftService {
   }
 
   /**
-   * Validates PIN and opens shift if needed
+   * Validates PIN and opens a brand-new shift with clean 0 metrics
    */
   public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
@@ -50,21 +50,21 @@ export class CashierShiftService {
 
     this.currentCashier.set(cashier);
 
-    // Check if cashier already has an open shift
+    // Look ONLY for an OPEN shift belonging to this cashier
     let shift = await marketDb.shifts
       .where('cashierId').equals(cashier.id)
       .and(s => s.status === 'OPEN')
       .first();
 
     if (!shift) {
-      // Start a new shift
-      shift = {
+      // Create a FRESH shift with 0 metrics
+      const newShift: CashierShift = {
         id: `SHIFT-${Date.now().toString().slice(-6)}`,
         cashierId: cashier.id,
         cashierName: cashier.name,
         startTime: new Date().toISOString(),
         status: 'OPEN',
-        openingFloat,
+        openingFloat: Number(openingFloat),
         cashInTotal: 0,
         cashOutTotal: 0,
         cashMovements: [],
@@ -77,7 +77,9 @@ export class CashierShiftService {
           transactionCount: 0
         }
       };
-      await marketDb.shifts.add(shift);
+
+      await marketDb.shifts.add(newShift);
+      shift = newShift;
     }
 
     this.currentShift.set(shift);
@@ -164,23 +166,26 @@ export class CashierShiftService {
    * Closes the shift, checks drawer cash discrepancies, and archives
    */
   public async closeShift(countedCash: number, notes?: string): Promise<CashierShift> {
-    const shift = this.currentShift();
-    if (!shift) throw new Error('Δεν υπάρχει ενεργή βάρδια');
+    const active = this.currentShift();
+    if (!active) throw new Error('Δεν υπάρχει ενεργή βάρδια');
 
-    const expected = this.calculateExpectedCash(shift);
-    const discrepancy = Number((countedCash - expected).toFixed(2));
+    const expected = this.calculateExpectedCash(active);
+    const discrepancy = Number((Number(countedCash) - expected).toFixed(2));
 
     const closedShift: CashierShift = {
-      ...shift,
+      ...active,
       status: 'CLOSED',
       endTime: new Date().toISOString(),
       expectedCashInDrawer: expected,
-      countedCashInDrawer: countedCash,
+      countedCashInDrawer: Number(countedCash),
       discrepancy,
       notes: notes || ''
     };
 
+    // 1. Update in Dexie DB
     await marketDb.shifts.put(closedShift);
+
+    // 2. Force-clear all reactive session signals
     this.currentShift.set(null);
     this.currentCashier.set(null);
     this.isLocked.set(true);

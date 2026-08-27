@@ -34,4 +34,5 @@ export interface Product {
   tenantId?: string;
   updatedAt?: string;
   notes?: string;
+  deletedAt?: string;
 }

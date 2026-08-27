@@ -32,6 +32,121 @@
       >
         <span>🔒 ΟΡΙΣΤΙΚΟ ΚΛΕΙΣΙΜΟ "Ζ"</span>
       </button>
+
+      <!-- Store Header in Z-Report with Edit Button -->
+<div class="flex items-center justify-between p-4 bg-slate-900 border border-slate-800 rounded-2xl mb-4">
+  <div class="flex items-center gap-3">
+    <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-lg border border-amber-500/40">
+      🏪
+    </div>
+    <div>
+      <h2 class="text-base font-black text-slate-100">{{ tenantConfig.activeShop().name }}</h2>
+      <p class="text-xs font-mono text-slate-400">
+        ΑΦΜ: {{ tenantConfig.activeShop().afm || '—' }} • ΔΟΥ: {{ tenantConfig.activeShop().doy || '—' }} • Υποκ/μα: [{{ tenantConfig.activeShop().code }}]
+      </p>
+    </div>
+  </div>
+
+  <!-- Edit Store Metadata Button -->
+  <button 
+    type="button" 
+    (click)="openStoreEditModal()"
+    class="h-10 px-3.5 bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-white text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-amber-500 transition cursor-pointer flex items-center gap-1.5"
+  >
+    <span>✏️ Επεξεργασία Στοιχείων</span>
+  </button>
+</div>
+
+<!-- ================= EDIT STORE INFO MODAL ================= -->
+@if (showStoreEditModal()) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border-2 border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+      
+      <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+        <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
+          <span>🏪 ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ (ΔΕΛΤΙΟ "Ζ")</span>
+        </h3>
+        <button (click)="showStoreEditModal.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-base cursor-pointer">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs font-mono">
+        <div>
+          <label class="block font-bold text-slate-400 mb-1">Επωνυμία Καταστήματος</label>
+          <input 
+            type="text" 
+            [(ngModel)]="editShopForm().name" 
+            class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold focus:border-amber-500 outline-none"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Α.Φ.Μ.</label>
+            <input 
+              type="text" 
+              [(ngModel)]="editShopForm().afm" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold focus:border-amber-500 outline-none"
+            />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Δ.Ο.Υ.</label>
+            <input 
+              type="text" 
+              [(ngModel)]="editShopForm().doy" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold focus:border-amber-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Διεύθυνση / Έδρα</label>
+            <input 
+              type="text" 
+              [(ngModel)]="editShopForm().address" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 focus:border-amber-500 outline-none"
+            />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Τηλέφωνο</label>
+            <input 
+              type="text" 
+              [(ngModel)]="editShopForm().phone" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 focus:border-amber-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-400 mb-1">Κωδικός Υποκαταστήματος / Σημείου (Branch Code)</label>
+          <input 
+            type="text" 
+            [(ngModel)]="editShopForm().code" 
+            class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold focus:border-amber-500 outline-none"
+          />
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
+        <button 
+          type="button" 
+          (click)="showStoreEditModal.set(false)"
+          class="h-11 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
+        >
+          Ακύρωση
+        </button>
+        <button 
+          type="button" 
+          (click)="saveStoreDetails()"
+          class="h-11 px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20"
+        >
+          Αποθήκευση Στοιχείων
+        </button>
+      </div>
+
+    </div>
+  </div>
+}
     </div>
   </header>
 

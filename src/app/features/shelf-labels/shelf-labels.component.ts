@@ -4,8 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
-import { Product, Category } from '../../core/models/market.models';
-import { marketDb } from '../../core/db/market-db';
+import { 
+  Product, 
+  SUPERMARKET_DEPARTMENTS, 
+  MasterCategory 
+} from '../../core/models';
 import { generateBarcodeSvg } from '../../core/utils/barcode-svg.util';
 
 export interface LabelItem {
@@ -30,17 +33,29 @@ export class ShelfLabelsComponent implements OnInit {
   // Selection & Queue
   public queue = signal<LabelItem[]>([]);
   public searchQuery = signal<string>('');
-  public selectedCategory = signal<string>('ALL');
+  public selectedCategory = signal<string>('all');
   public labelSize = signal<'A4_SHEET' | 'THERMAL_ROLL'>('A4_SHEET');
+  public departments: MasterCategory[] = SUPERMARKET_DEPARTMENTS;
 
   public filteredCatalog = computed(() => {
     const term = this.searchQuery().toLowerCase().trim();
-    const cat = this.selectedCategory();
+    const cat = this.selectedCategory().toLowerCase();
     let prods = this.catalogService.products();
 
-    if (cat !== 'ALL') {
-      prods = prods.filter(p => p.categoryId === cat);
+    // Robust category matching: checks ID, name, or prefixed slug
+    if (cat !== 'all') {
+      prods = prods.filter(p => {
+        const prodCatId = (p.categoryId || '').toLowerCase();
+        const prodCatName = (p.categoryName || '').toLowerCase();
+        return (
+          prodCatId === cat ||
+          prodCatName === cat ||
+          `cat-${prodCatName}` === cat ||
+          (cat === 'cat-pets' && (prodCatId.includes('zoo') || prodCatName.includes('ζωο')))
+        );
+      });
     }
+
     if (term) {
       prods = prods.filter(p => 
         (p.name && p.name.toLowerCase().includes(term)) ||
@@ -48,6 +63,7 @@ export class ShelfLabelsComponent implements OnInit {
         (p.sku && p.sku.toLowerCase().includes(term))
       );
     }
+
     return prods.slice(0, 40);
   });
 
@@ -63,7 +79,8 @@ export class ShelfLabelsComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
-    // Default queue with top 8 products to immediately show preview
+    
+    // Default queue with top 8 products to show preview
     const initial = this.catalogService.products().slice(0, 8);
     this.queue.set(initial.map(p => ({
       product: p,
@@ -73,22 +90,44 @@ export class ShelfLabelsComponent implements OnInit {
     })));
   }
 
+  public selectCategory(catId: string): void {
+    this.selectedCategory.set(catId);
+  }
+
   public addToQueue(product: Product): void {
-    const existing = this.queue().find(item => item.product.id === product.id);
+    const prodId = product.id || product.barcode;
+    const existing = this.queue().find(item => (item.product.id || item.product.barcode) === prodId);
+    
     if (existing) {
-      this.queue.update(items => items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i));
+      this.queue.update(items =>
+        items.map(i =>
+          (i.product.id || i.product.barcode) === prodId
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        )
+      );
     } else {
-      this.queue.update(items => [...items, {
-        product,
-        quantity: 1,
-        unitMeasurement: product.isWeighted ? '1 kg' : '1 τεμ',
-        pricePerUnit: product.price || 0
-      }]);
+      this.queue.update(items => [
+        ...items,
+        {
+          product,
+          quantity: 1,
+          unitMeasurement: product.isWeighted ? '1 kg' : '1 τεμ',
+          pricePerUnit: product.price || 0
+        }
+      ]);
     }
   }
 
   public addEntireCategoryToQueue(catId: string): void {
-    const prods = this.catalogService.products().filter(p => catId === 'ALL' || p.categoryId === catId);
+    const target = catId.toLowerCase();
+    const prods = this.catalogService.products().filter(p => {
+      if (target === 'all') return true;
+      const prodCatId = (p.categoryId || '').toLowerCase();
+      const prodCatName = (p.categoryName || '').toLowerCase();
+      return prodCatId === target || prodCatName === target || `cat-${prodCatName}` === target;
+    });
+
     for (const p of prods) {
       this.addToQueue(p);
     }
@@ -126,6 +165,6 @@ export class ShelfLabelsComponent implements OnInit {
   }
 
   public backToPos(): void {
-    this.router.navigate(['/pos']);
+    this.router.navigate(['/']);
   }
 }

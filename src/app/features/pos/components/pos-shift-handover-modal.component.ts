@@ -1,6 +1,7 @@
-import { Component, input, output, signal } from '@angular/core';
+import { Component, input, output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { CashierShift } from '../../../core/models/market.models';
 
 @Component({
   selector: 'app-pos-shift-handover-modal',
@@ -30,11 +31,11 @@ import { FormsModule } from '@angular/forms';
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Πωλήσεις Μετρητών:</span>
-              <span class="text-emerald-400 font-bold">€{{ (s.sales?.cash || 0).toFixed(2) }}</span>
+              <span class="text-emerald-400 font-bold">€{{ (s.sales.cash || 0).toFixed(2) }}</span>
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Πωλήσεις Καρτών (POS):</span>
-              <span class="text-sky-400 font-bold">€{{ (s.sales?.card || 0).toFixed(2) }}</span>
+              <span class="text-sky-400 font-bold">€{{ (s.sales.card || 0).toFixed(2) }}</span>
             </div>
             <div class="flex justify-between text-slate-100 pt-2 border-t border-slate-800 text-sm font-bold">
               <span>Αναμενόμενα Μετρητά:</span>
@@ -86,15 +87,29 @@ import { FormsModule } from '@angular/forms';
   `
 })
 export class PosShiftHandoverModalComponent {
-  isOpen = input<boolean>(false);
-  shift = input<any>(null);
-  expectedCash = input<number>(0);
+  
+  // Signal Inputs
+  public isOpen = input<boolean>(false);
+  public shift = input<CashierShift | null>(null);
+  public expectedCash = input<number>(0);
 
-  printX = output<void>();
-  confirmClose = output<number>();
-  close = output<void>();
+  // Signal Outputs
+  public printX = output<void>();
+  public confirmClose = output<number>();
+  public close = output<void>();
 
-  countedCash = signal<number>(0);
+  // State Signals
+  public countedCash = signal<number>(0);
+
+  // Computed Discrepancy (Counted - Expected)
+  public discrepancy = computed(() => {
+    return Number((this.countedCash() - this.expectedCash()).toFixed(2));
+  });
+
+  public handleConfirm(): void {
+    this.confirmClose.emit(this.countedCash());
+  }
+
 
   diff(): number {
     return Number(this.countedCash()) - Number(this.expectedCash());

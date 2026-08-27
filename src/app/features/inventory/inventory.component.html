@@ -96,7 +96,7 @@
       [class.bg-slate-950]="selectedCategoryId() !== cat.id"
       [class.border-slate-800]="selectedCategoryId() !== cat.id"
       [class.text-slate-300]="selectedCategoryId() !== cat.id"
-      class="w-full h-11 px-3 rounded-xl border flex items-center justify-between text-xs font-bold transition hover:border-slate-600 cursor-pointer"
+      class="w-full h-11 px-3 rounded-xl border flex items-center justify-between uppercase text-sm font-bold transition hover:border-slate-600 cursor-pointer"
     >
       <span class="truncate pr-2 text-left">{{ cat.name }}</span>
       <span 
@@ -446,6 +446,14 @@
         >
           Αποθήκευση Αλλαγών
         </button>
+        <button 
+  type="button" 
+  (click)="softDeleteProduct(item)"
+  class="h-8 w-8 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700 hover:border-rose-700/50 flex items-center justify-center text-xs transition cursor-pointer"
+  title="Απενεργοποίηση / Διαγραφή"
+>
+  🗑️
+</button>
       </div>
 
     </div>

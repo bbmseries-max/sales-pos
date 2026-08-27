@@ -133,27 +133,32 @@ export class InventoryComponent implements OnInit {
     await this.loadAllInventory();
   }
 
-  public async loadAllInventory(): Promise<void> {
-    const all = await marketDb.products.toArray();
-    this.allProducts.set(all);
+ // 1. Update loadAllInventory() to count only active products:
+public async loadAllInventory(): Promise<void> {
+  const all = await marketDb.products.toArray();
+  // Keep only active items (treating undefined as true for legacy records)
+  const activeOnly = all.filter(p => p.isActive !== false);
+  
+  this.allProducts.set(activeOnly);
 
-    // Update Header Counts
-    this.totalCount.set(all.length);
-    this.lowStockCount.set(all.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
-    this.pinnedCount.set(all.filter(p => !!p.isPinned).length);
+  // Update Header Counts based on active items
+  this.totalCount.set(activeOnly.length);
+  this.lowStockCount.set(activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
+  this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
 
-    const now = new Date();
-    const future30 = new Date();
-    future30.setDate(now.getDate() + 30);
-    this.expiringCount.set(
-      all.filter(p => {
-        const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
-        if (!exp) return false;
-        const d = new Date(exp);
-        return !isNaN(d.getTime()) && d <= future30;
-      }).length
-    );
-  }
+  const now = new Date();
+  const future30 = new Date();
+  future30.setDate(now.getDate() + 30);
+  
+  this.expiringCount.set(
+    activeOnly.filter(p => {
+      const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
+      if (!exp) return false;
+      const d = new Date(exp);
+      return !isNaN(d.getTime()) && d <= future30;
+    }).length
+  );
+}
 
   // Handles category change inside the edit modal
   public onCategoryChange(newCatId: string): void {
@@ -200,15 +205,67 @@ export class InventoryComponent implements OnInit {
   });
 }
 
+// 1. Soft Delete Action (archives the item)
+public async softDeleteProduct(product: Product): Promise<void> {
+  const targetId = product.id;
+  if (targetId === undefined || targetId === null) return;
+
+  const confirmed = confirm(`Θέλετε να απενεργοποιήσετε το είδος "${product.name}"; Το προϊόν δεν θα εμφανίζεται στο ταμείο.`);
+  if (!confirmed) return;
+
+  this.closeEditModal();
+
+  // Try updating with original type, or numeric fallback for Dexie auto-increment primary keys
+  const idToUpdate = typeof targetId === 'string' && !isNaN(Number(targetId)) ? Number(targetId) : targetId;
+
+  await marketDb.products.update(idToUpdate, {
+    isActive: false,
+    deletedAt: new Date().toISOString()
+  });
+
+  await this.loadAllInventory();
+  await this.catalogService.loadInitialCatalog(); // Updates POS screen immediately
+  this.showToast(`Το προϊόν "${product.name}" τέθηκε σε αρχειοθέτηση.`);
+}
+
+// 2. Restore Action (re-activates an archived item)
+public async restoreProduct(product: Product): Promise<void> {
+  const targetId = product.id;
+  if (!targetId) return;
+
+  await marketDb.products.update(targetId, {
+    isActive: true,
+    deletedAt: undefined
+  });
+
+  await this.loadAllInventory();
+  await this.catalogService.loadInitialCatalog();
+  this.showToast(`Το προϊόν "${product.name}" επανήλθε σε ενεργή κατάσταση.`);
+}
+
   public async updateInlineStock(product: Product, delta: number): Promise<void> {
     const current = product.stockQuantity ?? 0;
     const newQty = Math.max(0, parseFloat((current + delta).toFixed(3)));
     product.stockQuantity = newQty;
     
     if (product.id) {
-  await marketDb.products.update(product.id, { stockQuantity: newQty });
-}
+      await marketDb.products.update(product.id, { stockQuantity: newQty });
+    }
     await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog(); // <-- Refreshes shared POS catalog
+  }
+
+  public async saveProductChanges(): Promise<void> {
+    const item = this.editingProduct();
+    if (!item) return;
+
+    item.updatedAt = new Date().toISOString();
+    await marketDb.products.put(item);
+
+    this.closeEditModal();
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog(); // <-- Refreshes shared POS catalog
+    this.showToast(`Ενημερώθηκε: "${item.name}"`);
   }
 
   public getCategoryName(categoryId?: string, categoryName?: string): string {
@@ -238,18 +295,6 @@ export class InventoryComponent implements OnInit {
 
   public closeEditModal(): void {
     this.editingProduct.set(null);
-  }
-
-  public async saveProductChanges(): Promise<void> {
-    const item = this.editingProduct();
-    if (!item) return;
-
-    item.updatedAt = new Date().toISOString();
-    await marketDb.products.put(item);
-
-    this.closeEditModal();
-    await this.loadAllInventory();
-    this.showToast(`Ενημερώθηκε: "${item.name}"`);
   }
 
   public isItemExpired(expireDate?: string): boolean {

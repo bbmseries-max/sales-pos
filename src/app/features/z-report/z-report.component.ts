@@ -6,6 +6,7 @@ import { ZReportService } from '../../core/services/z-report.service';
 import { EscPosPrinterService } from '../../core/services/esc-pos-printer.service';
 import { ZReportAudit, CashDenominationCount } from '../../core/models/z-report.model';
 import { MarketCompanyProfile } from '../../core/models/market.models';
+import { TenantConfigService } from '../../core/services/tenant-config.service';
 
 @Component({
   selector: 'app-z-report',
@@ -15,6 +16,7 @@ import { MarketCompanyProfile } from '../../core/models/market.models';
 })
 export class ZReportComponent implements OnInit {
   private zService = inject(ZReportService);
+  public tenantConfig = inject(TenantConfigService);
   private printerService = inject(EscPosPrinterService);
   private router = inject(Router);
 
@@ -43,6 +45,36 @@ export class ZReportComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.calculateAudit();
+  }
+
+  // Edit Store Details Modal State
+  public showStoreEditModal = signal<boolean>(false);
+  public editShopForm = signal({
+    name: '',
+    afm: '',
+    doy: '',
+    address: '',
+    phone: '',
+    code: ''
+  });
+
+  public openStoreEditModal(): void {
+    const shop = this.tenantConfig.activeShop();
+    this.editShopForm.set({
+      name: shop.name || '',
+      afm: shop.afm || '',
+      doy: shop.doy || '',
+      address: shop.address || '',
+      phone: shop.phone || '',
+      code: shop.code || ''
+    });
+    this.showStoreEditModal.set(true);
+  }
+
+  public saveStoreDetails(): void {
+    const form = this.editShopForm();
+    this.tenantConfig.updateActiveShopDetails(form);
+    this.showStoreEditModal.set(false);
   }
 
   public async calculateAudit(): Promise<void> {
