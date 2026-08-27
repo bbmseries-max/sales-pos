@@ -959,43 +959,42 @@
             <label class="block text-[11px] text-slate-400 mb-1">Όνομα & Επώνυμο</label>
             <input 
               type="text" 
-              [(ngModel)]="newEmployee().name" 
+              [(ngModel)]="employeeForm.name" 
               placeholder="π.χ. Νίκος Παπαδόπουλος"
               class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500"
             />
           </div>
           <div>
             <label class="block text-[11px] text-slate-400 mb-1">4-Ψήφιο PIN Εισόδου</label>
-            <input 
-              type="password" 
-              maxlength="6"
-              [(ngModel)]="newEmployee().pin" 
-              placeholder="π.χ. 2024"
-              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-amber-400 font-bold outline-none focus:border-amber-500"
-            />
-          </div>
-        </div>
+<input 
+  type="text" 
+  [(ngModel)]="employeeForm.name" 
+  placeholder="π.χ. Νίκος Παπαδόπουλος"
+  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none"
+/>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] text-slate-400 mb-1">Ρόλος / Δικαιώματα</label>
-            <select 
-              [(ngModel)]="newEmployee().role" 
-              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-2 text-xs text-slate-200 outline-none cursor-pointer"
-            >
-              <option value="CASHIER">Ταμίας (POS Only)</option>
-              <option value="MANAGER">Υπεύθυνος Βάρδιας</option>
-              <option value="ADMIN">Διαχειριστής / Ιδιοκτήτης</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[11px] text-slate-400 mb-1">Κατάστημα</label>
-            <input 
-              type="text" 
-              [(ngModel)]="newEmployee().storeId" 
-              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-slate-300 outline-none"
-              placeholder="π.χ. SHOP-01"
-            />
+<input 
+  type="password" 
+  maxlength="6"
+  [(ngModel)]="employeeForm.pin" 
+  placeholder="1234"
+  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-amber-400 font-bold outline-none"
+/>
+
+<select 
+  [(ngModel)]="employeeForm.role" 
+  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-2 text-xs text-slate-200 outline-none"
+>
+  <option value="CASHIER">Ταμίας</option>
+  <option value="MANAGER">Υπεύθυνος Βάρδιας</option>
+  <option value="ADMIN">Διαχειριστής</option>
+</select>
+
+<input 
+  type="text" 
+  [(ngModel)]="employeeForm.storeId" 
+  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-slate-300 outline-none"
+/>
           </div>
         </div>
 

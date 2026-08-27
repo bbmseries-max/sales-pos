@@ -22,7 +22,7 @@ export interface Cashier {
   name: string;
   storeId?: string;
   pin: string;
-  role: 'ADMIN' | 'CASHIER';
+  role: CashierRole;
   isActive: boolean;
   avatarColor?: string;
   //storeId: string;
