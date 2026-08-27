@@ -9,7 +9,6 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
-
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -26,8 +25,7 @@ import {
 import { PosPriceCheckModalComponent } from './components/pos-price-check-modal.component';
 import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-modal.component';
 
-// Directives & Services
-import { BarcodeScannerDirective } from '../../core/directives/barcode-scanner.directive';
+// Services
 import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { MarketCatalogService, ExternalProductMatch } from '../../core/services/market-catalog.service';
 import { CartService } from '../../core/services/cart.service';
@@ -43,13 +41,12 @@ import {
   TransactionRecord, 
   MarketCompanyProfile, 
   Customer,
-  CartItem, CashierRole
+  CartItem,
+  CashierRole
 } from '../../core/models';
 
 export type UiPaymentMethod = 'CASH' | 'CARD' | 'SPLIT';
 export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
-
-
 
 @Component({
   selector: 'app-pos',
@@ -143,17 +140,18 @@ export class PosComponent implements OnInit, AfterViewInit {
   private lastScannedCode = '';
   private lastScannedTimestamp = 0;
 
-  public newEmployee = signal<{
-  name: string;
-  pin: string;
-  role: CashierRole;
-  storeId: string;
-}>({
-  name: '',
-  pin: '',
-  role: 'CASHIER',
-  storeId: 'SHOP-01'
-});
+  // Employee Form State (Plain object for stable [(ngModel)] two-way binding)
+  public employeeForm: {
+    name: string;
+    pin: string;
+    role: CashierRole;
+    storeId: string;
+  } = {
+    name: '',
+    pin: '',
+    role: 'CASHIER',
+    storeId: ''
+  };
 
   // Computed Values
   public pointsDiscountAmount = computed(() => {
@@ -177,28 +175,30 @@ export class PosComponent implements OnInit, AfterViewInit {
     await this.shiftService.initialize();
 
     const all = await marketDb.products.toArray();
-    const pinned = all.filter(p => p.isPinned === true || (p.isPinned as any) === 1 || (p.isPinned as any) === 'true');
-    this.pinnedProducts.set(pinned.length > 0 ? pinned : all.slice(0, 24));
+    const active = all.filter(p => p.isActive !== false);
+    const pinned = active.filter(p => p.isPinned === true || (p.isPinned as any) === 1 || (p.isPinned as any) === 'true');
+    this.pinnedProducts.set(pinned.length > 0 ? pinned : active.slice(0, 24));
   }
 
   ngAfterViewInit(): void {
     this.focusBarcodeInput();
   }
 
- public focusBarcodeInput(): void {
-  setTimeout(() => {
-    const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
-                           this.showPriceCheckModal() || this.showCashDrawerModal() || 
-                           this.showCustomerModal() || this.showShiftHandoverModal() || 
-                           this.showStoreModal() || this.showWeightModal() ||
-                           this.showMyDataConfig() || this.showOutOfStockModal() ||
-                           this.shiftService.isLocked();
+  public focusBarcodeInput(): void {
+    setTimeout(() => {
+      const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
+                             this.showPriceCheckModal() || this.showCashDrawerModal() || 
+                             this.showCustomerModal() || this.showShiftHandoverModal() || 
+                             this.showStoreModal() || this.showWeightModal() ||
+                             this.showMyDataConfig() || this.showOutOfStockModal() ||
+                             this.showEmployeeModal() || this.showDiscountModal() ||
+                             this.shiftService.isLocked();
 
-    if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
-      this.barcodeInputRef.nativeElement.focus();
-    }
-  }, 50);
-}
+      if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
+        this.barcodeInputRef.nativeElement.focus();
+      }
+    }, 50);
+  }
 
   public flashFeedback(msg: string, type: 'success' | 'error' | 'info' = 'success'): void {
     if (this.feedbackTimer) clearTimeout(this.feedbackTimer);
@@ -213,21 +213,22 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   @HostListener('window:keydown', ['$event'])
-onGlobalKey(event: KeyboardEvent): void {
-  const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
-                      this.showPriceCheckModal() || this.showCashDrawerModal() || 
-                      this.showCustomerModal() || this.showShiftHandoverModal() || 
-                      this.showStoreModal() || this.showWeightModal() ||
-                      this.showMyDataConfig() || this.showOutOfStockModal() ||
-                      this.shiftService.isLocked();
+  onGlobalKey(event: KeyboardEvent): void {
+    const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
+                        this.showPriceCheckModal() || this.showCashDrawerModal() || 
+                        this.showCustomerModal() || this.showShiftHandoverModal() || 
+                        this.showStoreModal() || this.showWeightModal() ||
+                        this.showMyDataConfig() || this.showOutOfStockModal() ||
+                        this.showEmployeeModal() || this.showDiscountModal() ||
+                        this.shiftService.isLocked();
 
-  if (this.showOutOfStockModal() && (event.key === 'Enter' || event.key === 'Escape')) {
-    event.preventDefault();
-    this.closeOutOfStockModal();
-    return;
-  }
+    if (this.showOutOfStockModal() && (event.key === 'Enter' || event.key === 'Escape')) {
+      event.preventDefault();
+      this.closeOutOfStockModal();
+      return;
+    }
 
-  this.scanner.handleGlobalKey(event, isModalOpen, (code) => this.onBarcodeScanned(code));
+    this.scanner.handleGlobalKey(event, isModalOpen, (code) => this.onBarcodeScanned(code));
 
     if (event.code === 'Space' && !this.showPaymentModal() && this.cart.items().length > 0) {
       const target = event.target as HTMLElement;
@@ -248,17 +249,17 @@ onGlobalKey(event: KeyboardEvent): void {
   }
 
   public openEmployeeModal(): void {
-    this.newEmployee.set({
+    this.employeeForm = {
       name: '',
       pin: '',
       role: 'CASHIER',
       storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
-    });
+    };
     this.showEmployeeModal.set(true);
   }
 
   public async handleSaveEmployee(): Promise<void> {
-    const data = this.newEmployee();
+    const data = this.employeeForm;
     if (!data.name.trim() || !data.pin.trim()) {
       alert('Συμπληρώστε όνομα και 4-ψήφιο PIN');
       return;
@@ -267,8 +268,8 @@ onGlobalKey(event: KeyboardEvent): void {
     await this.shiftService.createCashier({
       name: data.name.trim(),
       pin: data.pin.trim(),
-      role: 'ADMIN',
-      storeId: data.storeId || this.tenantConfig.activeShop().code,
+      role: data.role,
+      storeId: data.storeId || this.tenantConfig.activeShop().code || 'SHOP-01',
       isActive: true
     });
 
@@ -280,7 +281,6 @@ onGlobalKey(event: KeyboardEvent): void {
     const raw = explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value || '';
     const code = raw.trim();
 
-    // Immediately clear input fields to prevent enter re-trigger
     this.searchQuery.set('');
     this.searchResults.set([]);
     if (this.barcodeInputRef?.nativeElement) {
@@ -293,7 +293,6 @@ onGlobalKey(event: KeyboardEvent): void {
     }
 
     const now = Date.now();
-    // 600ms debounce prevents double fire from hardware scanner + keydown.enter
     if (this.isProcessingScan || (code === this.lastScannedCode && (now - this.lastScannedTimestamp) < 600)) {
       return;
     }
@@ -305,7 +304,6 @@ onGlobalKey(event: KeyboardEvent): void {
 
     try {
       const res = await this.scanner.resolveBarcode(code);
-      
 
       if (res.type === 'added') {
         this.flashFeedback(res.message, 'success');
@@ -327,25 +325,23 @@ onGlobalKey(event: KeyboardEvent): void {
   }
 
   public checkExpiryStatus(expireDate?: string): 'VALID' | 'WARNING' | 'EXPIRED' {
-  if (!expireDate) return 'VALID';
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const exp = new Date(expireDate);
-  exp.setHours(0, 0, 0, 0);
+    if (!expireDate) return 'VALID';
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const exp = new Date(expireDate);
+    exp.setHours(0, 0, 0, 0);
 
-  const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diffDays < 0) return 'EXPIRED';
-  if (diffDays <= 3) return 'WARNING';
-  return 'VALID';
-}
+    if (diffDays < 0) return 'EXPIRED';
+    if (diffDays <= 3) return 'WARNING';
+    return 'VALID';
+  }
 
   public onSearchEnter(): void {
     const query = this.searchQuery().trim();
     if (!query) return;
-
-    // Delegate directly to onBarcodeScanned with single-entry debounce
     this.onBarcodeScanned(query);
   }
 
@@ -367,71 +363,69 @@ onGlobalKey(event: KeyboardEvent): void {
     }
   }
 
- public selectProduct(product: Product): void {
-  const currentStock = product.stockQuantity ?? 0;
+  public selectProduct(product: Product): void {
+    const currentStock = product.stockQuantity ?? 0;
 
-  // 1. If stock is 0 or less, open the Warning Modal
-  if (currentStock <= 0) {
-    this.outOfStockProduct.set(product);
-    this.showOutOfStockModal.set(true);
+    if (currentStock <= 0) {
+      this.outOfStockProduct.set(product);
+      this.showOutOfStockModal.set(true);
+      this.searchQuery.set('');
+      this.searchResults.set([]);
+      return;
+    }
+
+    const currentInCart = this.cart.items().find(i => (i.product.id || i.product.barcode) === (product.id || product.barcode))?.quantity || 0;
+    if (!product.isWeighted && (currentInCart + 1) > currentStock) {
+      this.outOfStockProduct.set(product);
+      this.showOutOfStockModal.set(true);
+      this.searchQuery.set('');
+      this.searchResults.set([]);
+      return;
+    }
+
+    if (product.isWeighted) {
+      this.promptWeight(product);
+    } else {
+      this.cart.addItem(product, 1);
+    }
+
     this.searchQuery.set('');
     this.searchResults.set([]);
-    return;
+    this.focusBarcodeInput();
   }
 
-  // 2. Check if item is already in cart and adding more exceeds stock
-  const currentInCart = this.cart.items().find(i => (i.product.id || i.product.barcode) === (product.id || product.barcode))?.quantity || 0;
-  if (!product.isWeighted && (currentInCart + 1) > currentStock) {
-    this.outOfStockProduct.set(product);
-    this.showOutOfStockModal.set(true);
-    this.searchQuery.set('');
-    this.searchResults.set([]);
-    return;
+  public openCartDiscountModal(): void {
+    this.discountScope.set('CART');
+    this.selectedDiscountItem.set(null);
+    this.customDiscountInput.set(this.cart.cartDiscountPercent() || 10);
+    this.showDiscountModal.set(true);
   }
 
-  if (product.isWeighted) {
-    this.promptWeight(product);
-  } else {
-    this.cart.addItem(product, 1);
+  public openItemDiscountModal(item: CartItem): void {
+    this.discountScope.set('ITEM');
+    this.selectedDiscountItem.set(item);
+    this.customDiscountInput.set(item.discountPercent || 10);
+    this.showDiscountModal.set(true);
   }
 
-  this.searchQuery.set('');
-  this.searchResults.set([]);
-  this.focusBarcodeInput();
-}
-
-public openCartDiscountModal(): void {
-  this.discountScope.set('CART');
-  this.selectedDiscountItem.set(null);
-  this.customDiscountInput.set(this.cart.cartDiscountPercent() || 10);
-  this.showDiscountModal.set(true);
-}
-
-public openItemDiscountModal(item: CartItem): void {
-  this.discountScope.set('ITEM');
-  this.selectedDiscountItem.set(item);
-  this.customDiscountInput.set(item.discountPercent || 10);
-  this.showDiscountModal.set(true);
-}
-
-public applyDiscount(percent: number): void {
-  if (this.discountScope() === 'CART') {
-    this.cart.setCartDiscount(percent);
-    this.flashFeedback(percent > 0 ? `✔ Έκπτωση Καλαθιού: ${percent}%` : 'Καθαρισμός Έκπτωσης', 'success');
-  } else if (this.selectedDiscountItem()) {
-    const prod = this.selectedDiscountItem()!.product;
-    this.cart.setItemDiscount(prod.id || prod.barcode, percent);
-    this.flashFeedback(percent > 0 ? `✔ Έκπτωση ${percent}% στο "${prod.name}"` : 'Καθαρισμός Έκπτωσης', 'success');
+  public applyDiscount(percent: number): void {
+    if (this.discountScope() === 'CART') {
+      this.cart.setCartDiscount(percent);
+      this.flashFeedback(percent > 0 ? `✔ Έκπτωση Καλαθιού: ${percent}%` : 'Καθαρισμός Έκπτωσης', 'success');
+    } else if (this.selectedDiscountItem()) {
+      const prod = this.selectedDiscountItem()!.product;
+      this.cart.setItemDiscount(prod.id || prod.barcode, percent);
+      this.flashFeedback(percent > 0 ? `✔ Έκπτωση ${percent}% στο "${prod.name}"` : 'Καθαρισμός Έκπτωσης', 'success');
+    }
+    this.showDiscountModal.set(false);
+    this.focusBarcodeInput();
   }
-  this.showDiscountModal.set(false);
-  this.focusBarcodeInput();
-}
 
-public closeOutOfStockModal(): void {
-  this.showOutOfStockModal.set(false);
-  this.outOfStockProduct.set(null);
-  this.focusBarcodeInput();
-}
+  public closeOutOfStockModal(): void {
+    this.showOutOfStockModal.set(false);
+    this.outOfStockProduct.set(null);
+    this.focusBarcodeInput();
+  }
 
   public promptWeight(product: Product): void {
     this.activeWeightedProduct.set(product);
@@ -663,12 +657,13 @@ public closeOutOfStockModal(): void {
   }
 
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
+    const activeShop = this.tenantConfig.activeShop();
     const companyProfile: MarketCompanyProfile = {
-      storeName: 'MARANTH MARKET',
-      address: 'Leof. Pentelis 45, Vrilissia',
-      afm: this.myDataService.credentials().issuerAfm || '123456789',
-      doy: 'XALANDRIOU',
-      phone: '210-6800000'
+      storeName: activeShop.name || 'MARANTH MARKET',
+      address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
+      afm: activeShop.afm || this.myDataService.credentials().issuerAfm || '123456789',
+      doy: activeShop.doy || 'XALANDRIOU',
+      phone: activeShop.phone || '210-6800000'
     };
 
     const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
@@ -718,12 +713,11 @@ public closeOutOfStockModal(): void {
     this.router.navigate(['/labels']);
   }
 
-public onImageError(event: Event): void {
-  const img = event.target as HTMLImageElement;
-  if (img) {
-    // Avoid infinite loop if placeholder fails
-    img.onerror = null;
-    img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+  public onImageError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    if (img) {
+      img.onerror = null;
+      img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+    }
   }
-}
 }
