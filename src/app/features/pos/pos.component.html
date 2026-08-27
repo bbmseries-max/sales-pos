@@ -999,29 +999,35 @@
         </div>
 
         <button 
-          type="button" 
-          (click)="handleSaveEmployee()"
-          class="w-full h-10 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 mt-2"
-        >
-          + Αποθήκευση Υπαλλήλου
-        </button>
+  type="button" 
+  (click)="handleSaveEmployee()"
+  [disabled]="isSavingEmployee()"
+  class="w-full h-11 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 mt-4 font-mono"
+>
+  {{ isSavingEmployee() ? 'Αποθήκευση...' : '+ Αποθήκευση Υπαλλήλου' }}
+</button>
       </div>
 
       <!-- Existing Cashiers List -->
-      <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-        <span class="text-[11px] text-slate-500 font-bold block">Ενεργοί Χρήστες Ταμείου:</span>
-        @for (c of shiftService.allCashiers(); track c.id) {
-          <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs">
-            <div>
-              <span class="font-bold text-slate-200 block">{{ c.name }}</span>
-              <span class="text-[10px] text-slate-500 font-mono">PIN: •••• • Ρόλος: {{ c.role }} • [{{ c.storeId }}]</span>
-            </div>
-            <span class="px-2 py-1 rounded text-[10px] font-bold" [class.bg-emerald-950]="c.isActive" [class.text-emerald-400]="c.isActive">
-              {{ c.isActive ? 'ΕΝΕΡΓΟΣ' : 'ΑΝΕΝΕΡΓΟΣ' }}
-            </span>
-          </div>
-        }
+     <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 mt-4">
+  <span class="text-[11px] text-slate-500 font-bold block font-mono">Εγγεγραμμένοι Χρήστες:</span>
+  @for (c of shiftService.allCashiers(); track c.id) {
+    <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs font-mono">
+      <div>
+        <span class="font-bold text-slate-200 block">{{ c.name }}</span>
+        <span class="text-[10px] text-slate-500">PIN: {{ c.pin }} • {{ c.role }} • [{{ c.storeId }}]</span>
       </div>
+      <button 
+        type="button" 
+        (click)="shiftService.toggleCashierStatus(c.id, false)" 
+        class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer"
+        title="Διαγραφή / Απενεργοποίηση"
+      >
+        🗑️
+      </button>
+    </div>
+  }
+</div>
 
     </div>
   </div>

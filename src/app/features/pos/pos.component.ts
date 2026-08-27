@@ -80,6 +80,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   private router = inject(Router);
 
   public showEmployeeModal = signal<boolean>(false);
+  public isSavingEmployee = signal<boolean>(false);
 
   // Search & Hardware Barcode State
   public searchQuery = signal<string>('');
@@ -258,14 +259,23 @@ export class PosComponent implements OnInit, AfterViewInit {
     this.showEmployeeModal.set(true);
   }
 
-  public async handleSaveEmployee(): Promise<void> {
-    const data = this.employeeForm;
-    if (!data.name.trim() || !data.pin.trim()) {
-      alert('Συμπληρώστε όνομα και 4-ψήφιο PIN');
-      return;
-    }
+ public async handleSaveEmployee(): Promise<void> {
+  if (this.isSavingEmployee()) return;
 
-    await this.shiftService.createCashier({
+  const data = this.employeeForm;
+  if (!data.name.trim()) {
+    alert('Συμπληρώστε όνομα υπαλλήλου.');
+    return;
+  }
+  if (!data.pin.trim() || data.pin.trim().length < 4) {
+    alert('Το PIN πρέπει να είναι τουλάχιστον 4 ψηφία.');
+    return;
+  }
+
+  this.isSavingEmployee.set(true);
+
+  try {
+    const res = await this.shiftService.createCashier({
       name: data.name.trim(),
       pin: data.pin.trim(),
       role: data.role,
@@ -273,9 +283,28 @@ export class PosComponent implements OnInit, AfterViewInit {
       isActive: true
     });
 
+    if (!res.success) {
+      alert(res.message);
+      return;
+    }
+
+    // Reset form & Close modal
+    this.employeeForm = {
+      name: '',
+      pin: '',
+      role: 'CASHIER',
+      storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
+    };
     this.showEmployeeModal.set(false);
-    this.flashFeedback(`✔ Ο υπάλληλος ${data.name} καταχωρήθηκε επιτυχώς!`, 'success');
+    this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
+  } catch (err) {
+    console.error('Save employee error:', err);
+    alert('Σφάλμα κατά την αποθήκευση.');
+  } finally {
+    this.isSavingEmployee.set(false);
+    this.focusBarcodeInput();
   }
+}
 
   public async onBarcodeScanned(explicitCode?: string): Promise<void> {
     const raw = explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value || '';
