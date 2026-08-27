@@ -15,13 +15,17 @@ export interface ShiftPaymentSummary {
   transactionCount: number;
 }
 
+export type CashierRole = 'CASHIER' | 'MANAGER' | 'ADMIN';
+
 export interface Cashier {
   id: string;
   name: string;
+  storeId?: string;
   pin: string;
   role: 'ADMIN' | 'CASHIER';
   isActive: boolean;
   avatarColor?: string;
+  //storeId: string;
 }
 
 export interface CashierShift {

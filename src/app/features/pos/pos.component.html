@@ -28,6 +28,16 @@
         </div>
       </button>
 
+      <button 
+  type="button" 
+  (click)="openEmployeeModal()"
+  class="h-10 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+  title="Διαχείριση Προσωπικού & PIN"
+>
+  <span>👥</span>
+  <span>Προσωπικό</span>
+</button>
+
       <!-- Cashier Session & Quick Actions -->
       @if (shiftService.currentCashier(); as cashier) {
         <div class="flex items-center gap-2 pl-3 border-l border-slate-800">
@@ -925,6 +935,95 @@
       >
         Κατάργηση Έκπτωσης (0%)
       </button>
+
+    </div>
+  </div>
+}
+
+@if (showEmployeeModal()) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border-2 border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4 font-mono">
+      
+      <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+        <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
+          <span>👥 ΠΡΟΣΘΗΚΗ / ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΩΠΙΚΟΥ</span>
+        </h3>
+        <button (click)="showEmployeeModal.set(false)" class="text-slate-400 hover:text-white font-bold cursor-pointer">✕</button>
+      </div>
+
+      <!-- Add New Employee Form -->
+      <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+        <h4 class="text-xs font-bold text-slate-300">Νέος Υπάλληλος</h4>
+        
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Όνομα & Επώνυμο</label>
+            <input 
+              type="text" 
+              [(ngModel)]="newEmployee().name" 
+              placeholder="π.χ. Νίκος Παπαδόπουλος"
+              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500"
+            />
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">4-Ψήφιο PIN Εισόδου</label>
+            <input 
+              type="password" 
+              maxlength="6"
+              [(ngModel)]="newEmployee().pin" 
+              placeholder="π.χ. 2024"
+              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-amber-400 font-bold outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Ρόλος / Δικαιώματα</label>
+            <select 
+              [(ngModel)]="newEmployee().role" 
+              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-2 text-xs text-slate-200 outline-none cursor-pointer"
+            >
+              <option value="CASHIER">Ταμίας (POS Only)</option>
+              <option value="MANAGER">Υπεύθυνος Βάρδιας</option>
+              <option value="ADMIN">Διαχειριστής / Ιδιοκτήτης</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Κατάστημα</label>
+            <input 
+              type="text" 
+              [(ngModel)]="newEmployee().storeId" 
+              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-slate-300 outline-none"
+              placeholder="π.χ. SHOP-01"
+            />
+          </div>
+        </div>
+
+        <button 
+          type="button" 
+          (click)="handleSaveEmployee()"
+          class="w-full h-10 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 mt-2"
+        >
+          + Αποθήκευση Υπαλλήλου
+        </button>
+      </div>
+
+      <!-- Existing Cashiers List -->
+      <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+        <span class="text-[11px] text-slate-500 font-bold block">Ενεργοί Χρήστες Ταμείου:</span>
+        @for (c of shiftService.allCashiers(); track c.id) {
+          <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs">
+            <div>
+              <span class="font-bold text-slate-200 block">{{ c.name }}</span>
+              <span class="text-[10px] text-slate-500 font-mono">PIN: •••• • Ρόλος: {{ c.role }} • [{{ c.storeId }}]</span>
+            </div>
+            <span class="px-2 py-1 rounded text-[10px] font-bold" [class.bg-emerald-950]="c.isActive" [class.text-emerald-400]="c.isActive">
+              {{ c.isActive ? 'ΕΝΕΡΓΟΣ' : 'ΑΝΕΝΕΡΓΟΣ' }}
+            </span>
+          </div>
+        }
+      </div>
 
     </div>
   </div>

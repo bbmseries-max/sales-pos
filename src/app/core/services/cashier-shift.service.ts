@@ -37,6 +37,45 @@ export class CashierShiftService {
     }
   }
 
+  // Inside CashierShiftService:
+
+public async loadAllCashiers(): Promise<void> {
+  let list = await marketDb.table('cashiers').toArray();
+  
+  // If empty, seed default admin
+  if (!list || list.length === 0) {
+    const defaultAdmin: Cashier = {
+      id: 'CASH-001',
+      name: 'Διαχειριστής (Admin)',
+      pin: '1234',
+      role: 'ADMIN',
+      storeId: 'SHOP-01',
+      isActive: true
+    };
+    await marketDb.table('cashiers').add(defaultAdmin);
+    list = [defaultAdmin];
+  }
+  
+  this.allCashiers.set(list);
+}
+
+public async createCashier(cashier: Omit<Cashier, 'id'>): Promise<Cashier> {
+  const newCashier: Cashier = {
+    ...cashier,
+    id: `CASH-${Date.now().toString().slice(-4)}`,
+    isActive: true
+  };
+  
+  await marketDb.table('cashiers').add(newCashier);
+  await this.loadAllCashiers();
+  return newCashier;
+}
+
+public async toggleCashierStatus(id: string, isActive: boolean): Promise<void> {
+  await marketDb.table('cashiers').update(id, { isActive });
+  await this.loadAllCashiers();
+}
+
   /**
    * Validates PIN and opens a brand-new shift with clean 0 metrics
    */

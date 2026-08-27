@@ -43,7 +43,7 @@ import {
   TransactionRecord, 
   MarketCompanyProfile, 
   Customer,
-  CartItem
+  CartItem, CashierRole
 } from '../../core/models';
 
 export type UiPaymentMethod = 'CASH' | 'CARD' | 'SPLIT';
@@ -81,6 +81,8 @@ export class PosComponent implements OnInit, AfterViewInit {
   public shiftService = inject(CashierShiftService);
   public tenantConfig = inject(TenantConfigService);
   private router = inject(Router);
+
+  public showEmployeeModal = signal<boolean>(false);
 
   // Search & Hardware Barcode State
   public searchQuery = signal<string>('');
@@ -140,6 +142,18 @@ export class PosComponent implements OnInit, AfterViewInit {
   private isProcessingScan = false;
   private lastScannedCode = '';
   private lastScannedTimestamp = 0;
+
+  public newEmployee = signal<{
+  name: string;
+  pin: string;
+  role: CashierRole;
+  storeId: string;
+}>({
+  name: '',
+  pin: '',
+  role: 'CASHIER',
+  storeId: 'SHOP-01'
+});
 
   // Computed Values
   public pointsDiscountAmount = computed(() => {
@@ -231,6 +245,35 @@ onGlobalKey(event: KeyboardEvent): void {
       event.preventDefault();
       this.shiftService.lockScreen();
     }
+  }
+
+  public openEmployeeModal(): void {
+    this.newEmployee.set({
+      name: '',
+      pin: '',
+      role: 'CASHIER',
+      storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
+    });
+    this.showEmployeeModal.set(true);
+  }
+
+  public async handleSaveEmployee(): Promise<void> {
+    const data = this.newEmployee();
+    if (!data.name.trim() || !data.pin.trim()) {
+      alert('Συμπληρώστε όνομα και 4-ψήφιο PIN');
+      return;
+    }
+
+    await this.shiftService.createCashier({
+      name: data.name.trim(),
+      pin: data.pin.trim(),
+      role: 'ADMIN',
+      storeId: data.storeId || this.tenantConfig.activeShop().code,
+      isActive: true
+    });
+
+    this.showEmployeeModal.set(false);
+    this.flashFeedback(`✔ Ο υπάλληλος ${data.name} καταχωρήθηκε επιτυχώς!`, 'success');
   }
 
   public async onBarcodeScanned(explicitCode?: string): Promise<void> {
