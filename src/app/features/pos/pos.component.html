@@ -38,7 +38,7 @@
           
           <!-- Handover / X-Report -->
           <button 
-            type="button"
+            type="button" 
             (click)="openShiftHandover()"
             title="Παράδοση Βάρδιας / Δελτίο Χ"
             class="h-9 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-400 border border-amber-500/40 rounded-xl cursor-pointer transition flex items-center gap-1"
@@ -48,22 +48,24 @@
 
           <!-- Lock Screen -->
           <button 
-            type="button"
+            type="button" 
             (click)="shiftService.lockScreen()"
             title="Κλείδωμα Οθόνης [F12]"
             class="h-9 px-2.5 bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700 rounded-xl text-sm cursor-pointer transition"
           >
             🔒
           </button>
-            <button 
-  type="button" 
-  (click)="openEmployeeModal()"
-  class="h-10 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
-  title="Διαχείριση Προσωπικού & PIN"
->
-  <span>👥</span>
-  <span>Προσωπικό</span>
-</button>
+
+          <!-- Manage Employees Button -->
+          <button 
+            type="button" 
+            (click)="openEmployeeModal()"
+            class="h-9 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+            title="Διαχείριση Προσωπικού & PIN"
+          >
+            <span>👥</span>
+            <span>Προσωπικό</span>
+          </button>
         </div>
       }
     </div>
@@ -73,7 +75,7 @@
       
       <!-- myDATA Status & Config -->
       <button 
-        type="button"
+        type="button" 
         (click)="showMyDataConfig.set(true)"
         class="h-11 px-4 bg-slate-800 hover:bg-slate-750 active:scale-95 text-sm font-mono font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-slate-100 transition-all flex items-center gap-2.5 cursor-pointer shadow-sm"
       >
@@ -96,7 +98,7 @@
 
       <!-- Spoilage / Φθορές -->
       <button 
-        type="button"
+        type="button" 
         (click)="navigateToSpoilage()"
         class="h-11 px-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-rose-500/60 text-rose-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
       >
@@ -105,7 +107,7 @@
 
       <!-- Z-Report -->
       <button 
-        type="button"
+        type="button" 
         (click)="navigateToZReport()"
         class="h-11 px-4 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-amber-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
       >
@@ -114,7 +116,7 @@
 
       <!-- Warehouse / Back-Office -->
       <button 
-        type="button"
+        type="button" 
         (click)="navigateToInventory()"
         class="h-11 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs font-black text-slate-950 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
       >
@@ -131,8 +133,8 @@
       
       <!-- 1. Έλεγχος Τιμής [F2] -->
       <button 
-        type="button"
-        (click)="showPriceCheckModal.set(true)"
+        type="button" 
+        (click)="openPriceCheck()"
         class="h-14 px-4 rounded-2xl bg-gradient-to-r from-sky-950/80 to-slate-900 border-2 border-sky-700/50 hover:border-sky-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
       >
         <div class="flex items-center gap-3">
@@ -146,7 +148,7 @@
 
       <!-- 2. Shelf Labels -->
       <button 
-        type="button"
+        type="button" 
         (click)="navigateToLabels()"
         class="h-14 px-4 rounded-2xl bg-gradient-to-r from-amber-950/80 to-slate-900 border-2 border-amber-700/50 hover:border-amber-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
       >
@@ -161,7 +163,7 @@
 
       <!-- 3. Cash Drawer Movements -->
       <button 
-        type="button"
+        type="button" 
         (click)="openCashDrawerModal('IN')"
         class="h-14 px-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-slate-900 border-2 border-emerald-700/50 hover:border-emerald-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
       >
@@ -176,7 +178,7 @@
 
       <!-- 4. Hold / Recall Ticket -->
       <button 
-        type="button"
+        type="button" 
         (click)="toggleHoldTicket()"
         class="h-14 px-4 rounded-2xl bg-gradient-to-r from-violet-950/80 to-slate-900 border-2 border-violet-700/50 hover:border-violet-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
       >
@@ -209,7 +211,7 @@
             </span>
           </div>
           <button 
-            type="button"
+            type="button" 
             (click)="cart.clearCart()" 
             [disabled]="cart.items().length === 0"
             class="text-xs font-mono text-slate-400 hover:text-rose-400 disabled:opacity-30 cursor-pointer transition"
@@ -237,7 +239,7 @@
                 </div>
               </div>
               <button 
-                type="button"
+                type="button" 
                 (click)="loyaltyService.clearActiveCustomer()"
                 class="text-slate-500 hover:text-rose-400 text-xs font-bold px-2 py-1 cursor-pointer"
               >
@@ -246,7 +248,7 @@
             </div>
           } @else {
             <button 
-              type="button"
+              type="button" 
               (click)="openCustomerModal()"
               class="w-full h-8 flex items-center justify-between text-xs font-mono font-bold text-slate-400 hover:text-amber-300 transition cursor-pointer"
             >
@@ -276,7 +278,6 @@
                 </div>
 
                 <div class="min-w-0 flex-1">
-                  <!-- Product Title in Basket -->
                   <span class="text-base font-extrabold text-white block truncate leading-snug">
                     {{ item.product.name }}
                   </span>
@@ -323,7 +324,7 @@
               <!-- Quantity Stepper Controls -->
               <div class="flex items-center bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shrink-0">
                 <button 
-                  type="button"
+                  type="button" 
                   (click)="cart.decreaseQuantity(item.product.id || item.product.barcode)" 
                   class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
                 >
@@ -337,7 +338,7 @@
                   }
                 </span>
                 <button 
-                  type="button"
+                  type="button" 
                   (click)="cart.increaseQuantity(item.product.id || item.product.barcode)" 
                   class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
                 >
@@ -359,8 +360,6 @@
           }
         </div>
 
-        
-
         <!-- Checkout Bottom Summary & Pay Button -->
         <div class="pt-3 border-t border-slate-800 space-y-2.5 shrink-0 bg-slate-900/90">
           <div class="space-y-0.5 text-xs font-mono">
@@ -378,9 +377,9 @@
             </div>
           </div>
 
-          <!-- DISCOUNT BUTTON: Half-size (h-10) with Amber / Gold Theme -->
+          <!-- DISCOUNT BUTTON -->
           <button 
-            type="button"
+            type="button" 
             (click)="openCartDiscountModal()"
             [disabled]="cart.items().length === 0"
             class="w-full h-10 px-4 rounded-xl border-2 font-mono font-black text-xs transition-all flex items-center justify-between cursor-pointer disabled:opacity-40 disabled:pointer-events-none active:scale-[0.99] shadow-md"
@@ -406,7 +405,7 @@
 
           <!-- Checkout Button -->
           <button 
-            type="button"
+            type="button" 
             (click)="openPayment()"
             [disabled]="cart.items().length === 0"
             class="w-full h-14 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-black text-base rounded-2xl transition flex items-center justify-between px-5 cursor-pointer shadow-xl shadow-emerald-500/20"
@@ -439,7 +438,7 @@
           
           @if (searchQuery().length > 0) {
             <button 
-              type="button"
+              type="button" 
               (click)="searchQuery.set(''); searchResults.set([]); focusBarcodeInput()"
               class="absolute right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-sm flex items-center justify-center transition cursor-pointer"
               title="Καθαρισμός"
@@ -459,11 +458,11 @@
               <div class="grid grid-cols-2 md:grid-cols-3 gap-3.5">
                 @for (prod of searchResults(); track prod.id) {
                   <button 
-                    type="button"
+                    type="button" 
                     (click)="selectProduct(prod)"
                     class="h-28 p-3 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500 rounded-2xl flex items-center gap-3.5 text-left transition-all cursor-pointer shadow-lg group relative overflow-hidden"
                   >
-                    <!-- 1. Dedicated Thumbnail Left -->
+                    <!-- Dedicated Thumbnail Left -->
                     <div class="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
                       <img 
                         [src]="catalogService.getProductImageUrl(prod)" 
@@ -473,7 +472,7 @@
                       />
                     </div>
 
-                    <!-- 2. Product Details Right -->
+                    <!-- Product Details Right -->
                     <div class="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5">
                       <div>
                         <span class="text-base font-black text-white group-hover:text-emerald-300 line-clamp-2 leading-tight block">
@@ -505,7 +504,7 @@
             </div>
           }
 
-          <!-- 2. Fast-Tap Favorites (Horizontal High-Legibility Tiles) -->
+          <!-- 2. Fast-Tap Favorites -->
           <div>
             <div class="flex justify-between items-center mb-2.5">
               <h4 class="text-xs font-black text-slate-400 uppercase tracking-wider">📌 Fast-Tap Favorites</h4>
@@ -515,11 +514,10 @@
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               @for (prod of pinnedProducts(); track prod.id) {
                 <button 
-                  type="button"
+                  type="button" 
                   (click)="selectProduct(prod)"
                   class="h-28 p-3 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500/80 rounded-2xl flex items-center gap-3.5 text-left transition-all cursor-pointer shadow-lg group relative overflow-hidden"
                 >
-                  <!-- 1. Dedicated Large Left Thumbnail (80x80px) -->
                   <div class="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
                     <img 
                       [src]="catalogService.getProductImageUrl(prod)" 
@@ -529,10 +527,7 @@
                     />
                   </div>
 
-                  <!-- 2. Right Side: Big Title & Bottom Metadata -->
                   <div class="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5">
-                    
-                    <!-- Product Title & Department -->
                     <div>
                       <span class="text-base font-black text-white group-hover:text-emerald-300 line-clamp-2 leading-tight block">
                         {{ prod.name }}
@@ -542,7 +537,6 @@
                       </span>
                     </div>
 
-                    <!-- Bottom Bar: Barcode / KG Badge & Prominent Price -->
                     <div class="flex justify-between items-end pt-1 border-t border-slate-800/80 w-full">
                       <div class="flex items-center gap-1.5">
                         <span class="text-xs font-mono text-slate-500">{{ prod.barcode || '—' }}</span>
@@ -557,7 +551,6 @@
                         €{{ (prod.price || 0).toFixed(2) }}
                       </span>
                     </div>
-
                   </div>
                 </button>
               }
@@ -593,7 +586,7 @@
         <!-- Payment Method Tabs -->
         <div class="grid grid-cols-2 gap-3">
           <button 
-            type="button"
+            type="button" 
             (click)="selectPaymentMethod('CASH')"
             [class.border-emerald-500]="paymentMethod() === 'CASH'"
             [class.bg-emerald-950/40]="paymentMethod() === 'CASH'"
@@ -604,7 +597,7 @@
           </button>
 
           <button 
-            type="button"
+            type="button" 
             (click)="selectPaymentMethod('CARD')"
             [class.border-emerald-500]="paymentMethod() === 'CARD'"
             [class.bg-emerald-950/40]="paymentMethod() === 'CARD'"
@@ -622,7 +615,7 @@
             <div class="grid grid-cols-4 gap-2.5">
               @for (amt of [5, 10, 20, 50]; track amt) {
                 <button 
-                  type="button"
+                  type="button" 
                   (click)="setTender(amt)" 
                   class="h-12 bg-slate-950 border border-slate-800 hover:border-emerald-500 text-base font-mono font-black text-slate-200 rounded-xl cursor-pointer transition"
                 >
@@ -641,7 +634,7 @@
         <!-- Actions -->
         <div class="flex gap-3 pt-2">
           <button 
-            type="button"
+            type="button" 
             (click)="showPaymentModal.set(false)" 
             class="flex-1 h-14 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-sm cursor-pointer"
           >
@@ -649,7 +642,7 @@
           </button>
           
           <button 
-            type="button"
+            type="button" 
             (click)="paymentMethod() === 'CARD' ? processCardPayment() : completeSale()" 
             [disabled]="isCardProcessing()"
             class="flex-1 h-14 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-base shadow-xl cursor-pointer transition flex items-center justify-center gap-2"
@@ -678,15 +671,16 @@
 
         <input 
           type="number" 
-          step="0.05"
-          [(ngModel)]="inputWeightKg"
+          step="0.05" 
+          [ngModel]="inputWeightKg()"
+          (ngModelChange)="inputWeightKg.set($event)"
           class="w-full h-14 bg-slate-950 border-2 border-emerald-500 text-center font-mono font-black text-2xl text-emerald-400 rounded-xl focus:outline-none"
         />
 
         <div class="grid grid-cols-4 gap-2">
           @for (w of [0.250, 0.500, 1.000, 2.000]; track w) {
             <button 
-              type="button"
+              type="button" 
               (click)="inputWeightKg.set(w)" 
               class="h-10 bg-slate-950 border border-slate-800 hover:border-slate-700 font-mono font-bold text-xs rounded-xl cursor-pointer"
             >
@@ -696,8 +690,8 @@
         </div>
 
         <div class="flex gap-2.5 pt-2">
-          <button (click)="showWeightModal.set(false)" class="flex-1 h-12 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">Ακύρωση</button>
-          <button (click)="confirmWeight()" class="flex-1 h-12 bg-emerald-500 text-slate-950 font-black rounded-xl text-sm shadow-lg">Προσθήκη</button>
+          <button (click)="showWeightModal.set(false)" class="flex-1 h-12 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs cursor-pointer">Ακύρωση</button>
+          <button (click)="confirmWeight()" class="flex-1 h-12 bg-emerald-500 text-slate-950 font-black rounded-xl text-sm shadow-lg cursor-pointer">Προσθήκη</button>
         </div>
       </div>
     </div>
@@ -716,9 +710,9 @@
           <div>
             <label class="block font-bold text-slate-400 mb-1">Περιβάλλον</label>
             <select 
-              [ngModel]="myDataService.credentials().environment"
+              [ngModel]="myDataService.credentials().environment" 
               (ngModelChange)="myDataService.updateCredentials({ environment: $event })"
-              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none cursor-pointer"
             >
               <option value="sandbox">Δοκιμαστικό (Sandbox Dev API)</option>
               <option value="production">Παραγωγικό (Live Production AADE)</option>
@@ -729,9 +723,9 @@
             <label class="block font-bold text-slate-400 mb-1">Α.Φ.Μ. Επιχείρησης</label>
             <input 
               type="text" 
-              [ngModel]="myDataService.credentials().issuerAfm"
+              [ngModel]="myDataService.credentials().issuerAfm" 
               (ngModelChange)="myDataService.updateCredentials({ issuerAfm: $event })"
-              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
             />
           </div>
 
@@ -739,9 +733,9 @@
             <label class="block font-bold text-slate-400 mb-1">aade-user-id</label>
             <input 
               type="text" 
-              [ngModel]="myDataService.credentials().aadeUserId"
+              [ngModel]="myDataService.credentials().aadeUserId" 
               (ngModelChange)="myDataService.updateCredentials({ aadeUserId: $event })"
-              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
             />
           </div>
 
@@ -749,22 +743,234 @@
             <label class="block font-bold text-slate-400 mb-1">Ocp-Apim-Subscription-Key</label>
             <input 
               type="password" 
-              [ngModel]="myDataService.credentials().subscriptionKey"
+              [ngModel]="myDataService.credentials().subscriptionKey" 
               (ngModelChange)="myDataService.updateCredentials({ subscriptionKey: $event })"
-              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
             />
           </div>
         </div>
 
         <div class="pt-2 border-t border-slate-800 flex justify-end">
           <button 
-            type="button"
+            type="button" 
             (click)="showMyDataConfig.set(false)" 
             class="h-10 px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer"
           >
             Αποθήκευση &amp; Κλείσιμο
           </button>
         </div>
+      </div>
+    </div>
+  }
+
+  <!-- Out of Stock Alert Modal -->
+  @if (showOutOfStockModal()) {
+    @if (outOfStockProduct(); as prod) {
+      <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-rose-600/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 text-center">
+          
+          <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center text-3xl mx-auto shadow-lg shadow-rose-950/50">
+            ⚠️
+          </div>
+
+          <div class="space-y-1">
+            <h3 class="text-xl font-black text-rose-400 uppercase tracking-wide">
+              ΕΞΑΝΤΛΗΜΕΝΟ ΑΠΟΘΕΜΑ
+            </h3>
+            <p class="text-xs font-mono text-slate-400">
+              Το προϊόν δεν μπορεί να προστεθεί στο καλάθι
+            </p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2">
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
+                <img 
+                  [src]="catalogService.getProductImageUrl(prod)" 
+                  (error)="onImageError($event)" 
+                  alt="" 
+                  class="w-full h-full object-contain"
+                />
+              </div>
+              <div class="min-w-0 flex-1">
+                <span class="text-sm font-extrabold text-white block truncate">{{ prod.name }}</span>
+                <span class="text-xs font-mono text-slate-400 block mt-0.5">{{ prod.barcode || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-slate-800/80 text-xs font-mono">
+              <span class="text-slate-400">Διαθέσιμο Απόθεμα:</span>
+              <span class="px-2.5 py-1 rounded-lg font-black text-sm bg-rose-950 text-rose-400 border border-rose-800">
+                {{ prod.stockQuantity }} {{ prod.isWeighted ? 'kg' : 'τεμ' }}
+              </span>
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            (click)="closeOutOfStockModal()"
+            class="w-full h-14 bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-base rounded-2xl transition cursor-pointer shadow-lg shadow-rose-600/30"
+            autofocus
+          >
+            ΕΝΤΑΞΕΙ (ΚΛΕΙΣΙΜΟ) [ENTER]
+          </button>
+
+        </div>
+      </div>
+    }
+  }
+
+  <!-- Discount Modal -->
+  @if (showDiscountModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5">
+        
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <h3 class="text-base font-black text-amber-400 uppercase tracking-wide">
+            🏷️ {{ discountScope() === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
+          </h3>
+          <button (click)="showDiscountModal.set(false)" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer">✕</button>
+        </div>
+
+        <!-- Preset Percentage Buttons -->
+        <div class="grid grid-cols-4 gap-2.5">
+          @for (pct of [5, 10, 20, 50]; track pct) {
+            <button 
+              type="button" 
+              (click)="applyDiscount(pct)"
+              class="h-14 bg-slate-950 border-2 border-slate-800 hover:border-amber-500 text-lg font-mono font-black text-slate-100 rounded-2xl transition cursor-pointer"
+            >
+              -{{ pct }}%
+            </button>
+          }
+        </div>
+
+        <!-- Custom Input -->
+        <div class="space-y-2">
+          <label class="text-xs font-bold text-slate-400 uppercase font-mono">Προσαρμοσμένο Ποσοστό (%)</label>
+          <div class="flex gap-2">
+            <input 
+              type="number" 
+              min="0" 
+              max="100" 
+              [ngModel]="customDiscountInput()"
+              (ngModelChange)="customDiscountInput.set($event)"
+              class="flex-1 h-12 bg-slate-950 border border-slate-700 rounded-xl px-4 text-center font-mono font-black text-xl text-amber-400 focus:outline-none"
+            />
+            <button 
+              type="button" 
+              (click)="applyDiscount(customDiscountInput())"
+              class="px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm transition cursor-pointer"
+            >
+              Εφαρμογή
+            </button>
+          </div>
+        </div>
+
+        <!-- Remove Discount -->
+        <button 
+          type="button" 
+          (click)="applyDiscount(0)"
+          class="w-full h-11 bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 font-bold text-xs rounded-xl transition cursor-pointer"
+        >
+          Κατάργηση Έκπτωσης (0%)
+        </button>
+
+      </div>
+    </div>
+  }
+
+  <!-- Employee Management Modal -->
+  @if (showEmployeeModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4 font-mono">
+        
+        <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+          <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
+            <span>👥 ΠΡΟΣΘΗΚΗ / ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΩΠΙΚΟΥ</span>
+          </h3>
+          <button (click)="showEmployeeModal.set(false)" class="text-slate-400 hover:text-white font-bold cursor-pointer">✕</button>
+        </div>
+
+        <!-- Add New Employee Form -->
+        <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+          <h4 class="text-xs font-bold text-slate-300">Νέος Υπάλληλος</h4>
+          
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Όνομα &amp; Επώνυμο</label>
+              <input 
+                type="text" 
+                [(ngModel)]="employeeForm.name" 
+                placeholder="π.χ. Νίκος Παπαδόπουλος"
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">4-Ψήφιο PIN Εισόδου</label>
+              <input 
+                type="password" 
+                maxlength="6"
+                [(ngModel)]="employeeForm.pin" 
+                placeholder="1234"
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-amber-400 font-bold outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Ρόλος / Δικαιώματα</label>
+              <select 
+                [(ngModel)]="employeeForm.role" 
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-2 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="CASHIER">Ταμίας (POS Only)</option>
+                <option value="MANAGER">Υπεύθυνος Βάρδιας</option>
+                <option value="ADMIN">Διαχειριστής / Ιδιοκτήτης</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Κατάστημα</label>
+              <input 
+                type="text" 
+                [(ngModel)]="employeeForm.storeId" 
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-slate-300 outline-none"
+                placeholder="π.χ. SHOP-01"
+              />
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            (click)="handleSaveEmployee()"
+            class="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 mt-2"
+          >
+            + Αποθήκευση Υπαλλήλου
+          </button>
+        </div>
+
+        <!-- Existing Cashiers List -->
+        <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 mt-4">
+          <span class="text-[11px] text-slate-500 font-bold block">Εγγεγραμμένοι Χρήστες Καταστήματος:</span>
+          @for (c of shiftService.allCashiers(); track c.id) {
+            <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs">
+              <div>
+                <span class="font-bold text-slate-200 block">{{ c.name }}</span>
+                <span class="text-[10px] text-slate-500">PIN: {{ c.pin }} • {{ c.role }} • [{{ c.storeId }}]</span>
+              </div>
+              <button 
+                type="button" 
+                (click)="shiftService.toggleCashierStatus(c.id, false)" 
+                class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer"
+                title="Διαγραφή / Απενεργοποίηση"
+              >
+                🗑️
+              </button>
+            </div>
+          }
+        </div>
+
       </div>
     </div>
   }
@@ -821,214 +1027,3 @@
   />
 
 </div>
-<!-- Out of Stock Alert Modal -->
-  @if (showOutOfStockModal(); as isVisible) {
-    @if (outOfStockProduct(); as prod) {
-      <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border-2 border-rose-600/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 text-center">
-          
-          <!-- Warning Icon & Header -->
-          <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center text-3xl mx-auto shadow-lg shadow-rose-950/50">
-            ⚠️
-          </div>
-
-          <div class="space-y-1">
-            <h3 class="text-xl font-black text-rose-400 uppercase tracking-wide">
-              ΕΞΑΝΤΛΗΜΕΝΟ ΑΠΟΘΕΜΑ
-            </h3>
-            <p class="text-xs font-mono text-slate-400">
-              Το προϊόν δεν μπορεί να προστεθεί στο καλάθι
-            </p>
-          </div>
-
-          <!-- Product Details Card -->
-          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2">
-            <div class="flex items-center gap-3">
-              <div class="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
-                <img 
-                  [src]="catalogService.getProductImageUrl(prod)" 
-                  (error)="onImageError($event)" 
-                  alt="" 
-                  class="w-full h-full object-contain"
-                />
-              </div>
-              <div class="min-w-0 flex-1">
-                <span class="text-sm font-extrabold text-white block truncate">{{ prod.name }}</span>
-                <span class="text-xs font-mono text-slate-400 block mt-0.5">{{ prod.barcode || '—' }}</span>
-              </div>
-            </div>
-
-            <div class="flex justify-between items-center pt-2 border-t border-slate-800/80 text-xs font-mono">
-              <span class="text-slate-400">Διαθέσιμο Απόθεμα:</span>
-              <span class="px-2.5 py-1 rounded-lg font-black text-sm bg-rose-950 text-rose-400 border border-rose-800">
-                {{ prod.stockQuantity }} {{ prod.isWeighted ? 'kg' : 'τεμ' }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Action Button -->
-          <button 
-            type="button" 
-            (click)="closeOutOfStockModal()"
-            class="w-full h-14 bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-base rounded-2xl transition cursor-pointer shadow-lg shadow-rose-600/30"
-            autofocus
-          >
-            ΕΝΤΑΞΕΙ (ΚΛΕΙΣΙΜΟ) [ENTER]
-          </button>
-
-        </div>
-      </div>
-    }
-  }
-
-  @if (showDiscountModal()) {
-  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5">
-      
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-base font-black text-amber-400 uppercase tracking-wide">
-          🏷️ {{ discountScope() === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
-        </h3>
-        <button (click)="showDiscountModal.set(false)" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer">✕</button>
-      </div>
-
-      <!-- Preset Percentage Buttons -->
-      <div class="grid grid-cols-4 gap-2.5">
-        @for (pct of [5, 10, 20, 50]; track pct) {
-          <button 
-            type="button" 
-            (click)="applyDiscount(pct)"
-            class="h-14 bg-slate-950 border-2 border-slate-800 hover:border-amber-500 text-lg font-mono font-black text-slate-100 rounded-2xl transition cursor-pointer"
-          >
-            -{{ pct }}%
-          </button>
-        }
-      </div>
-
-      <!-- Custom Input -->
-      <div class="space-y-2">
-        <label class="text-xs font-bold text-slate-400 uppercase font-mono">Προσαρμοσμένο Ποσοστό (%)</label>
-        <div class="flex gap-2">
-          <input 
-            type="number" 
-            min="0" 
-            max="100" 
-            [(ngModel)]="customDiscountInput"
-            class="flex-1 h-12 bg-slate-950 border border-slate-700 rounded-xl px-4 text-center font-mono font-black text-xl text-amber-400 focus:outline-none"
-          />
-          <button 
-            type="button" 
-            (click)="applyDiscount(customDiscountInput())"
-            class="px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm transition"
-          >
-            Εφαρμογή
-          </button>
-        </div>
-      </div>
-
-      <!-- Remove Discount -->
-      <button 
-        type="button" 
-        (click)="applyDiscount(0)"
-        class="w-full h-11 bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 font-bold text-xs rounded-xl transition"
-      >
-        Κατάργηση Έκπτωσης (0%)
-      </button>
-
-    </div>
-  </div>
-}
-
-@if (showEmployeeModal()) {
-  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4 font-mono">
-      
-      <div class="flex justify-between items-center pb-3 border-b border-slate-800">
-        <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
-          <span>👥 ΠΡΟΣΘΗΚΗ / ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΩΠΙΚΟΥ</span>
-        </h3>
-        <button (click)="showEmployeeModal.set(false)" class="text-slate-400 hover:text-white font-bold cursor-pointer">✕</button>
-      </div>
-
-      <!-- Add New Employee Form -->
-      <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-        <h4 class="text-xs font-bold text-slate-300">Νέος Υπάλληλος</h4>
-        
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] text-slate-400 mb-1">Όνομα & Επώνυμο</label>
-            <input 
-              type="text" 
-              [(ngModel)]="employeeForm.name" 
-              placeholder="π.χ. Νίκος Παπαδόπουλος"
-              class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500"
-            />
-          </div>
-          <div>
-            <label class="block text-[11px] text-slate-400 mb-1">4-Ψήφιο PIN Εισόδου</label>
-<input 
-  type="text" 
-  [(ngModel)]="employeeForm.name" 
-  placeholder="π.χ. Νίκος Παπαδόπουλος"
-  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none"
-/>
-
-<input 
-  type="password" 
-  maxlength="6"
-  [(ngModel)]="employeeForm.pin" 
-  placeholder="1234"
-  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-amber-400 font-bold outline-none"
-/>
-
-<select 
-  [(ngModel)]="employeeForm.role" 
-  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-2 text-xs text-slate-200 outline-none"
->
-  <option value="CASHIER">Ταμίας</option>
-  <option value="MANAGER">Υπεύθυνος Βάρδιας</option>
-  <option value="ADMIN">Διαχειριστής</option>
-</select>
-
-<input 
-  type="text" 
-  [(ngModel)]="employeeForm.storeId" 
-  class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-slate-300 outline-none"
-/>
-          </div>
-        </div>
-
-        <button 
-  type="button" 
-  (click)="handleSaveEmployee()"
-  [disabled]="isSavingEmployee()"
-  class="w-full h-11 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 mt-4 font-mono"
->
-  {{ isSavingEmployee() ? 'Αποθήκευση...' : '+ Αποθήκευση Υπαλλήλου' }}
-</button>
-      </div>
-
-      <!-- Existing Cashiers List -->
-     <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 mt-4">
-  <span class="text-[11px] text-slate-500 font-bold block font-mono">Εγγεγραμμένοι Χρήστες:</span>
-  @for (c of shiftService.allCashiers(); track c.id) {
-    <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs font-mono">
-      <div>
-        <span class="font-bold text-slate-200 block">{{ c.name }}</span>
-        <span class="text-[10px] text-slate-500">PIN: {{ c.pin }} • {{ c.role }} • [{{ c.storeId }}]</span>
-      </div>
-      <button 
-        type="button" 
-        (click)="shiftService.toggleCashierStatus(c.id, false)" 
-        class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer"
-        title="Διαγραφή / Απενεργοποίηση"
-      >
-        🗑️
-      </button>
-    </div>
-  }
-</div>
-
-    </div>
-  </div>
-}

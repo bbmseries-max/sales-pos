@@ -141,7 +141,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   private lastScannedCode = '';
   private lastScannedTimestamp = 0;
 
-  // Employee Form State (Plain object for stable [(ngModel)] two-way binding)
+  // Employee Form State
   public employeeForm: {
     name: string;
     pin: string;
@@ -259,52 +259,51 @@ export class PosComponent implements OnInit, AfterViewInit {
     this.showEmployeeModal.set(true);
   }
 
- public async handleSaveEmployee(): Promise<void> {
-  if (this.isSavingEmployee()) return;
+  public async handleSaveEmployee(): Promise<void> {
+    if (this.isSavingEmployee()) return;
 
-  const data = this.employeeForm;
-  if (!data.name.trim()) {
-    alert('Συμπληρώστε όνομα υπαλλήλου.');
-    return;
-  }
-  if (!data.pin.trim() || data.pin.trim().length < 4) {
-    alert('Το PIN πρέπει να είναι τουλάχιστον 4 ψηφία.');
-    return;
-  }
-
-  this.isSavingEmployee.set(true);
-
-  try {
-    const res = await this.shiftService.createCashier({
-      name: data.name.trim(),
-      pin: data.pin.trim(),
-      role: data.role,
-      storeId: data.storeId || this.tenantConfig.activeShop().code || 'SHOP-01',
-      isActive: true
-    });
-
-    if (!res.success) {
-      alert(res.message);
+    const data = this.employeeForm;
+    if (!data.name.trim()) {
+      alert('Συμπληρώστε όνομα υπαλλήλου.');
+      return;
+    }
+    if (!data.pin.trim() || data.pin.trim().length < 4) {
+      alert('Το PIN πρέπει να είναι τουλάχιστον 4 ψηφία.');
       return;
     }
 
-    // Reset form & Close modal
-    this.employeeForm = {
-      name: '',
-      pin: '',
-      role: 'CASHIER',
-      storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
-    };
-    this.showEmployeeModal.set(false);
-    this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
-  } catch (err) {
-    console.error('Save employee error:', err);
-    alert('Σφάλμα κατά την αποθήκευση.');
-  } finally {
-    this.isSavingEmployee.set(false);
-    this.focusBarcodeInput();
+    this.isSavingEmployee.set(true);
+
+    try {
+      const res = await this.shiftService.createCashier({
+        name: data.name.trim(),
+        pin: data.pin.trim(),
+        role: data.role,
+        storeId: data.storeId || this.tenantConfig.activeShop().code || 'SHOP-01',
+        isActive: true
+      });
+
+      if (!res.success) {
+        alert(res.message);
+        return;
+      }
+
+      this.employeeForm = {
+        name: '',
+        pin: '',
+        role: 'CASHIER',
+        storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
+      };
+      this.showEmployeeModal.set(false);
+      this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
+    } catch (err) {
+      console.error('Save employee error:', err);
+      alert('Σφάλμα κατά την αποθήκευση.');
+    } finally {
+      this.isSavingEmployee.set(false);
+      this.focusBarcodeInput();
+    }
   }
-}
 
   public async onBarcodeScanned(explicitCode?: string): Promise<void> {
     const raw = explicitCode || this.searchQuery() || this.barcodeInputRef?.nativeElement?.value || '';
@@ -528,7 +527,12 @@ export class PosComponent implements OnInit, AfterViewInit {
     this.cart.clear();
     this.tenantConfig.switchShop(newStoreCode);
     this.showStoreModal.set(false);
-    await this.catalogService.loadInitialCatalog();
+    
+    // Reload catalog & cashiers strictly for the selected store
+    await Promise.all([
+      this.catalogService.loadInitialCatalog(),
+      this.shiftService.loadAllCashiers()
+    ]);
 
     const active = this.tenantConfig.activeShop();
     this.flashFeedback(`✔ Ενεργό Κατάστημα: ${active.name} [${active.code}]`, 'success');
