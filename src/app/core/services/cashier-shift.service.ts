@@ -1,5 +1,6 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
 import { marketDb } from '../db/market-db';
+import { TenantConfigService } from './tenant-config.service';
 import { Cashier, CashierShift, ShiftPaymentSummary } from '../models/market.models';
 
 @Injectable({ providedIn: 'root' })
@@ -8,6 +9,7 @@ export class CashierShiftService {
   public currentShift = signal<CashierShift | null>(null);
   public isLocked = signal<boolean>(true);
   public allCashiers = signal<Cashier[]>([]);
+  public tenantConfig = inject(TenantConfigService);
 
   /**
    * Initializes cashiers from Dexie, seeds defaults if empty, and restores active shift
@@ -40,16 +42,22 @@ export class CashierShiftService {
   // Inside CashierShiftService:
 
 public async loadAllCashiers(): Promise<void> {
-  let list = await marketDb.table('cashiers').toArray();
+  const currentStoreId = this.tenantConfig.activeShop().id || this.tenantConfig.activeShop().code || 'SHOP-01';
   
-  // If empty, seed default admin
+  // 1. Fetch only employees assigned to THIS specific store
+  let list = await marketDb.table('cashiers')
+    .where('storeId')
+    .equals(currentStoreId)
+    .toArray();
+  
+  // 2. If this is a brand-new store with zero employees, create an Admin PIN specifically for this store
   if (!list || list.length === 0) {
     const defaultAdmin: Cashier = {
-      id: 'CASH-001',
-      name: 'Διαχειριστής (Admin)',
+      id: `CASH-${Date.now().toString().slice(-4)}`,
+      name: 'Υπεύθυνος Καταστήματος (Admin)',
       pin: '1234',
       role: 'ADMIN',
-      storeId: 'SHOP-01',
+      storeId: currentStoreId,
       isActive: true
     };
     await marketDb.table('cashiers').add(defaultAdmin);

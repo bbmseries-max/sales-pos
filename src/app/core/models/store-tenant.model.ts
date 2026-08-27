@@ -1,5 +1,6 @@
 export interface StoreTenant {
   code: string;
+  id?: string;
   name: string;
   afm: string;
   doy: string;
