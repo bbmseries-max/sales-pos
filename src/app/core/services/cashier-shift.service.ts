@@ -42,28 +42,29 @@ export class CashierShiftService {
   // Inside CashierShiftService:
 
 public async loadAllCashiers(): Promise<void> {
-  const currentStoreId = this.tenantConfig.activeShop().id || this.tenantConfig.activeShop().code || 'SHOP-01';
-  
-  // 1. Fetch only employees assigned to THIS specific store
+  const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
+
+  // 1. Fetch only employees registered under the active store
   let list = await marketDb.table('cashiers')
     .where('storeId')
     .equals(currentStoreId)
     .toArray();
-  
-  // 2. If this is a brand-new store with zero employees, create an Admin PIN specifically for this store
+
+  // 2. First-run bootstrap: If this specific store has zero employees, create its Initial Admin
   if (!list || list.length === 0) {
-    const defaultAdmin: Cashier = {
-      id: `CASH-${Date.now().toString().slice(-4)}`,
-      name: 'Υπεύθυνος Καταστήματος (Admin)',
+    const initialStoreAdmin: Cashier = {
+      id: `CASH-${currentStoreId}-ADMIN`,
+      name: `Υπεύθυνος (${this.tenantConfig.activeShop().name})`,
       pin: '1234',
       role: 'ADMIN',
       storeId: currentStoreId,
       isActive: true
     };
-    await marketDb.table('cashiers').add(defaultAdmin);
-    list = [defaultAdmin];
+
+    await marketDb.table('cashiers').add(initialStoreAdmin);
+    list = [initialStoreAdmin];
   }
-  
+
   this.allCashiers.set(list);
 }
 
