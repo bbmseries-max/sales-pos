@@ -27,18 +27,18 @@ export class MarketDatabase extends Dexie {
   constructor() {
     super('MaranthMarketDB');
     
-    this.version(5).stores({
-      products: '++id, barcode, sku, categoryId, name, isPinned',
-      categories: 'id, name',
-      transactions: 'id, timestamp, paymentMethod, customerPhone',
-      spoilageLogs: 'id, productId, timestamp',
-      cashLogs: 'id, type, timestamp',
-      customers: 'id, phone, name, afm',
-      suppliers: 'id, name, afm, phone',
-      purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber',
-      cashiers: 'id, pin, role, isActive',
-      shifts: 'id, cashierId, status, startTime'
-    });
+    this.version(6).stores({
+  products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId',
+  categories: 'id, name, tenantId',
+  transactions: 'id, timestamp, paymentMethod, customerPhone, storeId',
+  spoilageLogs: 'id, productId, timestamp, storeId',
+  cashLogs: 'id, type, timestamp, storeId',
+  customers: 'id, phone, name, afm',
+  suppliers: 'id, name, afm, phone',
+  purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
+  cashiers: 'id, pin, storeId, role, isActive',
+  shifts: 'id, cashierId, status, startTime, storeId'
+});
   }
 }
 
