@@ -95,7 +95,7 @@ export class CatalogImportService {
 
       const price = parseFloat(rawPrice);
       const costPrice = rawCost ? parseFloat(rawCost) : undefined;
-      const vatRate = rawVat ? parseInt(rawVat, 10) : 13;
+      const vatRate = rawVat !== '' && !isNaN(parseInt(rawVat, 10)) ? parseInt(rawVat, 10) : 13;
       const stockQuantity = rawStock ? parseFloat(rawStock) : 0;
       const isWeighted = rawWeighted === '1' || rawWeighted === 'true' || rawWeighted === 'yes' || rawWeighted === 'ναι';
 
@@ -174,23 +174,24 @@ export class CatalogImportService {
       } else {
         const newProd: Product = {
           id: 'PROD-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
-          barcode: row.barcode,
-          sku: row.sku || row.barcode,
-          name: row.name,
-          categoryId: 'CAT-GEN',
-          categoryName: row.categoryName || 'General',
-          price: row.price,
-          costPrice: row.costPrice,
-          vatRate: row.vatRate,
-          stockQuantity: row.stockQuantity,
-          stock: row.stockQuantity,
-          expire: row.expire,
-          shelfLocation: row.shelfLocation,
-          isWeighted: row.isWeighted || false,
-          isPinned: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
+  barcode: row.barcode,
+  sku: row.sku || row.barcode,
+  name: row.name,
+  categoryId: 'cat-pantry',
+  categoryName: row.categoryName || 'Παντοπωλείο',
+  price: row.price,
+  costPrice: row.costPrice,
+  vatRate: row.vatRate !== undefined ? row.vatRate : 13,
+  stockQuantity: row.stockQuantity,
+  stock: row.stockQuantity,
+  expire: row.expire,
+  shelfLocation: row.shelfLocation,
+  isWeighted: row.isWeighted || false,
+  isActive: true,
+  isPinned: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
         productsToPut.push(newProd);
         barcodeMap.set(row.barcode, newProd);
         added++;

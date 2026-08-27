@@ -4,8 +4,10 @@ import {
   Product, 
   Category
 } from '../models';
-import { SUPERMARKET_DEPARTMENTS, 
-  MasterCategory  } from '../models/market.models'
+import { 
+  SUPERMARKET_DEPARTMENTS, 
+  MasterCategory 
+} from '../models/market.models';
 
 export interface ExternalProductMatch {
   barcode: string;
@@ -36,21 +38,18 @@ export class MarketCatalogService {
   }
 
   public async loadInitialCatalog(): Promise<void> {
-    const all = await marketDb.products.toArray();
-    const activeItems = all.filter(p => p.isActive !== false);
-  this.products.set(activeItems);
-    
     const [prods, cats] = await Promise.all([
       marketDb.products.toArray(),
       marketDb.categories.toArray()
     ]);
 
-    this.products.set(prods);
+    // Keep only active items (ignoring soft-deleted)
+    const activeItems = (prods || []).filter(p => p.isActive !== false);
+    this.products.set(activeItems);
 
     if (cats && cats.length > 0) {
       this.categories.set(cats);
     } else {
-      // Initialize with the standard master departments
       const derivedCats = this.departments.map(d => ({
         id: d.id,
         name: d.name,
@@ -79,19 +78,16 @@ export class MarketCatalogService {
   }
 
   public getProductImageUrl(product: Partial<Product>): string {
-    // 1. Direct explicit URL/path
     const direct = product.imageUrl || product.image;
     if (direct && direct.trim().length > 0) {
       return direct.trim();
     }
 
-    // 2. Local public asset path: /products/{barcode}.webp
     const barcode = String(product.barcode || product.id || '').trim();
     if (barcode && barcode.length >= 3) {
       return `/products/${barcode}.webp`;
     }
 
-    // 3. Fallback placeholder SVG
     return this.getCategoryPlaceholderSvg(product.categoryId);
   }
 
@@ -138,17 +134,22 @@ export class MarketCatalogService {
               finalName = `${brand} ${rawName}`;
             }
 
-            // Map strictly to one of the 8 standard SUPERMARKET_DEPARTMENTS
+            // Map strictly to standard SUPERMARKET_DEPARTMENTS
             let categoryId = 'cat-pantry';
             let suggestedVat = 13;
 
             const categoryText = [
               p.categories || '',
               p.categories_tags ? p.categories_tags.join(' ') : '',
-              p.product_name || ''
+              p.product_name || '',
+              brand || ''
             ].join(' ').toLowerCase();
 
-            if (/γάλα|τυρί|dairy|cheese|milk|yogurt|γιαούρτι|φέτα|αυγά|αλλαντικ|ζαμπον/i.test(categoryText)) {
+            // 1. Tobacco & Smoker items -> 0% VAT
+            if (/τσιγάρ|καπν|καπνος|πουρο|τσιγαριλ|καπνοβιομηχαν|καρελια|marlboro|karelia|winston|camel|heets|terea|glo|neo|vape|iqos|tobacco|cigar|cigarette|rolling paper|χαρτακια|φιλτρακια|αναπτηρ/i.test(categoryText)) {
+              categoryId = 'cat-tobacco';
+              suggestedVat = 0;
+            } else if (/γάλα|τυρί|dairy|cheese|milk|yogurt|γιαούρτι|φέτα|αυγά|αλλαντικ|ζαμπον/i.test(categoryText)) {
               categoryId = 'cat-dairy';
               suggestedVat = 13;
             } else if (/ψωμί|bread|μπισκότ|snack|biscuit|chocolate|chips|cookie|σοκολάτ|κρουασάν/i.test(categoryText)) {
@@ -159,9 +160,6 @@ export class MarketCatalogService {
               suggestedVat = 24;
             } else if (/καθαριστικ|απορρυπαντικ|clean|detergent|paper|χαρτί|σαπούνι/i.test(categoryText)) {
               categoryId = 'cat-cleaning';
-              suggestedVat = 24;
-            } else if (/τσιγάρ|καπν|tobacco|vape|ψιλικ/i.test(categoryText)) {
-              categoryId = 'cat-tobacco';
               suggestedVat = 24;
             } else if (/σκυλ|γατ|pet|dog|cat|ζωοτροφ/i.test(categoryText)) {
               categoryId = 'cat-pets';
@@ -179,7 +177,7 @@ export class MarketCatalogService {
               categoryName: this.getCategoryName(categoryId),
               imageUrl: p.image_front_small_url || p.image_url || '',
               suggestedVatRate: suggestedVat,
-              suggestedPrice: 1.50
+              suggestedPrice: suggestedVat === 0 ? 4.50 : 1.50
             };
           }
         } catch {
@@ -213,11 +211,12 @@ export class MarketCatalogService {
       price: Number(params.price.toFixed(2)),
       costPrice: Number((params.price * 0.7).toFixed(2)),
       purchasePrice: Number((params.price * 0.7).toFixed(2)),
-      vatRate: params.vatRate || 13,
+      vatRate: params.vatRate !== undefined ? params.vatRate : 13,
       stockQuantity: 10,
       stock: 10,
       image: params.imageUrl || '',
       imageUrl: params.imageUrl || '',
+      isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -237,28 +236,32 @@ export class MarketCatalogService {
 
     const prods = await marketDb.products.where('categoryId').equals(categoryId).toArray();
     for (const p of prods) {
-  if (!p.id) continue;
-  await marketDb.products.update(p.id, { categoryName: trimmed });
-}
+      if (!p.id) continue;
+      await marketDb.products.update(p.id, { categoryName: trimmed });
+    }
 
     await this.loadInitialCatalog();
   }
 
   /**
-   * Normalizes all unassigned or legacy product categories into the 8 master departments
+   * Normalizes unassigned or legacy product categories into the master departments
    */
   public async autoInferCategoryNames(): Promise<void> {
     const list = await marketDb.products.toArray();
     const updates: Promise<any>[] = [];
 
-    const keywordRules: { match: RegExp; catId: string }[] = [
-      { match: /γάλα|τυρί|φέτα|γιαούρτι|βούτυρο|αλλαντικ|ζαμπον|milk|cheese|feta|yogurt/i, catId: 'cat-dairy' },
-      { match: /ψωμί|bread|μπισκότ|σνακ|σοκολάτ|κρουασάν|chips|snack|chocolate|biscuit/i, catId: 'cat-bakery' },
-      { match: /cola|νερό|αναψυκτικό|χυμός|soda|water|juice|μπύρα|κρασί|beer|wine|ποτό/i, catId: 'cat-drinks' },
-      { match: /skip|ariel|fairy|απορρυπαντικό|χαρτί|clean|soap|καθαριστικ/i, catId: 'cat-cleaning' },
-      { match: /τσιγάρ|καπν|tobacco|vape|ψιλικ/i, catId: 'cat-tobacco' },
-      { match: /σκυλ|γατ|pet|dog|cat|ζωοτροφ/i, catId: 'cat-pets' },
-      { match: /μήλα|μπανάνες|ντομάτες|πατάτες|apple|banana|tomato|φρούτ|λαχανικ/i, catId: 'cat-fruit' }
+    const keywordRules: { match: RegExp; catId: string; vatRate: number }[] = [
+      { 
+        match: /τσιγάρ|καπν|καπνος|πουρο|τσιγαριλ|καρελια|marlboro|karelia|winston|camel|heets|terea|glo|neo|vape|iqos|tobacco|cigar|cigarette|rolling paper|χαρτακια|φιλτρακια|αναπτηρ/i, 
+        catId: 'cat-tobacco', 
+        vatRate: 0 
+      },
+      { match: /γάλα|τυρί|φέτα|γιαούρτι|βούτυρο|αλλαντικ|ζαμπον|milk|cheese|feta|yogurt/i, catId: 'cat-dairy', vatRate: 13 },
+      { match: /ψωμί|bread|μπισκότ|σνακ|σοκολάτ|κρουασάν|chips|snack|chocolate|biscuit/i, catId: 'cat-bakery', vatRate: 24 },
+      { match: /cola|νερό|αναψυκτικό|χυμός|soda|water|juice|μπύρα|κρασί|beer|wine|ποτό/i, catId: 'cat-drinks', vatRate: 24 },
+      { match: /skip|ariel|fairy|απορρυπαντικό|χαρτί|clean|soap|καθαριστικ/i, catId: 'cat-cleaning', vatRate: 24 },
+      { match: /σκυλ|γατ|pet|dog|cat|ζωοτροφ/i, catId: 'cat-pets', vatRate: 24 },
+      { match: /μήλα|μπανάνες|ντομάτες|πατάτες|apple|banana|tomato|φρούτ|λαχανικ/i, catId: 'cat-fruit', vatRate: 13 }
     ];
 
     for (const prod of list) {
@@ -270,19 +273,23 @@ export class MarketCatalogService {
 
       if (isUnmapped) {
         let targetCatId = 'cat-pantry';
+        let suggestedVat = prod.vatRate ?? 13;
 
         for (const rule of keywordRules) {
           if (rule.match.test(prod.name)) {
             targetCatId = rule.catId;
+            suggestedVat = rule.vatRate;
             break;
           }
         }
 
         if (prod.id) {
-  updates.push(marketDb.products.update(prod.id, {
-    // ...
-  }));
-}
+          updates.push(marketDb.products.update(prod.id, {
+            categoryId: targetCatId,
+            categoryName: this.getCategoryName(targetCatId),
+            vatRate: suggestedVat
+          }));
+        }
       }
     }
 

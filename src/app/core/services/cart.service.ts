@@ -296,7 +296,9 @@ public setCartDiscount(percent: number): void {
     };
 
     for (const item of this.items()) {
-      const rate = Number(item.product.vatRate) || 24;
+     const rate = (item.product.vatRate !== undefined && item.product.vatRate !== null) 
+  ? Number(item.product.vatRate) 
+  : 24;
       const gross = (item.product.price || 0) * item.quantity;
       const multiplier = item.isRefund ? -1 : 1;
       const signedGross = gross * multiplier;
