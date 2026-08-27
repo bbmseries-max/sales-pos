@@ -32,6 +32,7 @@ export interface Product {
   isPinned?: boolean;
   sku?: string;
   tenantId?: string;
+  storeId?: string;
   updatedAt?: string;
   notes?: string;
   deletedAt?: string;

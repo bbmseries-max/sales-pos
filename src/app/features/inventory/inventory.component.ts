@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { marketDb } from '../../core/db/market-db';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
+import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { 
   Product, 
   Category,
@@ -26,6 +27,7 @@ export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
 })
 export class InventoryComponent implements OnInit {
   public catalogService = inject(MarketCatalogService);
+  public tenantConfig = inject(TenantConfigService);
   private router = inject(Router);
 
   // Single Source of Truth for Departments
@@ -37,55 +39,52 @@ export class InventoryComponent implements OnInit {
   public selectedCategoryId = signal<string>('all');
   public searchQuery = signal<string>('');
 
-  // Counts
+  // Header Summary Counts
   public totalCount = signal<number>(0);
   public lowStockCount = signal<number>(0);
   public expiringCount = signal<number>(0);
   public pinnedCount = signal<number>(0);
 
-  // Active editing item modal
+  // Active editing item modal & feedback
   public editingProduct = signal<Product | null>(null);
   public feedbackMsg = signal<string | null>(null);
 
   // 1. DYNAMIC CATEGORIES: Extracts categories & counts directly from items in DB
- public categories = computed(() => {
-  const prods = this.allProducts();
-  const countMap = new Map<string, number>();
+  public categories = computed(() => {
+    const prods = this.allProducts();
+    const countMap = new Map<string, number>();
 
-  // Count items per category ID (including legacy / Greek ID aliases)
-  for (const p of prods) {
-    let catId = p.categoryId || 'cat-pantry';
-    if (catId === 'cat-Ζοοτροφές' || catId === 'cat-zootrofes') {
-      catId = 'cat-pets';
+    for (const p of prods) {
+      let catId = p.categoryId || 'cat-pantry';
+      if (catId === 'cat-Ζοοτροφές' || catId === 'cat-zootrofes') {
+        catId = 'cat-pets';
+      }
+      countMap.set(catId, (countMap.get(catId) || 0) + 1);
     }
-    countMap.set(catId, (countMap.get(catId) || 0) + 1);
-  }
 
-  // Always starts with "All" (1) + All 8 Departments = 9 total tabs
-  const tabs = [
-    { id: 'all', name: '📦 Όλα τα Είδη', count: prods.length }
-  ];
+    const tabs: CategoryTab[] = [
+      { id: 'all', name: '📦 Όλα τα Είδη', count: prods.length }
+    ];
 
-  // Force iterate directly over SUPERMARKET_DEPARTMENTS
-  for (const dept of SUPERMARKET_DEPARTMENTS) {
-    tabs.push({
-      id: dept.id,
-      name: `${dept.icon} ${dept.name}`,
-      count: countMap.get(dept.id) || 0
-    });
-  }
+    for (const dept of SUPERMARKET_DEPARTMENTS) {
+      tabs.push({
+        id: dept.id,
+        name: `${dept.icon} ${dept.name}`,
+        count: countMap.get(dept.id) || 0
+      });
+    }
 
-  return tabs;
-});
+    return tabs;
+  });
 
-  // 2. FILTERED PRODUCTS: Provides `products()` to the template
+  // 2. FILTERED PRODUCTS: Provides reactive list to the template
   public products = computed<Product[]>(() => {
     let items = this.allProducts();
     const term = this.searchQuery().trim().toLowerCase();
     const catId = this.selectedCategoryId();
     const tab = this.selectedTab();
 
-    // Text Search
+    // Search query filter
     if (term.length > 0) {
       items = items.filter(p =>
         (p.name && p.name.toLowerCase().includes(term)) ||
@@ -95,7 +94,7 @@ export class InventoryComponent implements OnInit {
       );
     }
 
-    // Category Filter (Matches ID, Name, or Slug)
+    // Department category filter
     if (catId !== 'all') {
       items = items.filter(p => 
         p.categoryId === catId || 
@@ -104,7 +103,7 @@ export class InventoryComponent implements OnInit {
       );
     }
 
-    // Status Tab Filter
+    // Status tab filter
     if (tab === 'low-stock') {
       items = items.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5));
     } else if (tab === 'pinned') {
@@ -121,7 +120,7 @@ export class InventoryComponent implements OnInit {
       });
     }
 
-    // Cap at 150 items for smooth 60fps scrolling when all items are shown without query
+    // Cap at 150 items for smooth 60fps view on wide unfiltered lists
     if (!term && catId === 'all' && tab === 'all') {
       return items.slice(0, 150);
     }
@@ -133,45 +132,50 @@ export class InventoryComponent implements OnInit {
     await this.loadAllInventory();
   }
 
- // 1. Update loadAllInventory() to count only active products:
-public async loadAllInventory(): Promise<void> {
-  const all = await marketDb.products.toArray();
-  // Keep only active items (treating undefined as true for legacy records)
-  const activeOnly = all.filter(p => p.isActive !== false);
-  
-  this.allProducts.set(activeOnly);
+  /**
+   * Loads inventory strictly for the active store tenant and filters active items
+   */
+  public async loadAllInventory(): Promise<void> {
+    const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
+    
+    // Fetch products belonging to this store
+    const all = await marketDb.products
+      .where('storeId')
+      .equals(currentStoreId)
+      .toArray();
 
-  // Update Header Counts based on active items
-  this.totalCount.set(activeOnly.length);
-  this.lowStockCount.set(activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
-  this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
+    const activeOnly = (all || []).filter(p => p.isActive !== false);
+    this.allProducts.set(activeOnly);
 
-  const now = new Date();
-  const future30 = new Date();
-  future30.setDate(now.getDate() + 30);
-  
-  this.expiringCount.set(
-    activeOnly.filter(p => {
-      const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
-      if (!exp) return false;
-      const d = new Date(exp);
-      return !isNaN(d.getTime()) && d <= future30;
-    }).length
-  );
-}
+    // Update Header Counts
+    this.totalCount.set(activeOnly.length);
+    this.lowStockCount.set(activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
+    this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
 
-  // Handles category change inside the edit modal
+    const future30 = new Date();
+    future30.setDate(new Date().getDate() + 30);
+
+    this.expiringCount.set(
+      activeOnly.filter(p => {
+        const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
+        if (!exp) return false;
+        const d = new Date(exp);
+        return !isNaN(d.getTime()) && d <= future30;
+      }).length
+    );
+  }
+
   public onCategoryChange(newCatId: string): void {
-  const current = this.editingProduct();
-  if (!current) return;
+    const current = this.editingProduct();
+    if (!current) return;
 
-  const found = this.masterDepartments.find(d => d.id === newCatId);
-  this.editingProduct.set({
-    ...current,
-    categoryId: newCatId,
-    categoryName: found ? found.name : 'Παντοπωλείο & Τρόφιμα'
-  });
-}
+    const found = this.masterDepartments.find(d => d.id === newCatId);
+    this.editingProduct.set({
+      ...current,
+      categoryId: newCatId,
+      categoryName: found ? found.name : 'Παντοπωλείο & Τρόφιμα'
+    });
+  }
 
   public setTab(tab: FilterTab): void {
     this.selectedTab.set(tab);
@@ -195,53 +199,52 @@ public async loadAllInventory(): Promise<void> {
   }
 
   public onExpireDateChange(dateValue: string): void {
-  const current = this.editingProduct();
-  if (!current) return;
+    const current = this.editingProduct();
+    if (!current) return;
 
-  this.editingProduct.set({
-    ...current,
-    expire: dateValue || undefined,
-    statusDate: dateValue || undefined
-  });
-}
+    this.editingProduct.set({
+      ...current,
+      expire: dateValue || undefined,
+      statusDate: dateValue || undefined
+    });
+  }
 
-// 1. Soft Delete Action (archives the item)
-public async softDeleteProduct(product: Product): Promise<void> {
-  const targetId = product.id;
-  if (targetId === undefined || targetId === null) return;
+  public async softDeleteProduct(product: Product): Promise<void> {
+    const targetId = product.id;
+    if (targetId === undefined || targetId === null) return;
 
-  const confirmed = confirm(`Θέλετε να απενεργοποιήσετε το είδος "${product.name}"; Το προϊόν δεν θα εμφανίζεται στο ταμείο.`);
-  if (!confirmed) return;
+    const confirmed = confirm(`Θέλετε να απενεργοποιήσετε το είδος "${product.name}"; Το προϊόν δεν θα εμφανίζεται στο ταμείο.`);
+    if (!confirmed) return;
 
-  this.closeEditModal();
+    this.closeEditModal();
 
-  // Try updating with original type, or numeric fallback for Dexie auto-increment primary keys
-  const idToUpdate = typeof targetId === 'string' && !isNaN(Number(targetId)) ? Number(targetId) : targetId;
+    const idToUpdate = typeof targetId === 'string' && !isNaN(Number(targetId)) ? Number(targetId) : targetId;
 
-  await marketDb.products.update(idToUpdate, {
-    isActive: false,
-    deletedAt: new Date().toISOString()
-  });
+    await marketDb.products.update(idToUpdate as any, {
+      isActive: false,
+      deletedAt: new Date().toISOString()
+    });
 
-  await this.loadAllInventory();
-  await this.catalogService.loadInitialCatalog(); // Updates POS screen immediately
-  this.showToast(`Το προϊόν "${product.name}" τέθηκε σε αρχειοθέτηση.`);
-}
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog();
+    this.showToast(`Το προϊόν "${product.name}" τέθηκε σε αρχειοθέτηση.`);
+  }
 
-// 2. Restore Action (re-activates an archived item)
-public async restoreProduct(product: Product): Promise<void> {
-  const targetId = product.id;
-  if (!targetId) return;
+  public async restoreProduct(product: Product): Promise<void> {
+    const targetId = product.id;
+    if (!targetId) return;
 
-  await marketDb.products.update(targetId, {
-    isActive: true,
-    deletedAt: undefined
-  });
+    const idToUpdate = typeof targetId === 'string' && !isNaN(Number(targetId)) ? Number(targetId) : targetId;
 
-  await this.loadAllInventory();
-  await this.catalogService.loadInitialCatalog();
-  this.showToast(`Το προϊόν "${product.name}" επανήλθε σε ενεργή κατάσταση.`);
-}
+    await marketDb.products.update(idToUpdate as any, {
+      isActive: true,
+      deletedAt: undefined
+    });
+
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog();
+    this.showToast(`Το προϊόν "${product.name}" επανήλθε σε ενεργή κατάσταση.`);
+  }
 
   public async updateInlineStock(product: Product, delta: number): Promise<void> {
     const current = product.stockQuantity ?? 0;
@@ -249,22 +252,25 @@ public async restoreProduct(product: Product): Promise<void> {
     product.stockQuantity = newQty;
     
     if (product.id) {
-      await marketDb.products.update(product.id, { stockQuantity: newQty });
+      const idToUpdate = typeof product.id === 'string' && !isNaN(Number(product.id)) ? Number(product.id) : product.id;
+      await marketDb.products.update(idToUpdate as any, { stockQuantity: newQty });
     }
     await this.loadAllInventory();
-    await this.catalogService.loadInitialCatalog(); // <-- Refreshes shared POS catalog
+    await this.catalogService.loadInitialCatalog();
   }
 
   public async saveProductChanges(): Promise<void> {
     const item = this.editingProduct();
     if (!item) return;
 
+    item.storeId = item.storeId || this.tenantConfig.activeShop().code || 'SHOP-01';
     item.updatedAt = new Date().toISOString();
+    
     await marketDb.products.put(item);
 
     this.closeEditModal();
     await this.loadAllInventory();
-    await this.catalogService.loadInitialCatalog(); // <-- Refreshes shared POS catalog
+    await this.catalogService.loadInitialCatalog();
     this.showToast(`Ενημερώθηκε: "${item.name}"`);
   }
 
@@ -279,8 +285,9 @@ public async restoreProduct(product: Product): Promise<void> {
     product.isPinned = newStatus;
     
     if (product.id) {
-  await marketDb.products.update(product.id, { isPinned: newStatus });
-}
+      const idToUpdate = typeof product.id === 'string' && !isNaN(Number(product.id)) ? Number(product.id) : product.id;
+      await marketDb.products.update(idToUpdate as any, { isPinned: newStatus });
+    }
     await this.loadAllInventory();
     this.showToast(newStatus ? `Καρφιτσώθηκε: "${product.name}"` : `Ξεκαρφιτσώθηκε: "${product.name}"`);
   }

@@ -5,13 +5,13 @@
     <div class="flex items-center gap-4">
       <button 
         (click)="navigateToPos()" 
-        class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition"
+        class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
       >
         <span>← POS Checkout</span>
       </button>
       <div>
-        <h1 class="text-base font-black text-emerald-400">INVENTORY & MASTER CATALOG</h1>
-        <p class="text-[20px] text-slate-400">{{ totalCount() }} Total Products • {{ catalogService.categories().length }} Categories</p>
+        <h1 class="text-base font-black text-emerald-400">INVENTORY &amp; MASTER CATALOG</h1>
+        <p class="text-xs text-slate-400 font-mono">{{ totalCount() }} Total Products • {{ categories().length - 1 }} Categories</p>
       </div>
     </div>
 
@@ -25,7 +25,7 @@
         class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
       >
         <span>All Items</span>
-        <span class="text-[20px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'all'" [class.text-emerald-400]="selectedTab() === 'all'" [class.bg-slate-800]="selectedTab() !== 'all'">{{ totalCount() }}</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'all'" [class.text-emerald-400]="selectedTab() === 'all'" [class.bg-slate-800]="selectedTab() !== 'all'">{{ totalCount() }}</span>
       </button>
 
       <button 
@@ -36,18 +36,18 @@
         class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
       >
         <span>⚠️ Low Stock</span>
-        <span class="text-[20px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'low-stock'" [class.text-amber-400]="selectedTab() === 'low-stock'" [class.bg-slate-800]="selectedTab() !== 'low-stock'">{{ lowStockCount() }}</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'low-stock'" [class.text-amber-400]="selectedTab() === 'low-stock'" [class.bg-slate-800]="selectedTab() !== 'low-stock'">{{ lowStockCount() }}</span>
       </button>
 
       <button 
         (click)="setTab('expiring')"
-        [class.bg-red-500]="selectedTab() === 'expiring'"
+        [class.bg-rose-500]="selectedTab() === 'expiring'"
         [class.text-slate-950]="selectedTab() === 'expiring'"
         [class.text-slate-400]="selectedTab() !== 'expiring'"
         class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
       >
         <span>⏰ Expiring (&lt;30d)</span>
-        <span class="text-[20px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'expiring'" [class.text-red-400]="selectedTab() === 'expiring'" [class.bg-slate-800]="selectedTab() !== 'expiring'">{{ expiringCount() }}</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'expiring'" [class.text-rose-400]="selectedTab() === 'expiring'" [class.bg-slate-800]="selectedTab() !== 'expiring'">{{ expiringCount() }}</span>
       </button>
 
       <button 
@@ -58,15 +58,15 @@
         class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
       >
         <span>📌 Pinned at POS</span>
-        <span class="text-[20px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'pinned'" [class.text-sky-400]="selectedTab() === 'pinned'" [class.bg-slate-800]="selectedTab() !== 'pinned'">{{ pinnedCount() }}</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'pinned'" [class.text-sky-400]="selectedTab() === 'pinned'" [class.bg-slate-800]="selectedTab() !== 'pinned'">{{ pinnedCount() }}</span>
       </button>
 
       <button 
-  (click)="navigateToImport()"
-  class="h-10 px-4 bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-emerald-500/50 transition flex items-center gap-2 cursor-pointer"
->
-  <span>📥 Μαζική Εισαγωγή CSV</span>
-</button>
+        (click)="navigateToImport()"
+        class="h-9 px-3.5 bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-emerald-500/50 transition flex items-center gap-2 cursor-pointer"
+      >
+        <span>📥 Μαζική Εισαγωγή CSV</span>
+      </button>
     </div>
   </header>
 
@@ -77,388 +77,399 @@
     </div>
   }
 
-<!-- MAIN SPLIT CONTENT -->
-<div class="flex-1 flex overflow-hidden">
-  
- <!-- Left Sidebar Categories -->
-<aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 p-3 space-y-1.5 overflow-y-auto">
-  <div class="px-3 py-2 text-[20px] font-black uppercase tracking-wider text-slate-400 font-mono">
-    ΚΑΤΗΓΟΡΙΕΣ / ΤΜΗΜΑΤΑ
-  </div>
-
-  @for (cat of categories(); track cat.id) {
-    <button
-      type="button"
-      (click)="selectCategory(cat.id)"
-      [class.bg-emerald-950]="selectedCategoryId() === cat.id"
-      [class.border-emerald-500]="selectedCategoryId() === cat.id"
-      [class.text-emerald-300]="selectedCategoryId() === cat.id"
-      [class.bg-slate-950]="selectedCategoryId() !== cat.id"
-      [class.border-slate-800]="selectedCategoryId() !== cat.id"
-      [class.text-slate-300]="selectedCategoryId() !== cat.id"
-      class="w-full h-11 px-3 rounded-xl border flex items-center justify-between uppercase text-sm font-bold transition hover:border-slate-600 cursor-pointer"
-    >
-      <span class="truncate pr-2 text-left">{{ cat.name }}</span>
-      <span 
-        class="text-[20px] font-mono px-2 py-0.5 rounded-md font-black shrink-0"
-        [class.bg-emerald-500/20]="selectedCategoryId() === cat.id"
-        [class.text-emerald-400]="selectedCategoryId() === cat.id"
-        [class.bg-slate-800]="selectedCategoryId() !== cat.id"
-        [class.text-slate-400]="selectedCategoryId() !== cat.id"
-      >
-        {{ cat.count }}
-      </span>
-    </button>
-  }
-</aside>
-
-  <!-- RIGHT: Product Table & Filters -->
-  <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+  <!-- MAIN SPLIT CONTENT -->
+  <div class="flex-1 flex overflow-hidden">
     
-    <!-- Search & Summary Bar -->
-    <div class="p-3.5 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between gap-4">
-      <div class="flex-1 max-w-lg">
-        <div class="relative">
-          <input
-            type="text"
-            [ngModel]="searchQuery()"
-            (ngModelChange)="onSearchChange($event)"
-            placeholder="🔍 Αναζήτηση με όνομα, barcode, μάρκα ή ID..."
-            class="w-full h-11 bg-slate-900 border border-slate-700/80 rounded-xl pl-4 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition font-mono"
-          />
-          @if (searchQuery().length > 0) {
-            <button 
-              (click)="onSearchChange('')" 
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-xs font-bold"
-            >
-              ✕
-            </button>
-          }
+    <!-- Left Sidebar Categories -->
+    <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 p-3 space-y-1.5 overflow-y-auto">
+      <div class="px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
+        ΚΑΤΗΓΟΡΙΕΣ / ΤΜΗΜΑΤΑ
+      </div>
+
+      @for (cat of categories(); track cat.id) {
+        <button
+          type="button"
+          (click)="selectCategory(cat.id)"
+          [class.bg-emerald-950]="selectedCategoryId() === cat.id"
+          [class.border-emerald-500]="selectedCategoryId() === cat.id"
+          [class.text-emerald-300]="selectedCategoryId() === cat.id"
+          [class.bg-slate-950]="selectedCategoryId() !== cat.id"
+          [class.border-slate-800]="selectedCategoryId() !== cat.id"
+          [class.text-slate-300]="selectedCategoryId() !== cat.id"
+          class="w-full h-11 px-3 rounded-xl border flex items-center justify-between uppercase text-xs font-bold transition hover:border-slate-600 cursor-pointer"
+        >
+          <span class="truncate pr-2 text-left">{{ cat.name }}</span>
+          <span 
+            class="text-xs font-mono px-2 py-0.5 rounded-md font-black shrink-0"
+            [class.bg-emerald-500/20]="selectedCategoryId() === cat.id"
+            [class.text-emerald-400]="selectedCategoryId() === cat.id"
+            [class.bg-slate-800]="selectedCategoryId() !== cat.id"
+            [class.text-slate-400]="selectedCategoryId() !== cat.id"
+          >
+            {{ cat.count }}
+          </span>
+        </button>
+      }
+    </aside>
+
+    <!-- RIGHT: Product Table & Filters -->
+    <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+      
+      <!-- Search & Summary Bar -->
+      <div class="p-3.5 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between gap-4">
+        <div class="flex-1 max-w-lg">
+          <div class="relative">
+            <input
+              type="text"
+              [ngModel]="searchQuery()"
+              (ngModelChange)="onSearchChange($event)"
+              placeholder="🔍 Αναζήτηση με όνομα, barcode, μάρκα ή ID..."
+              class="w-full h-11 bg-slate-900 border border-slate-700/80 rounded-xl pl-4 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition font-mono"
+            />
+            @if (searchQuery().length > 0) {
+              <button 
+                (click)="onSearchChange('')" 
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            }
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-mono font-bold text-slate-400 bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+            Εμφάνιση: <strong class="text-emerald-400">{{ products().length }}</strong> ειδών
+          </span>
         </div>
       </div>
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono font-bold text-slate-400 bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
-          Εμφάνιση: <strong class="text-emerald-400">{{ products().length }}</strong> ειδών
-        </span>
-      </div>
-    </div>
 
-    <!-- Master Products Table (Large Row Heights for Touch/Scanning) -->
-    <div class="flex-1 overflow-y-auto">
-      <table class="w-full text-left border-collapse text-xs">
-        <thead class="bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800 sticky top-0 backdrop-blur-md z-10 text-[20px]">
-          <tr>
-            <th class="p-3 w-12 text-center">Pin</th>
-            <th class="p-3 w-16 text-center">Εικόνα</th>
-            <th class="p-3">Περιγραφή &amp; Barcode</th>
-            <th class="p-3">Ράφι</th>
-            <th class="p-3 text-center">ΦΠΑ</th>
-            <th class="p-3 text-right">Χονδρική (€)</th>
-            <th class="p-3 text-right">Λιανική (€)</th>
-            <th class="p-3 text-center">Απόθεμα</th>
-            <th class="p-3">Λήξη</th>
-            <th class="p-3 text-center">Ενέργειες</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-800/60">
-          @for (p of products(); track p.id) {
-            <tr class="hover:bg-slate-900/80 transition group h-16">
-              
-              <!-- Pin Toggle -->
-              <td class="p-3 text-center">
-                <button 
-                  (click)="togglePin(p, $event)" 
-                  class="text-lg transition-transform hover:scale-125 cursor-pointer"
-                  [title]="p.isPinned ? 'Καρφιτσωμένο στο POS' : 'Κλικ για καρφίτσωμα'"
-                >
-                  {{ p.isPinned ? '📌' : '⚪' }}
-                </button>
-              </td>
-
-              <!-- Thumbnail -->
-              <td class="p-3 text-center">
-                <img 
-                  [src]="catalogService.getProductImageUrl(p)" 
-                  (error)="onImageError($event)"
-                  alt="" 
-                  class="w-12 h-12 rounded-xl bg-slate-900 object-contain p-1 border border-slate-800 shadow-inner inline-block"
-                />
-              </td>
-
-              <!-- Product Name & Barcode -->
-              <td class="p-3">
-                <div class="text-sm font-bold text-slate-100 line-clamp-1 group-hover:text-emerald-300 transition">
-                  {{ p.name }}
-                </div>
-                <div class="text-xs font-mono text-slate-500 mt-0.5">
-                  <span class="text-slate-400 font-semibold">{{ p.barcode || '—' }}</span>
-                  @if (p.brand) {
-                    <span class="text-slate-600"> • </span>
-                    <span class="text-slate-400">{{ p.brand }}</span>
-                  }
-                  <span class="text-slate-600"> • ID: </span>{{ p.id }}
-                </div>
-              </td>
-
-              <!-- Shelf -->
-              <td class="p-3 font-mono text-slate-400 text-xs font-semibold">
-                {{ p.shelfLocation || '-' }}
-              </td>
-
-              <!-- VAT -->
-              <td class="p-3 text-center">
-                <span 
-                  class="px-2.5 py-1 rounded-lg font-mono font-bold text-xs" 
-                  [class.bg-emerald-950]="p.vatRate === 24" 
-                  [class.text-emerald-400]="p.vatRate === 24" 
-                  [class.border]="p.vatRate === 24"
-                  [class.border-emerald-800]="p.vatRate === 24"
-                  [class.bg-amber-950]="p.vatRate === 13" 
-                  [class.text-amber-400]="p.vatRate === 13" 
-                  [class.border-amber-800]="p.vatRate === 13"
-                  [class.bg-blue-950]="p.vatRate === 6" 
-                  [class.text-blue-400]="p.vatRate === 6"
-                >
-                  {{ p.vatRate  }}%
-                </span>
-              </td>
-
-              <!-- Purchase / Cost Price -->
-              <td class="p-3 text-right font-mono text-slate-400 text-xs">
-                €{{ (p.costPrice ?? p.costPrice ?? 0).toFixed(2) }}
-              </td>
-
-              <!-- Retail Price -->
-              <td class="p-3 text-right font-mono font-black text-sm text-emerald-400">
-                €{{ p.price.toFixed(2) }}
-              </td>
-
-              <!-- Inline Stock Stepper (Touch-Friendly) -->
-              <td class="p-3 text-center">
-                <div class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-inner">
-                  <button 
-                    (click)="updateInlineStock(p, -1)" 
-                    class="w-7 h-7 flex items-center justify-center hover:bg-slate-800 active:bg-slate-700 rounded-lg font-black text-base text-slate-300 transition cursor-pointer"
-                  >
-                    -
-                  </button>
-                  <span 
-                    class="px-2 font-mono font-black text-xs min-w-[36px] text-center" 
-                    [class.text-rose-400]="(p.stockQuantity ) <= 5" 
-                    [class.text-slate-100]="(p.stockQuantity ) > 5"
-                  >
-                    {{ p.stockQuantity  }}
-                  </span>
-                  <button 
-                    (click)="updateInlineStock(p, +1)" 
-                    class="w-7 h-7 flex items-center justify-center hover:bg-slate-800 active:bg-slate-700 rounded-lg font-black text-base text-slate-300 transition cursor-pointer"
-                  >
-                    +
-                  </button>
-                </div>
-              </td>
-
-              <!-- Expiry Date -->
-              <td class="p-3 font-mono text-xs">
-                @if (p.expire) {
-                  <span 
-                    [class.text-rose-400]="isItemExpired(p.expire)" 
-                    [class.font-bold]="isItemExpired(p.expire)" 
-                    [class.text-slate-300]="!isItemExpired(p.expire)"
-                  >
-                    {{ p.expire }}
-                    @if (isItemExpired(p.expire)) {
-                      <span class="text-[20px] bg-rose-950 border border-rose-800 text-rose-300 px-1.5 py-0.5 rounded-md ml-1 font-black">
-                        ΛΗΞΑΝ
-                      </span>
-                    }
-                  </span>
-                } @else {
-                  <span class="text-slate-600">-</span>
-                }
-              </td>
-
-              <!-- Actions -->
-              <td class="p-3 text-center">
-                <button 
-                  (click)="openEditModal(p)"
-                  class="h-9 px-3.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 hover:border-slate-500 transition cursor-pointer"
-                >
-                  Επεξεργασία
-                </button>
-              </td>
-            </tr>
-          } @empty {
+      <!-- Master Products Table -->
+      <div class="flex-1 overflow-y-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead class="bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800 sticky top-0 backdrop-blur-md z-10 text-[11px] font-mono">
             <tr>
-              <td colspan="10" class="p-16 text-center text-slate-500 font-sans">
-                <div class="text-3xl mb-2">🔍</div>
-                <div class="text-sm font-semibold">Δεν βρέθηκαν προϊόντα με τα επιλεγμένα φίλτρα.</div>
-              </td>
+              <th class="p-3 w-12 text-center">Pin</th>
+              <th class="p-3 w-16 text-center">Εικόνα</th>
+              <th class="p-3">Περιγραφή &amp; Barcode</th>
+              <th class="p-3">Ράφι</th>
+              <th class="p-3 text-center">ΦΠΑ</th>
+              <th class="p-3 text-right">Χονδρική (€)</th>
+              <th class="p-3 text-right">Λιανική (€)</th>
+              <th class="p-3 text-center">Απόθεμα</th>
+              <th class="p-3">Λήξη</th>
+              <th class="p-3 text-center">Ενέργειες</th>
             </tr>
-          }
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60">
+            @for (p of products(); track p.id) {
+              <tr class="hover:bg-slate-900/80 transition group h-16">
+                
+                <!-- Pin Toggle -->
+                <td class="p-3 text-center">
+                  <button 
+                    (click)="togglePin(p, $event)" 
+                    class="text-lg transition-transform hover:scale-125 cursor-pointer"
+                    [title]="p.isPinned ? 'Καρφιτσωμένο στο POS' : 'Κλικ για καρφίτσωμα'"
+                  >
+                    {{ p.isPinned ? '📌' : '⚪' }}
+                  </button>
+                </td>
 
-  </main>
-</div>
+                <!-- Thumbnail -->
+                <td class="p-3 text-center">
+                  <img 
+                    [src]="catalogService.getProductImageUrl(p)" 
+                    (error)="onImageError($event)"
+                    alt="" 
+                    class="w-12 h-12 rounded-xl bg-slate-900 object-contain p-1 border border-slate-800 shadow-inner inline-block"
+                  />
+                </td>
+
+                <!-- Product Name & Barcode -->
+                <td class="p-3">
+                  <div class="text-sm font-bold text-slate-100 line-clamp-1 group-hover:text-emerald-300 transition">
+                    {{ p.name }}
+                  </div>
+                  <div class="text-xs font-mono text-slate-500 mt-0.5">
+                    <span class="text-slate-400 font-semibold">{{ p.barcode || '—' }}</span>
+                    @if (p.brand) {
+                      <span class="text-slate-600"> • </span>
+                      <span class="text-slate-400">{{ p.brand }}</span>
+                    }
+                    <span class="text-slate-600"> • ID: </span>{{ p.id }}
+                  </div>
+                </td>
+
+                <!-- Shelf -->
+                <td class="p-3 font-mono text-slate-400 text-xs font-semibold">
+                  {{ p.shelfLocation || '-' }}
+                </td>
+
+                <!-- VAT -->
+                <td class="p-3 text-center">
+                  <span 
+                    class="px-2.5 py-1 rounded-lg font-mono font-bold text-xs" 
+                    [class.bg-emerald-950]="p.vatRate === 24" 
+                    [class.text-emerald-400]="p.vatRate === 24" 
+                    [class.border]="p.vatRate === 24"
+                    [class.border-emerald-800]="p.vatRate === 24"
+                    [class.bg-amber-950]="p.vatRate === 13" 
+                    [class.text-amber-400]="p.vatRate === 13" 
+                    [class.border]="p.vatRate === 13"
+                    [class.border-amber-800]="p.vatRate === 13"
+                    [class.bg-blue-950]="p.vatRate === 6" 
+                    [class.text-blue-400]="p.vatRate === 6"
+                    [class.border]="p.vatRate === 6"
+                    [class.border-blue-800]="p.vatRate === 6"
+                    [class.bg-slate-800]="p.vatRate === 0"
+                    [class.text-slate-300]="p.vatRate === 0"
+                    [class.border]="p.vatRate === 0"
+                    [class.border-slate-700]="p.vatRate === 0"
+                  >
+                    {{ p.vatRate  }}%
+                  </span>
+                </td>
+
+                <!-- Purchase / Cost Price -->
+                <td class="p-3 text-right font-mono text-slate-400 text-xs">
+                  €{{ (p.costPrice || 0).toFixed(2) }}
+                </td>
+
+                <!-- Retail Price -->
+                <td class="p-3 text-right font-mono font-black text-sm text-emerald-400">
+                  €{{ p.price.toFixed(2) }}
+                </td>
+
+                <!-- Inline Stock Stepper -->
+                <td class="p-3 text-center">
+                  <div class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-inner">
+                    <button 
+                      (click)="updateInlineStock(p, -1)" 
+                      class="w-7 h-7 flex items-center justify-center hover:bg-slate-800 active:bg-slate-700 rounded-lg font-black text-base text-slate-300 transition cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span 
+                      class="px-2 font-mono font-black text-xs min-w-[36px] text-center" 
+                      [class.text-rose-400]="(p.stockQuantity ) <= 5" 
+                      [class.text-slate-100]="(p.stockQuantity ) > 5"
+                    >
+                      {{ p.stockQuantity  }}
+                    </span>
+                    <button 
+                      (click)="updateInlineStock(p, +1)" 
+                      class="w-7 h-7 flex items-center justify-center hover:bg-slate-800 active:bg-slate-700 rounded-lg font-black text-base text-slate-300 transition cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </td>
+
+                <!-- Expiry Date -->
+                <td class="p-3 font-mono text-xs">
+                  @if (p.expire) {
+                    <span 
+                      [class.text-rose-400]="isItemExpired(p.expire)" 
+                      [class.font-bold]="isItemExpired(p.expire)" 
+                      [class.text-slate-300]="!isItemExpired(p.expire)"
+                    >
+                      {{ p.expire }}
+                      @if (isItemExpired(p.expire)) {
+                        <span class="text-[10px] bg-rose-950 border border-rose-800 text-rose-300 px-1.5 py-0.5 rounded-md ml-1 font-black">
+                          ΛΗΞΑΝ
+                        </span>
+                      }
+                    </span>
+                  } @else {
+                    <span class="text-slate-600">-</span>
+                  }
+                </td>
+
+                <!-- Actions -->
+                <td class="p-3 text-center">
+                  <button 
+                    (click)="openEditModal(p)"
+                    class="h-9 px-3.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 hover:border-slate-500 transition cursor-pointer"
+                  >
+                    Επεξεργασία
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="10" class="p-16 text-center text-slate-500 font-sans">
+                  <div class="text-3xl mb-2">🔍</div>
+                  <div class="text-sm font-semibold">Δεν βρέθηκαν προϊόντα με τα επιλεγμένα φίλτρα.</div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+  </div>
 
   <!-- EDIT PRODUCT MODAL -->
-@if (editingProduct(); as item) {
-  <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
-      
-      <!-- Modal Header -->
-      <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
-        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
-          <span>✏️ Επεξεργασία Προϊόντος</span>
-        </h3>
-        <button 
-          (click)="closeEditModal()" 
-          class="text-slate-400 hover:text-slate-100 text-lg font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800 transition"
-        >
-          ✕
-        </button>
-      </div>
-
-      <!-- Modal Body Form -->
-      <div class="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+  @if (editingProduct(); as item) {
+    <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
         
-        <!-- Product Name -->
-        <div>
-          <label class="block text-xs font-bold text-slate-400 mb-1">Όνομα Προϊόντος</label>
-          <input 
-            type="text" 
-            [(ngModel)]="item.name" 
-            class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-bold focus:border-emerald-500 outline-none"
-          />
-        </div>
-
-        <!-- CATEGORY SELECTOR DROPDOWN -->
-        <div>
-          <label class="block text-xs font-bold text-slate-400 mb-1">Τμήμα / Κατηγορία</label>
-          <select 
-            [ngModel]="item.categoryId || 'cat-pantry'" 
-            (ngModelChange)="onCategoryChange($event)"
-            class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-bold focus:border-emerald-500 outline-none cursor-pointer"
+        <!-- Modal Header -->
+        <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+          <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <span>✏️ Επεξεργασία Προϊόντος</span>
+          </h3>
+          <button 
+            (click)="closeEditModal()" 
+            class="text-slate-400 hover:text-slate-100 text-lg font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
-            @for (dept of masterDepartments; track dept.id) {
-              <option [value]="dept.id" class="bg-slate-900 text-slate-100 py-2">
-                {{ dept.icon }} {{ dept.name }}
-              </option>
-            }
-          </select>
+            ✕
+          </button>
         </div>
 
-        <!-- Barcode & Brand Row -->
-        <div class="grid grid-cols-2 gap-3">
+        <!-- Modal Body Form -->
+        <div class="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+          
+          <!-- Product Name -->
           <div>
-            <label class="block text-xs font-bold text-slate-400 mb-1">Barcode</label>
+            <label class="block text-xs font-bold text-slate-400 mb-1">Όνομα Προϊόντος</label>
             <input 
               type="text" 
-              [(ngModel)]="item.barcode" 
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none"
+              [(ngModel)]="item.name" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-bold focus:border-emerald-500 outline-none"
             />
           </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-400 mb-1">Μάρκα (Brand)</label>
-            <input 
-              type="text" 
-              [(ngModel)]="item.brand" 
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 focus:border-emerald-500 outline-none"
-            />
-          </div>
-        </div>
 
-        <!-- Prices Row (Cost vs Retail) -->
-        <div class="grid grid-cols-2 gap-3">
+          <!-- Category Selector Dropdown -->
           <div>
-            <label class="block text-xs font-bold text-slate-400 mb-1">Χονδρική (€)</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              [(ngModel)]="item.costPrice" 
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-emerald-400 mb-1">Λιανική Τιμή (€)</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              [(ngModel)]="item.price" 
-              class="w-full h-11 bg-slate-950 border border-emerald-500/50 rounded-xl px-3 text-sm text-emerald-300 font-mono font-bold focus:border-emerald-400 outline-none"
-            />
-          </div>
-        </div>
-
-        <!-- Expiration Date Field -->
-<div>
-  <label class="block text-xs font-bold text-slate-400 mb-1">Ημερομηνία Λήξης (Expiry Date)</label>
-  <div class="relative">
-    <input 
-      type="date"
-      [ngModel]="editingProduct()?.expire" 
-      (ngModelChange)="onExpireDateChange($event)"
-      class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none cursor-pointer"
-    />
-  </div>
-</div>
-
-        <!-- VAT Rate & Stock -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-400 mb-1">Συντελεστής ΦΠΑ</label>
+            <label class="block text-xs font-bold text-slate-400 mb-1">Τμήμα / Κατηγορία</label>
             <select 
-              [(ngModel)]="item.vatRate" 
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none cursor-pointer"
+              [ngModel]="item.categoryId || 'cat-pantry'" 
+              (ngModelChange)="onCategoryChange($event)"
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-bold focus:border-emerald-500 outline-none cursor-pointer"
             >
-              <option [ngValue]="24">24% (Κανονικός)</option>
-              <option [ngValue]="13">13% (Μειωμένος / Τρόφιμα)</option>
-              <option [ngValue]="6">6% (Υπερμειωμένος / Φάρμακα-Βιβλία)</option>
-              <option [ngValue]="0">0% (Χωρίς ΦΠΑ / Τσιγάρα-Κάρτες-Καπνικά)</option>
+              @for (dept of masterDepartments; track dept.id) {
+                <option [value]="dept.id" class="bg-slate-900 text-slate-100 py-2">
+                  {{ dept.icon }} {{ dept.name }}
+                </option>
+              }
             </select>
           </div>
+
+          <!-- Barcode & Brand Row -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1">Barcode</label>
+              <input 
+                type="text" 
+                [(ngModel)]="item.barcode" 
+                class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1">Μάρκα (Brand)</label>
+              <input 
+                type="text" 
+                [(ngModel)]="item.brand" 
+                class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 focus:border-emerald-500 outline-none"
+              />
+            </div>
+          </div>
+
+          <!-- Prices Row (Cost vs Retail) -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1">Χονδρική (€)</label>
+              <input 
+                type="number" 
+                step="0.01" 
+                [(ngModel)]="item.costPrice" 
+                class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-emerald-400 mb-1">Λιανική Τιμή (€)</label>
+              <input 
+                type="number" 
+                step="0.01" 
+                [(ngModel)]="item.price" 
+                class="w-full h-11 bg-slate-950 border border-emerald-500/50 rounded-xl px-3 text-sm text-emerald-300 font-mono font-bold focus:border-emerald-400 outline-none"
+              />
+            </div>
+          </div>
+
+          <!-- Expiration Date Field -->
           <div>
-            <label class="block text-xs font-bold text-slate-400 mb-1">Απόθεμα</label>
-            <input 
-              type="number" 
-              [(ngModel)]="item.stockQuantity" 
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none"
-            />
+            <label class="block text-xs font-bold text-slate-400 mb-1">Ημερομηνία Λήξης (Expiry Date)</label>
+            <div class="relative">
+              <input 
+                type="date" 
+                [ngModel]="editingProduct()?.expire" 
+                (ngModelChange)="onExpireDateChange($event)"
+                class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none cursor-pointer"
+              />
+            </div>
+          </div>
+
+          <!-- VAT Rate & Stock -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1">Συντελεστής ΦΠΑ</label>
+              <select 
+                [(ngModel)]="item.vatRate" 
+                class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none cursor-pointer"
+              >
+                <option [ngValue]="24">24% (Κανονικός)</option>
+                <option [ngValue]="13">13% (Μειωμένος / Τρόφιμα)</option>
+                <option [ngValue]="6">6% (Υπερμειωμένος / Φάρμακα-Βιβλία)</option>
+                <option [ngValue]="0">0% (Χωρίς ΦΠΑ / Τσιγάρα-Κάρτες-Καπνικά)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1">Απόθεμα</label>
+              <input 
+                type="number" 
+                [(ngModel)]="item.stockQuantity" 
+                class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-sm text-slate-100 font-mono focus:border-emerald-500 outline-none"
+              />
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Modal Footer Actions -->
+        <div class="p-4 border-t border-slate-800 bg-slate-850 flex items-center justify-between">
+          <button 
+            type="button" 
+            (click)="softDeleteProduct(item)"
+            class="h-11 px-3 bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            title="Απενεργοποίηση / Διαγραφή"
+          >
+            <span>🗑️</span>
+            <span>Διαγραφή</span>
+          </button>
+          
+          <div class="flex items-center gap-3">
+            <button 
+              type="button" 
+              (click)="closeEditModal()" 
+              class="h-11 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+            >
+              Ακύρωση
+            </button>
+            <button 
+              type="button" 
+              (click)="saveProductChanges()" 
+              class="h-11 px-5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 cursor-pointer"
+            >
+              Αποθήκευση Αλλαγών
+            </button>
           </div>
         </div>
 
       </div>
-
-      <!-- Modal Footer Actions -->
-      <div class="p-4 border-t border-slate-800 bg-slate-850 flex justify-end gap-3">
-        <button 
-          type="button" 
-          (click)="closeEditModal()" 
-          class="h-11 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
-        >
-          Ακύρωση
-        </button>
-        <button 
-          type="button" 
-          (click)="saveProductChanges()" 
-          class="h-11 px-5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 cursor-pointer"
-        >
-          Αποθήκευση Αλλαγών
-        </button>
-        <button 
-  type="button" 
-  (click)="softDeleteProduct(item)"
-  class="h-8 w-8 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700 hover:border-rose-700/50 flex items-center justify-center text-xs transition cursor-pointer"
-  title="Απενεργοποίηση / Διαγραφή"
->
-  🗑️
-</button>
-      </div>
-
     </div>
-  </div>
-}
+  }
 
 </div>
