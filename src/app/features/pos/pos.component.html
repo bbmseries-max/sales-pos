@@ -2,128 +2,139 @@
 
   <!-- ================= 1. TOP APP HEADER ================= -->
   <header class="h-16 bg-slate-900 border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between shrink-0 shadow-md font-sans">
-    
-    <!-- LEFT: Brand, Store Selector, Cashier Info -->
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-2 pr-3 border-r border-slate-800">
-        <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></span>
-        <h1 class="text-base font-black tracking-widest text-slate-100 uppercase font-mono">
-          MARANTH <span class="text-emerald-400">POS</span>
-        </h1>
+  
+  <!-- LEFT: Brand, Store Selector, Cashier Info & Staff -->
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2 pr-3 border-r border-slate-800">
+      <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></span>
+      <h1 class="text-base font-black tracking-widest text-slate-100 uppercase font-mono">
+        MARANTH <span class="text-emerald-400">POS</span>
+      </h1>
+    </div>
+
+    <!-- Store Selector Badge -->
+    <button 
+      type="button" 
+      (click)="showStoreModal.set(true)" 
+      class="flex items-center gap-2 p-1.5 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition cursor-pointer"
+      title="Επιλογή Καταστήματος"
+    >
+      <div class="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-mono font-black text-emerald-400 text-sm">
+        🏪
       </div>
+      <div class="text-left">
+        <h2 class="text-xs font-black text-slate-100 leading-tight">{{ tenantConfig.activeShop().name }}</h2>
+        <span class="text-[10px] font-mono text-emerald-400 font-bold">[{{ tenantConfig.activeShop().code }}]</span>
+      </div>
+    </button>
 
-      <!-- Store Selector Badge -->
-      <button 
-        type="button"
-        (click)="showStoreModal.set(true)" 
-        class="flex items-center gap-2 p-1.5 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition cursor-pointer"
-        title="Επιλογή Καταστήματος"
-      >
-        <div class="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-mono font-black text-emerald-400 text-sm">
-          🏪
-        </div>
-        <div class="text-left">
-          <h2 class="text-xs font-black text-slate-100 leading-tight">{{ tenantConfig.activeShop().name }}</h2>
-          <span class="text-[10px] font-mono text-emerald-400 font-bold">[{{ tenantConfig.activeShop().code }}]</span>
-        </div>
-      </button>
-
-      <!-- Cashier Session & Quick Actions -->
+    <!-- Cashier Session & Quick Actions -->
+    <div class="flex items-center gap-2 pl-3 border-l border-slate-800">
       @if (shiftService.currentCashier(); as cashier) {
-        <div class="flex items-center gap-2 pl-3 border-l border-slate-800">
-          <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-black text-sm flex items-center justify-center border border-emerald-500/40">
-            {{ cashier.name.charAt(0) }}
-          </div>
-          <span class="text-sm font-mono font-black text-slate-100">{{ cashier.name }}</span>
-          
-          <!-- Handover / X-Report -->
-          <button 
-            type="button" 
-            (click)="openShiftHandover()"
-            title="Παράδοση Βάρδιας / Δελτίο Χ"
-            class="h-9 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-400 border border-amber-500/40 rounded-xl cursor-pointer transition flex items-center gap-1"
-          >
-            📄 Δελτίο "Χ"
-          </button>
-
-          <!-- Lock Screen -->
-          <button 
-            type="button" 
-            (click)="shiftService.lockScreen()"
-            title="Κλείδωμα Οθόνης [F12]"
-            class="h-9 px-2.5 bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700 rounded-xl text-sm cursor-pointer transition"
-          >
-            🔒
-          </button>
-
-          <!-- Manage Employees Button -->
-          <button 
-            type="button" 
-            (click)="openEmployeeModal()"
-            class="h-9 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
-            title="Διαχείριση Προσωπικού & PIN"
-          >
-            <span>👥</span>
-            <span>Προσωπικό</span>
-          </button>
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-black text-sm flex items-center justify-center border border-emerald-500/40">
+          {{ cashier.name.charAt(0) }}
         </div>
-      }
-    </div>
-
-    <!-- RIGHT: Cashier Front-Desk Controls -->
-    <div class="flex items-center gap-2.5">
-      
-      <!-- myDATA Status & Config -->
-      <button 
-        type="button" 
-        (click)="showMyDataConfig.set(true)"
-        class="h-11 px-4 bg-slate-800 hover:bg-slate-750 active:scale-95 text-sm font-mono font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-slate-100 transition-all flex items-center gap-2.5 cursor-pointer shadow-sm"
-      >
-        <span 
-          class="w-2.5 h-2.5 rounded-full shrink-0" 
-          [class.bg-emerald-400]="myDataService.credentials().environment === 'production'" 
-          [class.bg-amber-400]="myDataService.credentials().environment === 'sandbox'"
-        ></span>
-        <span class="tracking-wide">myDATA</span>
-        <span 
-          class="text-[10px] px-1.5 py-0.5 rounded-md font-bold uppercase"
-          [class.bg-emerald-950/70]="myDataService.credentials().environment === 'production'"
-          [class.text-emerald-400]="myDataService.credentials().environment === 'production'"
-          [class.bg-amber-950/70]="myDataService.credentials().environment === 'sandbox'"
-          [class.text-amber-400]="myDataService.credentials().environment === 'sandbox'"
+        <span class="text-sm font-mono font-black text-slate-100">{{ cashier.name }}</span>
+        
+        <!-- Handover / X-Report -->
+        <button 
+          type="button" 
+          (click)="openShiftHandover()"
+          title="Παράδοση Βάρδιας / Δελτίο Χ"
+          class="h-9 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-400 border border-amber-500/40 rounded-xl cursor-pointer transition flex items-center gap-1"
         >
-          {{ myDataService.credentials().environment === 'production' ? 'PROD' : 'SANDBOX' }}
-        </span>
-      </button>
+          📄 Δελτίο "Χ"
+        </button>
 
-      <!-- Spoilage / Φθορές -->
+        <!-- Lock Screen -->
+        <button 
+          type="button" 
+          (click)="shiftService.lockScreen()"
+          title="Κλείδωμα Οθόνης [F12]"
+          class="h-9 px-2.5 bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700 rounded-xl text-sm cursor-pointer transition"
+        >
+          🔒
+        </button>
+      } @else {
+        <!-- Fallback Login button if locked out or no active cashier session -->
+        <button 
+          type="button" 
+          (click)="shiftService.lockScreen()"
+          class="h-9 px-3 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+          title="Σύνδεση Ταμία"
+        >
+          <span>🔑</span>
+          <span>Σύνδεση Ταμία</span>
+        </button>
+      }
+
+      <!-- Manage Employees Button (Always Visible) -->
       <button 
         type="button" 
-        (click)="navigateToSpoilage()"
-        class="h-11 px-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-rose-500/60 text-rose-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+        (click)="openEmployeeModal()"
+        class="h-9 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+        title="Διαχείριση Προσωπικού & PIN"
       >
-        <span>🗑️ Φθορές</span>
-      </button>
-
-      <!-- Z-Report -->
-      <button 
-        type="button" 
-        (click)="navigateToZReport()"
-        class="h-11 px-4 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-amber-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-      >
-        <span>📊 "Ζ"</span>
-      </button>
-
-      <!-- Warehouse / Back-Office -->
-      <button 
-        type="button" 
-        (click)="navigateToInventory()"
-        class="h-11 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs font-black text-slate-950 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
-      >
-        <span>📦 Αποθήκη</span>
+        <span>👥</span>
+        <span>Προσωπικό</span>
       </button>
     </div>
-  </header>
+  </div>
+
+  <!-- RIGHT: Cashier Front-Desk Controls -->
+  <div class="flex items-center gap-2.5">
+    
+    <!-- myDATA Status & Config -->
+    <button 
+      type="button" 
+      (click)="showMyDataConfig.set(true)"
+      class="h-11 px-4 bg-slate-800 hover:bg-slate-750 active:scale-95 text-sm font-mono font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-slate-100 transition-all flex items-center gap-2.5 cursor-pointer shadow-sm"
+    >
+      <span 
+        class="w-2.5 h-2.5 rounded-full shrink-0" 
+        [class.bg-emerald-400]="myDataService.credentials().environment === 'production'" 
+        [class.bg-amber-400]="myDataService.credentials().environment === 'sandbox'"
+      ></span>
+      <span class="tracking-wide">myDATA</span>
+      <span 
+        class="text-[10px] px-1.5 py-0.5 rounded-md font-bold uppercase"
+        [class.bg-emerald-950/70]="myDataService.credentials().environment === 'production'"
+        [class.text-emerald-400]="myDataService.credentials().environment === 'production'"
+        [class.bg-amber-950/70]="myDataService.credentials().environment === 'sandbox'"
+        [class.text-amber-400]="myDataService.credentials().environment === 'sandbox'"
+      >
+        {{ myDataService.credentials().environment === 'production' ? 'PROD' : 'SANDBOX' }}
+      </span>
+    </button>
+
+    <!-- Spoilage / Φθορές -->
+    <button 
+      type="button" 
+      (click)="navigateToSpoilage()"
+      class="h-11 px-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-rose-500/60 text-rose-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+    >
+      <span>🗑️ Φθορές</span>
+    </button>
+
+    <!-- Z-Report -->
+    <button 
+      type="button" 
+      (click)="navigateToZReport()"
+      class="h-11 px-4 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-amber-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+    >
+      <span>📊 "Ζ"</span>
+    </button>
+
+    <!-- Warehouse / Back-Office -->
+    <button 
+      type="button" 
+      (click)="navigateToInventory()"
+      class="h-11 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs font-black text-slate-950 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+    >
+      <span>📦 Αποθήκη</span>
+    </button>
+  </div>
+</header>
 
   <!-- ================= 2. MAIN CASHIER WORKSPACE ================= -->
   <main class="flex-1 flex flex-col p-3.5 gap-3.5 overflow-hidden min-h-0">
