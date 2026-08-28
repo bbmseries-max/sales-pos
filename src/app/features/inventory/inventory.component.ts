@@ -27,6 +27,7 @@ export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
   templateUrl: './inventory.component.html'
 })
 export class InventoryComponent implements OnInit {
+  public isSyncingCloud = signal<boolean>(false);
   public catalogService = inject(MarketCatalogService);
   public tenantConfig = inject(TenantConfigService);
   public syncService = inject(SyncService);
@@ -50,6 +51,27 @@ export class InventoryComponent implements OnInit {
   // Active editing item modal & feedback
   public editingProduct = signal<Product | null>(null);
   public feedbackMsg = signal<string | null>(null);
+
+  public async downloadHubCatalog(): Promise<void> {
+    if (this.isSyncingCloud()) return;
+
+    const confirmSync = confirm('Θέλετε να κατεβάσετε τον πλήρη κατάλογο προϊόντων από το Maranth Hub;');
+    if (!confirmSync) return;
+
+    this.isSyncingCloud.set(true);
+    this.showToast('Λήψη προϊόντων από το Cloud...');
+
+    try {
+      const count = await this.catalogService.syncFromCloud();
+      await this.loadAllInventory();
+      this.showToast(`Ολοκληρώθηκε! Φορτώθηκαν ${count} προϊόντα.`);
+    } catch (err) {
+      console.error('[Inventory] Cloud download failed:', err);
+      this.showToast('Σφάλμα κατά τη λήψη από το Cloud.');
+    } finally {
+      this.isSyncingCloud.set(false);
+    }
+  }
 
   // 1. DYNAMIC CATEGORIES: Computes product counts per category tab
   public categories = computed(() => {

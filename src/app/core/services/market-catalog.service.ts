@@ -1,13 +1,15 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
 import { marketDb } from '../db/market-db';
 import { 
   Product, 
-  Category
+  Category, normalizeDateToInput
 } from '../models';
+import { Firestore, collection, getDocs } from '@angular/fire/firestore';
 import { 
   SUPERMARKET_DEPARTMENTS, 
   MasterCategory 
 } from '../models/market.models';
+
 
 export interface ExternalProductMatch {
   barcode: string;
@@ -22,10 +24,44 @@ export interface ExternalProductMatch {
 
 @Injectable({ providedIn: 'root' })
 export class MarketCatalogService {
+  private firestore = inject(Firestore);
   public products = signal<Product[]>([]);
   public categories = signal<Category[]>([]);
   public readonly departments: MasterCategory[] = SUPERMARKET_DEPARTMENTS;
   public isSearchingExternal = signal<boolean>(false);
+
+  public async syncFromCloud(): Promise<number> {
+  console.log('[MarketCatalog] Fetching complete catalog from Maranth Hub...');
+  const colRef = collection(this.firestore, 'products');
+  const snap = await getDocs(colRef);
+
+  if (snap.empty) {
+    console.warn('[MarketCatalog] No products found in Firestore "products" collection.');
+    return 0;
+  }
+
+  const products: Product[] = [];
+  snap.forEach(doc => {
+    const raw = doc.data() as any;
+    const cleanDate = normalizeDateToInput(raw.statusDate || raw.expire || raw.expireDate);
+    
+    products.push({
+      ...raw,
+      barcode: String(raw.barcode || raw.id || doc.id).trim(),
+      statusDate: cleanDate,
+      expire: cleanDate,
+      storeId: raw.storeId || 'mar-market',
+      _syncStatus: 'synced'
+    });
+  });
+
+  // Clear demo products and save the full 3,477 catalog
+  await marketDb.products.clear();
+  await marketDb.products.bulkPut(products);
+
+  console.log(`[MarketCatalog] Successfully cached ${products.length} products locally.`);
+  return products.length;
+}
 
   public getCategoryName(categoryId?: string): string {
     const found = this.departments.find(d => d.id === categoryId);
