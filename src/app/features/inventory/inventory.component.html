@@ -14,8 +14,14 @@
         <p class="text-xs text-slate-400 font-mono">{{ totalCount() }} Total Products • {{ categories().length - 1 }} Categories</p>
       </div>
     </div>
-
+<div class="flex items-center gap-3">
     <!-- Audit Navigation Tabs -->
+     <button 
+  type="button" 
+  (click)="downloadHubCatalog()" 
+  class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow flex items-center gap-2 text-sm transition-all">
+  ☁️ Cloud (Hub)
+</button>
     <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
       <button 
         (click)="setTab('all')"
@@ -67,6 +73,7 @@
       >
         <span>📥 Μαζική Εισαγωγή CSV</span>
       </button>
+    </div>
     </div>
   </header>
 
@@ -133,12 +140,6 @@
               >
                 ✕
               </button>
-              <button 
-  type="button" 
-  (click)="downloadHubCatalog()" 
-  class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow flex items-center gap-2 text-sm transition-all">
-  ☁️ Λήψη από Cloud (Hub)
-</button>
             }
           </div>
         </div>
