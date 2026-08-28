@@ -12,21 +12,21 @@
       </h1>
     </div>
 
-    <!-- Store Selector Badge -->
-    <button 
-      type="button" 
-      (click)="showStoreModal.set(true)" 
-      class="flex items-center gap-2 p-1.5 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition cursor-pointer"
-      title="Επιλογή Καταστήματος"
-    >
-      <div class="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-mono font-black text-emerald-400 text-sm">
-        🏪
-      </div>
-      <div class="text-left">
-        <h2 class="text-xs font-black text-slate-100 leading-tight">{{ tenantConfig.activeShop().name }}</h2>
-        <span class="text-[10px] font-mono text-emerald-400 font-bold">[{{ tenantConfig.activeShop().code }}]</span>
-      </div>
-    </button>
+<!-- Store Indicator for Regular Users -->
+@if (tenantConfig.isSuperAdmin()) {
+  <select 
+    [value]="tenantConfig.activeShop().code" 
+    (change)="tenantConfig.switchShop($any($event.target).value)"
+    class="bg-indigo-950 border border-indigo-500/50 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold">
+    @for (s of tenantConfig.registeredShops(); track s.code) {
+      <option [value]="s.code">⚡ {{ s.name }} ({{ s.code }})</option>
+    }
+  </select>
+} @else {
+  <div class="px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-semibold text-slate-300">
+    🏪 {{ tenantConfig.activeShop().name }}
+  </div>
+}
 
     <!-- Cashier Session & Quick Actions -->
     <div class="flex items-center gap-2 pl-3 border-l border-slate-800">

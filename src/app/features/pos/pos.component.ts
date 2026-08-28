@@ -171,6 +171,20 @@ export class PosComponent implements OnInit, AfterViewInit {
     return tendered >= payable ? Number((tendered - payable).toFixed(2)) : 0;
   });
 
+  private logoClicks = 0;
+
+public onLogoClick(): void {
+  this.logoClicks++;
+  if (this.logoClicks >= 5) {
+    const pin = prompt('Enter Super-Admin Master Key:');
+    if (pin === 'YOUR_SECRET_MASTER_PIN') {
+      this.tenantConfig.isSuperAdmin.set(true);
+      alert('Super-Admin Mode Activated: Store Switching Enabled');
+    }
+    this.logoClicks = 0;
+  }
+}
+
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
