@@ -131,101 +131,103 @@ export class MarketCatalogService {
    * Fast, resilient external lookup mapped directly to standard departments
    */
   public async fetchFromOpenFoodFacts(barcode: string): Promise<ExternalProductMatch | null> {
-    const clean = (barcode || '').trim();
-    if (!clean || clean.length < 6) return null;
+  const clean = (barcode || '').trim();
+  if (!clean || clean.length < 6) return null;
 
-    if (/^(28|29)\d{10,11}$/.test(clean)) {
-      return null;
-    }
+  // Skip in-store scale barcodes (e.g., 28xxxxx, 29xxxxx)
+  if (/^(28|29)\d{10,11}$/.test(clean)) {
+    return null;
+  }
 
+  // Modern v2 first, fallback to v0
+  const endpoints = [
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}.json`,
+    `https://world.openfoodfacts.org/api/v0/product/${clean}.json`
+  ];
+
+  for (const url of endpoints) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1800);
-
-    const endpoints = [
-      `https://world.openfoodfacts.org/api/v0/product/${clean}.json`,
-      `https://corsproxy.io/?https://world.openfoodfacts.org/api/v0/product/${clean}.json`
-    ];
+    const timer = setTimeout(() => controller.abort(), 2200);
 
     try {
-      for (const url of endpoints) {
-        try {
-          const res = await fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            signal: controller.signal
-          });
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'MaranthMarketPOS/1.0 (Angular-PWA)'
+        },
+        signal: controller.signal
+      });
 
-          if (!res.ok) continue;
+      if (!res.ok) continue;
 
-          const data = await res.json();
-          if (data?.status === 1 && data.product) {
-            const p = data.product;
-            clearTimeout(timer);
+      const data = await res.json();
+      if (data?.status === 1 && data.product) {
+        const p = data.product;
 
-            const rawName = p.product_name_el || p.generic_name_el || p.product_name || p.generic_name || '';
-            const brand = p.brands ? p.brands.split(',')[0].trim() : '';
-            let finalName = rawName || brand || `Είδος ${clean}`;
+        const rawName = p.product_name_el || p.generic_name_el || p.product_name || p.generic_name || '';
+        const brand = p.brands ? p.brands.split(',')[0].trim() : '';
+        let finalName = rawName || brand || `Είδος ${clean}`;
 
-            if (brand && rawName && !rawName.toLowerCase().includes(brand.toLowerCase())) {
-              finalName = `${brand} ${rawName}`;
-            }
-
-            // Map strictly to standard SUPERMARKET_DEPARTMENTS
-            let categoryId = 'cat-pantry';
-            let suggestedVat = 13;
-
-            const categoryText = [
-              p.categories || '',
-              p.categories_tags ? p.categories_tags.join(' ') : '',
-              p.product_name || '',
-              brand || ''
-            ].join(' ').toLowerCase();
-
-            // 1. Tobacco & Smoker items -> 0% VAT
-            if (/τσιγάρ|καπν|καπνος|πουρο|τσιγαριλ|καπνοβιομηχαν|καρελια|marlboro|karelia|winston|camel|heets|terea|glo|neo|vape|iqos|tobacco|cigar|cigarette|rolling paper|χαρτακια|φιλτρακια|αναπτηρ/i.test(categoryText)) {
-              categoryId = 'cat-tobacco';
-              suggestedVat = 0;
-            } else if (/γάλα|τυρί|dairy|cheese|milk|yogurt|γιαούρτι|φέτα|αυγά|αλλαντικ|ζαμπον/i.test(categoryText)) {
-              categoryId = 'cat-dairy';
-              suggestedVat = 13;
-            } else if (/ψωμί|bread|μπισκότ|snack|biscuit|chocolate|chips|cookie|σοκολάτ|κρουασάν/i.test(categoryText)) {
-              categoryId = 'cat-bakery';
-              suggestedVat = 24;
-            } else if (/αναψυκτικ|drink|beverage|soda|cola|juice|νερό|water|χυμός|beer|wine|μπύρα|κρασί|alcohol/i.test(categoryText)) {
-              categoryId = 'cat-drinks';
-              suggestedVat = 24;
-            } else if (/καθαριστικ|απορρυπαντικ|clean|detergent|paper|χαρτί|σαπούνι/i.test(categoryText)) {
-              categoryId = 'cat-cleaning';
-              suggestedVat = 24;
-            } else if (/σκυλ|γατ|pet|dog|cat|ζωοτροφ/i.test(categoryText)) {
-              categoryId = 'cat-pets';
-              suggestedVat = 24;
-            } else if (/μήλα|μπανάν|ντομάτ|πατάτ|fruit|vegetable|λαχανικ|φρούτ/i.test(categoryText)) {
-              categoryId = 'cat-fruit';
-              suggestedVat = 13;
-            }
-
-            return {
-              barcode: clean,
-              name: finalName.trim(),
-              brand,
-              categoryId,
-              categoryName: this.getCategoryName(categoryId),
-              imageUrl: p.image_front_small_url || p.image_url || '',
-              suggestedVatRate: suggestedVat,
-              suggestedPrice: suggestedVat === 0 ? 4.50 : 1.50
-            };
-          }
-        } catch {
-          // Continue to fallback endpoint
+        if (brand && rawName && !rawName.toLowerCase().includes(brand.toLowerCase())) {
+          finalName = `${brand} ${rawName}`;
         }
+
+        // Map strictly to standard SUPERMARKET_DEPARTMENTS
+        let categoryId = 'cat-pantry';
+        let suggestedVat = 13;
+
+        const categoryText = [
+          p.categories || '',
+          p.categories_tags ? p.categories_tags.join(' ') : '',
+          p.product_name || '',
+          brand || ''
+        ].join(' ').toLowerCase();
+
+        // Department heuristics & Greek VAT mapping
+        if (/τσιγάρ|καπν|καπνος|πουρο|τσιγαριλ|καπνοβιομηχαν|καρελια|marlboro|karelia|winston|camel|heets|terea|glo|neo|vape|iqos|tobacco|cigar|cigarette|rolling paper|χαρτακια|φιλτρακια|αναπτηρ/i.test(categoryText)) {
+          categoryId = 'cat-tobacco';
+          suggestedVat = 0;
+        } else if (/γάλα|τυρί|dairy|cheese|milk|yogurt|γιαούρτι|φέτα|αυγά|αλλαντικ|ζαμπον/i.test(categoryText)) {
+          categoryId = 'cat-dairy';
+          suggestedVat = 13;
+        } else if (/ψωμί|bread|μπισκότ|snack|biscuit|chocolate|chips|cookie|σοκολάτ|κρουασάν/i.test(categoryText)) {
+          categoryId = 'cat-bakery';
+          suggestedVat = 24;
+        } else if (/αναψυκτικ|drink|beverage|soda|cola|juice|νερό|water|χυμός|beer|wine|μπύρα|κρασί|alcohol/i.test(categoryText)) {
+          categoryId = 'cat-drinks';
+          suggestedVat = 24;
+        } else if (/καθαριστικ|απορρυπαντικ|clean|detergent|paper|χαρτί|σαπούνι/i.test(categoryText)) {
+          categoryId = 'cat-cleaning';
+          suggestedVat = 24;
+        } else if (/σκυλ|γατ|pet|dog|cat|ζωοτροφ/i.test(categoryText)) {
+          categoryId = 'cat-pets';
+          suggestedVat = 24;
+        } else if (/μήλα|μπανάν|ντομάτ|πατάτ|fruit|vegetable|λαχανικ|φρούτ/i.test(categoryText)) {
+          categoryId = 'cat-fruit';
+          suggestedVat = 13;
+        }
+
+        return {
+          barcode: clean,
+          name: finalName.trim(),
+          brand,
+          categoryId,
+          categoryName: this.getCategoryName(categoryId),
+          imageUrl: p.image_front_small_url || p.image_url || '',
+          suggestedVatRate: suggestedVat,
+          suggestedPrice: suggestedVat === 0 ? 4.50 : 1.50
+        };
       }
+    } catch {
+      // Endpoint timed out or failed, try next
     } finally {
       clearTimeout(timer);
     }
-
-    return null;
   }
+
+  return null;
+}
 
   public async autoRegisterProduct(params: {
     barcode: string;
