@@ -27,6 +27,7 @@ export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
   templateUrl: './inventory.component.html'
 })
 export class InventoryComponent implements OnInit {
+  public isLoading = signal<boolean>(false);
   public isSyncingCloud = signal<boolean>(false);
   public catalogService = inject(MarketCatalogService);
   public tenantConfig = inject(TenantConfigService);
@@ -156,27 +157,33 @@ export class InventoryComponent implements OnInit {
   /**
    * Loads inventory and recalculates summary badges
    */
-  public async loadAllInventory(): Promise<void> {
-    const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
-    
-    // 1. Fetch all active items from Dexie
-    const all = await marketDb.products.toArray();
+ public async loadAllInventory(): Promise<void> {
+  try {
+    this.isLoading.set(true);
 
-    const activeOnly = (all || []).filter(p => 
-      p.isActive !== false && 
-      (!p.storeId || p.storeId === currentStoreId)
+    // 1. Fetch raw rows from Dexie
+    const rawItems = await marketDb.products.toArray();
+    const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+
+    // 2. Allow items belonging to active store, legacy 'mar-market'/'SHOP-01', or unassigned
+    const storeItems = rawItems.filter(p => 
+      !p.storeId || 
+      p.storeId === activeCode || 
+      p.storeId === 'mar-market' || 
+      p.storeId === 'SHOP-01'
     );
 
-    this.allProducts.set(activeOnly);
+    // 3. Update the base signals that feed computed()
+    this.allProducts.set(storeItems);
+    this.totalCount.set(storeItems.length);
 
-    // 2. Update Header Counts
-    this.totalCount.set(activeOnly.length);
-    this.lowStockCount.set(
-      activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length
-    );
-    this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
-    this.expiringCount.set(activeOnly.filter(p => this.isProductExpired(p)).length);
+    console.log(`[Apothiki] Initialized ${storeItems.length} items from Dexie.`);
+  } catch (err) {
+    console.error('[Apothiki] Error loading inventory:', err);
+  } finally {
+    this.isLoading.set(false);
   }
+}
 
  /**
    * Unified expiration checker
