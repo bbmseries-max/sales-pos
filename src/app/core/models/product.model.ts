@@ -36,4 +36,5 @@ export interface Product {
   updatedAt?: string;
   notes?: string;
   deletedAt?: string;
+  _syncStatus?: 'synced' | 'dirty' | 'pending';
 }

@@ -4,11 +4,12 @@ import { Router } from '@angular/router';
 import { marketDb } from '../../core/db/market-db';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
+import { SyncService } from '../../core/services/sync.service';
 import { 
   Product, 
-  Category,
+  Category, 
   SUPERMARKET_DEPARTMENTS, 
-  MasterCategory
+  MasterCategory, normalizeDateToInput
 } from '../../core/models/market.models';
 
 export interface CategoryTab {
@@ -28,6 +29,7 @@ export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
 export class InventoryComponent implements OnInit {
   public catalogService = inject(MarketCatalogService);
   public tenantConfig = inject(TenantConfigService);
+  public syncService = inject(SyncService);
   private router = inject(Router);
 
   // Single Source of Truth for Departments
@@ -49,7 +51,7 @@ export class InventoryComponent implements OnInit {
   public editingProduct = signal<Product | null>(null);
   public feedbackMsg = signal<string | null>(null);
 
-  // 1. DYNAMIC CATEGORIES: Extracts categories & counts directly from items in DB
+  // 1. DYNAMIC CATEGORIES: Computes product counts per category tab
   public categories = computed(() => {
     const prods = this.allProducts();
     const countMap = new Map<string, number>();
@@ -77,7 +79,7 @@ export class InventoryComponent implements OnInit {
     return tabs;
   });
 
-  // 2. FILTERED PRODUCTS: Provides reactive list to the template
+  // 2. FILTERED PRODUCTS: Reactive list for template rendering
   public products = computed<Product[]>(() => {
     let items = this.allProducts();
     const term = this.searchQuery().trim().toLowerCase();
@@ -88,7 +90,7 @@ export class InventoryComponent implements OnInit {
     if (term.length > 0) {
       items = items.filter(p =>
         (p.name && p.name.toLowerCase().includes(term)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(term)) ||
+        (p.barcode && String(p.barcode).toLowerCase().includes(term)) ||
         (p.brand && p.brand.toLowerCase().includes(term)) ||
         (p.id && String(p.id).toLowerCase().includes(term))
       );
@@ -109,18 +111,11 @@ export class InventoryComponent implements OnInit {
     } else if (tab === 'pinned') {
       items = items.filter(p => !!p.isPinned);
     } else if (tab === 'expiring') {
-      const now = new Date();
-      const future30 = new Date();
-      future30.setDate(now.getDate() + 30);
-      items = items.filter(p => {
-        const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
-        if (!exp) return false;
-        const d = new Date(exp);
-        return !isNaN(d.getTime()) && d <= future30;
-      });
+      // Direct call to normalized expiration checker
+      items = items.filter(p => this.isProductExpired(p));
     }
 
-    // Cap at 150 items for smooth 60fps view on wide unfiltered lists
+    // Cap at 150 items for fast rendering on broad unfiltered lists
     if (!term && catId === 'all' && tab === 'all') {
       return items.slice(0, 150);
     }
@@ -131,41 +126,64 @@ export class InventoryComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.loadAllInventory();
   }
+  public isItemExpired(expireDate?: string | null): boolean {
+    if (!expireDate) return false;
+    return this.isProductExpired({ expire: expireDate } as Product);
+  }
 
-/**
- * Loads inventory, supporting both multi-tenant storeId and legacy unassigned products
- */
-public async loadAllInventory(): Promise<void> {
-  const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
-  
-  // 1. Fetch all items from DB
-  const all = await marketDb.products.toArray();
+  /**
+   * Loads inventory and recalculates summary badges
+   */
+  public async loadAllInventory(): Promise<void> {
+    const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
+    
+    // 1. Fetch all active items from Dexie
+    const all = await marketDb.products.toArray();
 
-  // 2. Match current store OR unassigned legacy items, and filter out soft-deleted items
-  const activeOnly = (all || []).filter(p => 
-    p.isActive !== false && 
-    (!p.storeId || p.storeId === currentStoreId)
-  );
+    const activeOnly = (all || []).filter(p => 
+      p.isActive !== false && 
+      (!p.storeId || p.storeId === currentStoreId)
+    );
 
-  this.allProducts.set(activeOnly);
+    this.allProducts.set(activeOnly);
 
-  // 3. Update Header Counts
-  this.totalCount.set(activeOnly.length);
-  this.lowStockCount.set(activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
-  this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
+    // 2. Update Header Counts
+    this.totalCount.set(activeOnly.length);
+    this.lowStockCount.set(
+      activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length
+    );
+    this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
+    this.expiringCount.set(activeOnly.filter(p => this.isProductExpired(p)).length);
+  }
 
-  const future30 = new Date();
-  future30.setDate(new Date().getDate() + 30);
+ /**
+   * Unified expiration checker
+   */
+  public isProductExpired(product: Product): boolean {
+    const cleanDate = normalizeDateToInput(product.statusDate || product.expire || (product as any).expireDate);
+    if (!cleanDate) return false;
 
-  this.expiringCount.set(
-    activeOnly.filter(p => {
-      const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
-      if (!exp) return false;
-      const d = new Date(exp);
-      return !isNaN(d.getTime()) && d <= future30;
-    }).length
-  );
-}
+    const parts = cleanDate.split('-');
+    const expDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return expDate <= today;
+  }
+
+  public onExpireDateChange(dateValue: string): void {
+    const current = this.editingProduct();
+    if (!current) return;
+
+    const normalized = normalizeDateToInput(dateValue);
+
+    this.editingProduct.set({
+      ...current,
+      expire: normalized,
+      statusDate: normalized
+    });
+  }
 
   public onCategoryChange(newCatId: string): void {
     const current = this.editingProduct();
@@ -191,6 +209,102 @@ public async loadAllInventory(): Promise<void> {
     this.searchQuery.set(term);
   }
 
+  public async saveProductChanges(): Promise<void> {
+    const item = this.editingProduct();
+    if (!item) return;
+
+    const updated: Product = {
+      ...item,
+      storeId: item.storeId || this.tenantConfig.activeShop().code || 'SHOP-01',
+      updatedAt: new Date().toISOString(),
+      _syncStatus: 'dirty' // Mark for delta sync
+    };
+
+    await marketDb.products.put(updated);
+    this.closeEditModal();
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog();
+
+    // Push changes in background
+    this.syncService.pushDeltaToHub().catch(console.error);
+    this.showToast(`Ενημερώθηκε: "${updated.name}"`);
+  }
+
+  public async updateInlineStock(product: Product, delta: number): Promise<void> {
+    const current = product.stockQuantity ?? 0;
+    const newQty = Math.max(0, parseFloat((current + delta).toFixed(3)));
+
+    const updated: Product = {
+      ...product,
+      stockQuantity: newQty,
+      updatedAt: new Date().toISOString(),
+      _syncStatus: 'dirty'
+    };
+
+    await marketDb.products.put(updated);
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog();
+
+    this.syncService.pushDeltaToHub().catch(console.error);
+  }
+
+  public async togglePin(product: Product, event: Event): Promise<void> {
+    event.stopPropagation();
+    const newStatus = !product.isPinned;
+
+    const updated: Product = {
+      ...product,
+      isPinned: newStatus,
+      updatedAt: new Date().toISOString(),
+      _syncStatus: 'dirty'
+    };
+
+    await marketDb.products.put(updated);
+    await this.loadAllInventory();
+    this.syncService.pushDeltaToHub().catch(console.error);
+    this.showToast(newStatus ? `Καρφιτσώθηκε: "${product.name}"` : `Ξεκαρφιτσώθηκε: "${product.name}"`);
+  }
+
+  public async softDeleteProduct(product: Product): Promise<void> {
+    const targetKey = product.id ?? product.barcode;
+    if (!targetKey) return;
+
+    const confirmed = confirm(`Θέλετε να απενεργοποιήσετε το είδος "${product.name}";`);
+    if (!confirmed) return;
+
+    this.closeEditModal();
+
+    const updated: Product = {
+      ...product,
+      isActive: false,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      _syncStatus: 'dirty'
+    };
+
+    await marketDb.products.put(updated);
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog();
+    this.syncService.pushDeltaToHub().catch(console.error);
+    this.showToast(`Το προϊόν "${product.name}" τέθηκε σε αρχειοθέτηση.`);
+  }
+
+  public async restoreProduct(product: Product): Promise<void> {
+    const updated: Product = {
+      ...product,
+      isActive: true,
+      deletedAt: undefined,
+      updatedAt: new Date().toISOString(),
+      _syncStatus: 'dirty'
+    };
+
+    await marketDb.products.put(updated);
+    await this.loadAllInventory();
+    await this.catalogService.loadInitialCatalog();
+    this.syncService.pushDeltaToHub().catch(console.error);
+    this.showToast(`Το προϊόν "${product.name}" επανήλθε σε ενεργή κατάσταση.`);
+  }
+
   public async promptRenameCategory(cat: Category | CategoryTab): Promise<void> {
     const newName = prompt(`Εισάγετε νέο όνομα για την κατηγορία:`, cat.name);
     if (newName && newName.trim() !== '') {
@@ -200,102 +314,9 @@ public async loadAllInventory(): Promise<void> {
     }
   }
 
-  public onExpireDateChange(dateValue: string): void {
-    const current = this.editingProduct();
-    if (!current) return;
-
-    this.editingProduct.set({
-      ...current,
-      expire: dateValue || undefined,
-      statusDate: dateValue || undefined
-    });
-  }
-
-  public async softDeleteProduct(product: Product): Promise<void> {
-    const targetId = product.id;
-    if (targetId === undefined || targetId === null) return;
-
-    const confirmed = confirm(`Θέλετε να απενεργοποιήσετε το είδος "${product.name}"; Το προϊόν δεν θα εμφανίζεται στο ταμείο.`);
-    if (!confirmed) return;
-
-    this.closeEditModal();
-
-    const idToUpdate = typeof targetId === 'string' && !isNaN(Number(targetId)) ? Number(targetId) : targetId;
-
-    await marketDb.products.update(idToUpdate as any, {
-      isActive: false,
-      deletedAt: new Date().toISOString()
-    });
-
-    await this.loadAllInventory();
-    await this.catalogService.loadInitialCatalog();
-    this.showToast(`Το προϊόν "${product.name}" τέθηκε σε αρχειοθέτηση.`);
-  }
-
-  public async restoreProduct(product: Product): Promise<void> {
-    const targetId = product.id;
-    if (!targetId) return;
-
-    const idToUpdate = typeof targetId === 'string' && !isNaN(Number(targetId)) ? Number(targetId) : targetId;
-
-    await marketDb.products.update(idToUpdate as any, {
-      isActive: true,
-      deletedAt: undefined
-    });
-
-    await this.loadAllInventory();
-    await this.catalogService.loadInitialCatalog();
-    this.showToast(`Το προϊόν "${product.name}" επανήλθε σε ενεργή κατάσταση.`);
-  }
-
-  public async updateInlineStock(product: Product, delta: number): Promise<void> {
-    const current = product.stockQuantity ?? 0;
-    const newQty = Math.max(0, parseFloat((current + delta).toFixed(3)));
-    product.stockQuantity = newQty;
-    
-    if (product.id) {
-      const idToUpdate = typeof product.id === 'string' && !isNaN(Number(product.id)) ? Number(product.id) : product.id;
-      await marketDb.products.update(idToUpdate as any, { stockQuantity: newQty });
-    }
-    await this.loadAllInventory();
-    await this.catalogService.loadInitialCatalog();
-  }
-
-  public async saveProductChanges(): Promise<void> {
-    const item = this.editingProduct();
-    if (!item) return;
-
-    item.storeId = item.storeId || this.tenantConfig.activeShop().code || 'SHOP-01';
-    item.updatedAt = new Date().toISOString();
-    
-    await marketDb.products.put(item);
-
-    this.closeEditModal();
-    await this.loadAllInventory();
-    await this.catalogService.loadInitialCatalog();
-    this.showToast(`Ενημερώθηκε: "${item.name}"`);
-  }
-
   public getCategoryName(categoryId?: string, categoryName?: string): string {
     if (categoryName && categoryName.trim() !== '') return categoryName;
     return this.catalogService.getCategoryName(categoryId);
-  }
-
-  public async togglePin(product: Product, event: Event): Promise<void> {
-    event.stopPropagation();
-    const newStatus = !product.isPinned;
-    product.isPinned = newStatus;
-    
-    if (product.id) {
-      const idToUpdate = typeof product.id === 'string' && !isNaN(Number(product.id)) ? Number(product.id) : product.id;
-      await marketDb.products.update(idToUpdate as any, { isPinned: newStatus });
-    }
-    await this.loadAllInventory();
-    this.showToast(newStatus ? `Καρφιτσώθηκε: "${product.name}"` : `Ξεκαρφιτσώθηκε: "${product.name}"`);
-  }
-
-  public navigateToImport(): void {
-    this.router.navigate(['/import']);
   }
 
   public openEditModal(product: Product): void {
@@ -306,10 +327,8 @@ public async loadAllInventory(): Promise<void> {
     this.editingProduct.set(null);
   }
 
-  public isItemExpired(expireDate?: string): boolean {
-    if (!expireDate) return false;
-    const d = new Date(expireDate);
-    return !isNaN(d.getTime()) && d < new Date();
+  public navigateToImport(): void {
+    this.router.navigate(['/import']);
   }
 
   public navigateToPos(): void {

@@ -22,3 +22,39 @@ export const SUPERMARKET_DEPARTMENTS: MasterCategory[] = [
   { id: 'cat-pets', name: 'Κατοικίδια & Pet Shop', icon: '🐾' },
   { id: 'cat-pantry', name: 'Παντοπωλείο & Τρόφιμα', icon: '🥫' }
 ];
+
+/**
+ * Normalizes any date input (Firestore Timestamp, DD/MM/YYYY, ISO, string) into 'YYYY-MM-DD'
+ */
+export function normalizeDateToInput(raw: any): string | undefined {
+  if (!raw) return undefined;
+
+  // 1. Handle Firestore Timestamp objects { seconds, nanoseconds }
+  if (typeof raw === 'object' && 'seconds' in raw) {
+    const d = new Date(raw.seconds * 1000);
+    return isNaN(d.getTime()) ? undefined : d.toISOString().split('T')[0];
+  }
+
+  const str = String(raw).trim();
+  if (!str || str === 'null' || str === 'undefined' || str === '0') return undefined;
+
+  // 2. Handle DD/MM/YYYY or DD-MM-YYYY (e.g. 22/04/2022)
+  if (str.includes('/') || (str.includes('-') && str.split('-')[0].length <= 2)) {
+    const delimiter = str.includes('/') ? '/' : '-';
+    const parts = str.split(delimiter);
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 3. Handle standard ISO or YYYY-MM-DD
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split('T')[0];
+  }
+
+  return undefined;
+}

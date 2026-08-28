@@ -26,19 +26,25 @@ export class MarketDatabase extends Dexie {
 
   constructor() {
     super('MaranthMarketDB');
-    
+
+    // Keep version 6 history
     this.version(6).stores({
-  products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId',
-  categories: 'id, name, tenantId',
-  transactions: 'id, timestamp, paymentMethod, customerPhone, storeId',
-  spoilageLogs: 'id, productId, timestamp, storeId',
-  cashLogs: 'id, type, timestamp, storeId',
-  customers: 'id, phone, name, afm',
-  suppliers: 'id, name, afm, phone',
-  purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
-  cashiers: 'id, pin, storeId, role, isActive',
-  shifts: 'id, cashierId, status, startTime, storeId'
-});
+      products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId',
+      categories: 'id, name, tenantId',
+      transactions: 'id, timestamp, paymentMethod, customerPhone, storeId',
+      spoilageLogs: 'id, productId, timestamp, storeId',
+      cashLogs: 'id, type, timestamp, storeId',
+      customers: 'id, phone, name, afm',
+      suppliers: 'id, name, afm, phone',
+      purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
+      cashiers: 'id, pin, storeId, role, isActive',
+      shifts: 'id, cashierId, status, startTime, storeId'
+    });
+
+    // Version 7: Add sync, expiration, and timestamp indexes
+    this.version(7).stores({
+      products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId, statusDate, expire, updatedAt, _syncStatus'
+    });
   }
 }
 
