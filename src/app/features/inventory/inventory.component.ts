@@ -132,38 +132,40 @@ export class InventoryComponent implements OnInit {
     await this.loadAllInventory();
   }
 
-  /**
-   * Loads inventory strictly for the active store tenant and filters active items
-   */
-  public async loadAllInventory(): Promise<void> {
-    const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
-    
-    // Fetch products belonging to this store
-    const all = await marketDb.products
-      .where('storeId')
-      .equals(currentStoreId)
-      .toArray();
+/**
+ * Loads inventory, supporting both multi-tenant storeId and legacy unassigned products
+ */
+public async loadAllInventory(): Promise<void> {
+  const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
+  
+  // 1. Fetch all items from DB
+  const all = await marketDb.products.toArray();
 
-    const activeOnly = (all || []).filter(p => p.isActive !== false);
-    this.allProducts.set(activeOnly);
+  // 2. Match current store OR unassigned legacy items, and filter out soft-deleted items
+  const activeOnly = (all || []).filter(p => 
+    p.isActive !== false && 
+    (!p.storeId || p.storeId === currentStoreId)
+  );
 
-    // Update Header Counts
-    this.totalCount.set(activeOnly.length);
-    this.lowStockCount.set(activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
-    this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
+  this.allProducts.set(activeOnly);
 
-    const future30 = new Date();
-    future30.setDate(new Date().getDate() + 30);
+  // 3. Update Header Counts
+  this.totalCount.set(activeOnly.length);
+  this.lowStockCount.set(activeOnly.filter(p => (p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)).length);
+  this.pinnedCount.set(activeOnly.filter(p => !!p.isPinned).length);
 
-    this.expiringCount.set(
-      activeOnly.filter(p => {
-        const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
-        if (!exp) return false;
-        const d = new Date(exp);
-        return !isNaN(d.getTime()) && d <= future30;
-      }).length
-    );
-  }
+  const future30 = new Date();
+  future30.setDate(new Date().getDate() + 30);
+
+  this.expiringCount.set(
+    activeOnly.filter(p => {
+      const exp = (p as any).statusDate || (p as any).expireDate || (p as any).expire;
+      if (!exp) return false;
+      const d = new Date(exp);
+      return !isNaN(d.getTime()) && d <= future30;
+    }).length
+  );
+}
 
   public onCategoryChange(newCatId: string): void {
     const current = this.editingProduct();
