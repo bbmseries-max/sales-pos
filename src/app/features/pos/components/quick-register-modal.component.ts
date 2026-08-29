@@ -67,6 +67,7 @@ export interface QuickRegisterConfirmEvent {
                 <option [ngValue]="13">13% (Τρόφιμα)</option>
                 <option [ngValue]="24">24% (Ποτά/Καθαριστικά)</option>
                 <option [ngValue]="6">6% (Φάρμακα/Τύπος)</option>
+                <option [ngValue]="0">0% (Τσιγάρα-Κάρτες-Καπνικά)</option>
               </select>
             </div>
           </div>

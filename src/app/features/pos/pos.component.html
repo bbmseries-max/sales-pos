@@ -20,6 +20,7 @@
   @if (tenantConfig.isSuperAdmin()) {
     <div class="flex items-center gap-1.5 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl">
       <select 
+      #storeSelect
         [value]="tenantConfig.activeShop().code" 
         (change)="tenantConfig.switchShop($any($event.target).value)"
         class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer">
