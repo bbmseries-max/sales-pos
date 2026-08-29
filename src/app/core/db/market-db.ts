@@ -6,10 +6,10 @@ import {
   SpoilageLog, 
   CashLog, 
   Customer, 
-  Supplier,
-  PurchaseOrder,
-  Cashier,
-  CashierShift
+  Supplier, 
+  PurchaseOrder, 
+  Cashier, 
+  CashierShift 
 } from '../models/market.models';
 
 export class MarketDatabase extends Dexie {
@@ -41,12 +41,19 @@ export class MarketDatabase extends Dexie {
       shifts: 'id, cashierId, status, startTime, storeId'
     });
 
-  this.version(8).stores({
-  products: '++id, barcode, name, categoryId, storeId, isActive, _syncStatus',
-  categories: '++id, name, tenantId',
-  cashiers: '++id, pin, storeId, isActive',
-  shifts: '++id, cashierId, status, startTime'
-});
+    // Version 8 - Preserves all tables & original primary keys while adding storeId + _syncStatus
+    this.version(8).stores({
+      products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId, _syncStatus',
+      categories: 'id, name, tenantId',
+      transactions: 'id, timestamp, paymentMethod, customerPhone, storeId, mydataMark',
+      spoilageLogs: 'id, productId, timestamp, storeId',
+      cashLogs: 'id, type, timestamp, storeId',
+      customers: 'id, phone, name, afm',
+      suppliers: 'id, name, afm, phone',
+      purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
+      cashiers: 'id, pin, storeId, role, isActive',
+      shifts: 'id, cashierId, status, startTime, storeId'
+    });
   }
 }
 
