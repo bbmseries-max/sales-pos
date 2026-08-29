@@ -12,7 +12,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-
+import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
 // Standalone Modals
 import { PosLockScreenComponent } from './components/pos-lock-screen.component';
 import { PosShiftHandoverModalComponent } from './components/pos-shift-handover-modal.component';
@@ -62,7 +62,8 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     PosLockScreenComponent,
     PosShiftHandoverModalComponent,
     PosStoreSwitcherModalComponent,
-    SuperAdminModalComponent
+    SuperAdminModalComponent,
+    NewStoreModalComponent
   ],
   templateUrl: './pos.component.html'
 })
@@ -72,6 +73,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   // Core Services
   public catalogService = inject(MarketCatalogService);
   public cart = inject(CartService);
+  public isNewStoreModalOpen = signal<boolean>(false);
   public scanner = inject(BarcodeScannerService);
   public scaleService = inject(ScaleBarcodeService);
   public printerService = inject(EscPosPrinterService);

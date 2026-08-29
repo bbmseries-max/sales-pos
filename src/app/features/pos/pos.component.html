@@ -29,6 +29,14 @@
       </select>
       <button 
       type="button" 
+      (click)="isNewStoreModalOpen.set(true)" 
+      title="Create New Store"
+      class="px-2 py-1 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+      <span>➕</span>
+      <span class="text-[10px]">New Store</span>
+    </button>
+      <button 
+      type="button" 
       (click)="tenantConfig.lockSuperAdmin()" 
       title="Exit Super-Admin Mode"
       class="px-2 py-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1">
@@ -1064,4 +1072,7 @@
 <!-- Super-Admin PIN Modal -->
 @if (isUnlockModalOpen()) {
   <app-super-admin-modal (close)="isUnlockModalOpen.set(false)" />
+}
+@if (isNewStoreModalOpen()) {
+  <app-new-store-modal (close)="isNewStoreModalOpen.set(false)" />
 }
