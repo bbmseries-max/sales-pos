@@ -28,6 +28,14 @@
         }
       </select>
       <button 
+      type="button" 
+      (click)="tenantConfig.lockSuperAdmin()" 
+      title="Exit Super-Admin Mode"
+      class="px-2 py-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1">
+      <span>🔒</span>
+      <span class="text-[10px] uppercase tracking-wider">Lock</span>
+    </button>
+      <button 
         type="button" 
         (click)="tenantConfig.lockSuperAdmin()" 
         title="Lock Super-Admin Mode"
