@@ -58,6 +58,8 @@ export class SyncService {
         return 0;
       }
 
+      
+
       console.log(`[SyncService] Found ${dirtyProducts.length} modified items. Syncing to Hub...`);
 
       // 2. Batch commit in chunks of 400 (Firestore limit is 500 ops per batch)

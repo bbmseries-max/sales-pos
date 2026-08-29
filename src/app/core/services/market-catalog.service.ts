@@ -33,9 +33,12 @@ export class MarketCatalogService {
   public readonly departments: MasterCategory[] = SUPERMARKET_DEPARTMENTS;
   public isSearchingExternal = signal<boolean>(false);
 
+  /**
+   * Syncs products from Firestore directly into this store's isolated DB
+   */
   public async syncFromCloud(): Promise<number> {
     const activeStoreCode = this.tenantConfig.activeShop().code;
-    console.log(`[MarketCatalog] Fetching catalog for tenant "${activeStoreCode}" from Maranth Hub...`);
+    console.log(`[MarketCatalog] Fetching catalog for store "${activeStoreCode}" from Maranth Hub...`);
     
     const colRef = collection(this.firestore, 'products');
     const snap = await getDocs(colRef);
@@ -55,15 +58,15 @@ export class MarketCatalogService {
         barcode: String(raw.barcode || raw.id || doc.id).trim(),
         statusDate: cleanDate,
         expire: cleanDate,
-        storeId: raw.storeId || 'mar-market',
+        storeId: activeStoreCode,
         _syncStatus: 'synced'
       });
     });
 
-    // Save/Update products into IndexedDB
+    // Save into this store's isolated IndexedDB
     await marketDb.products.bulkPut(fetchedProducts);
 
-    // Refresh active catalog for current store
+    // Refresh active catalog
     await this.loadInitialCatalog();
 
     return this.products().length;
@@ -79,33 +82,25 @@ export class MarketCatalogService {
     return found ? found.icon : '🥫';
   }
 
- public async loadInitialCatalog(): Promise<void> {
-    const activeStoreCode = this.tenantConfig.activeShop().code;
-
+  /**
+   * Loads catalog directly from this store's database sandbox
+   */
+  public async loadInitialCatalog(): Promise<void> {
     const [allProds, cats] = await Promise.all([
       marketDb.products.toArray(),
       marketDb.categories.toArray()
     ]);
 
-    // STRICT FILTER:
-    // If we are on 'mar-market', show items with storeId 'mar-market' OR items without storeId (legacy).
-    // If we are on any other store (e.g. 'ftest'), ONLY show items where storeId === activeStoreCode.
-    const activeStoreProducts = (allProds || []).filter(p => {
-      const itemStore = p.storeId || 'mar-market';
-      const matchesStore = itemStore === activeStoreCode;
-      const isActive = p.isActive !== false;
-      return matchesStore && isActive;
-    });
-
-    this.products.set(activeStoreProducts);
+    // DB is already 100% store-isolated: load all active products
+    const activeProducts = (allProds || []).filter(p => p.isActive !== false);
+    this.products.set(activeProducts);
 
     if (cats && cats.length > 0) {
-      this.categories.set(cats.filter(c => (c.tenantId || 'mar-market') === activeStoreCode));
+      this.categories.set(cats);
     } else {
       const derivedCats = this.departments.map(d => ({
         id: d.id,
-        name: d.name,
-        tenantId: activeStoreCode
+        name: d.name
       }));
       this.categories.set(derivedCats);
     }
@@ -150,12 +145,10 @@ export class MarketCatalogService {
     const clean = (barcode || '').trim();
     if (!clean || clean.length < 6) return null;
 
-    // Skip in-store scale barcodes (e.g., 28xxxxx, 29xxxxx)
     if (/^(28|29)\d{10,11}$/.test(clean)) {
       return null;
     }
 
-    // Modern v2 first, fallback to v0
     const endpoints = [
       `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}.json`,
       `https://world.openfoodfacts.org/api/v0/product/${clean}.json`
@@ -298,9 +291,6 @@ export class MarketCatalogService {
     await this.loadInitialCatalog();
   }
 
-  /**
-   * Normalizes unassigned or legacy product categories into the master departments
-   */
   public async autoInferCategoryNames(): Promise<void> {
     const list = await marketDb.products.toArray();
     const updates: Promise<any>[] = [];
