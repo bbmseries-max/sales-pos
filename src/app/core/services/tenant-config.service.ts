@@ -30,6 +30,13 @@ export class TenantConfigService {
   }
 
   private loadFromStorage(): void {
+    // 1. Restore Super-Admin session state
+    const savedSuperAdmin = sessionStorage.getItem('maranth_super_admin');
+    if (savedSuperAdmin === 'true') {
+      this.isSuperAdmin.set(true);
+    }
+
+    // 2. Restore Registered Shops
     const savedShops = localStorage.getItem('registered_shops');
     if (savedShops) {
       try {
@@ -37,6 +44,7 @@ export class TenantConfigService {
       } catch {}
     }
 
+    // 3. Restore Active Shop
     const savedActive = localStorage.getItem('active_shop');
     if (savedActive) {
       try {
@@ -47,11 +55,15 @@ export class TenantConfigService {
     }
   }
 
-public registerShop(shop: ShopInfo): void {
+  public registerShop(shop: ShopInfo): void {
     const current = this.registeredShops();
     const updated = [...current.filter(s => s.code !== shop.code), shop];
     this.registeredShops.set(updated);
     localStorage.setItem('registered_shops', JSON.stringify(updated));
+  }
+
+  public registerNewStore(shop: ShopInfo): void {
+    this.registerShop(shop);
   }
 
   public updateActiveShopDetails(details: Partial<ShopInfo>): void {
@@ -60,18 +72,13 @@ public registerShop(shop: ShopInfo): void {
 
     this.activeShop.set(updated);
     localStorage.setItem('active_shop', JSON.stringify(updated));
-
-    // Update in registered shops list as well
     this.registerShop(updated);
-  }
-
-  public registerNewStore(shop: ShopInfo): void {
-    this.registerShop(shop);
   }
 
   public switchShop(storeCode: string): void {
     const match = this.registeredShops().find(s => s.code === storeCode);
     if (!match) return;
+
     localStorage.setItem('active_shop', JSON.stringify(match));
     localStorage.setItem('active_shop_code', match.code);
     window.location.reload();
@@ -80,6 +87,7 @@ public registerShop(shop: ShopInfo): void {
   public unlockSuperAdmin(pin: string): boolean {
     if (pin.trim() === '8820') {
       this.isSuperAdmin.set(true);
+      sessionStorage.setItem('maranth_super_admin', 'true');
       return true;
     }
     return false;
@@ -87,6 +95,6 @@ public registerShop(shop: ShopInfo): void {
 
   public lockSuperAdmin(): void {
     this.isSuperAdmin.set(false);
+    sessionStorage.removeItem('maranth_super_admin');
   }
-
 }
