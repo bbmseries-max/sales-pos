@@ -15,31 +15,38 @@ export class CashierShiftService {
   /**
    * Initializes store-scoped cashiers and restores open shift strictly for the active store
    */
-  public async initialize(): Promise<void> {
-    const currentStore = this.tenantConfig.activeShop();
-    const currentStoreId = currentStore.code || 'mar-market';
+  // Inside initialize()
+public async initialize(): Promise<void> {
+  const currentStore = this.tenantConfig.activeShop();
+  const currentStoreId = currentStore.code || 'mar-market';
 
-    // 1. Load active store's cashiers
-    await this.loadAllCashiers();
+  await this.loadAllCashiers();
 
-    // 2. Clear state in case of tenant switch
-    this.currentCashier.set(null);
-    this.currentShift.set(null);
-    this.isLocked.set(true);
+  this.currentCashier.set(null);
+  this.currentShift.set(null);
+  this.isLocked.set(true);
 
-    // 3. Find only OPEN shifts belonging explicitly to this active store
+  try {
     const openShifts = await marketDb.shifts
       .where('status')
       .equals('OPEN')
       .toArray();
 
-    const openShift = openShifts.find(s => {
-      // Direct storeId check or notes match
+    // Guard against corrupted/undefined shift records
+    const validShifts = (openShifts || []).filter(s => !!s && typeof s === 'object');
+
+    const openShift = validShifts.find(s => {
       const shiftStore = (s as any).storeId || (s.notes?.includes('Store: ') ? s.notes.split('Store: ')[1]?.trim() : 'mar-market');
       return shiftStore === currentStoreId;
     });
 
     if (openShift) {
+      // Ensure startTime exists to prevent Dexie Observable crashes
+      if (!openShift.startTime) {
+        openShift.startTime = new Date().toISOString();
+        await marketDb.shifts.put(openShift);
+      }
+
       const cashier = this.allCashiers().find(c => c.id === openShift.cashierId) || null;
       if (cashier) {
         this.currentShift.set(openShift);
@@ -47,7 +54,10 @@ export class CashierShiftService {
         this.isLocked.set(false);
       }
     }
+  } catch (err) {
+    console.warn('[CashierShiftService] Error restoring open shift:', err);
   }
+}
 
   /**
    * Loads cashiers strictly belonging to the active store and bootstraps Admin if empty

@@ -163,24 +163,21 @@ export class InventoryComponent implements OnInit {
       this.isLoading.set(true);
 
       const rawItems = await marketDb.products.toArray();
-      const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+      const currentShop = this.tenantConfig.activeShop();
+      const activeCode = (currentShop?.code || 'mar-market').trim().toLowerCase();
 
-      // STRICT ISOLATION FILTER:
-      // - If on 'mar-market': show items with storeId === 'mar-market', 'SHOP-01', or unassigned legacy items.
-      // - If on any other store (e.g., 'ftest'): ONLY show items explicitly tagged with that storeId.
       const storeItems = rawItems.filter(p => {
-        const itemStore = p.storeId || 'mar-market';
-        const isLegacyCentral = (!p.storeId || p.storeId === 'SHOP-01') && activeCode === 'mar-market';
-        const isExactMatch = itemStore === activeCode;
+        const itemStore = (p.storeId || 'mar-market').trim().toLowerCase();
+        const isLegacy = (!p.storeId || itemStore === 'shop-01') && activeCode === 'mar-market';
+        const isMatch = itemStore === activeCode;
         const isActive = p.isActive !== false;
 
-        return (isExactMatch || isLegacyCentral) && isActive;
+        return (isMatch || isLegacy) && isActive;
       });
 
       this.allProducts.set(storeItems);
       this.totalCount.set(storeItems.length);
 
-      // Recalculate summary badge counters
       let low = 0;
       let exp = 0;
       let pin = 0;
@@ -195,7 +192,7 @@ export class InventoryComponent implements OnInit {
       this.expiringCount.set(exp);
       this.pinnedCount.set(pin);
 
-      console.log(`[Apothiki] Loaded ${storeItems.length} items for store "${activeCode}".`);
+      console.log(`[Apothiki] Showing ${storeItems.length} products for store "${activeCode}".`);
     } catch (err) {
       console.error('[Apothiki] Error loading inventory:', err);
     } finally {
