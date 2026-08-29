@@ -12,6 +12,20 @@ import {
   CashierShift 
 } from '../models/market.models';
 
+/**
+ * Reads the active shop code directly from localStorage to mount the correct isolated database sandbox.
+ */
+export function getActiveStoreCode(): string {
+  try {
+    const raw = localStorage.getItem('active_shop');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.code) return parsed.code;
+    }
+  } catch {}
+  return localStorage.getItem('active_shop_code') || 'mar-market';
+}
+
 export class MarketDatabase extends Dexie {
   public products!: Table<Product, string | number>;
   public categories!: Table<Category, string>;
@@ -24,25 +38,12 @@ export class MarketDatabase extends Dexie {
   public cashiers!: Table<Cashier, string>;
   public shifts!: Table<CashierShift, string>;
 
-  constructor() {
-    super('MaranthMarketDB');
+  constructor(storeCode: string = getActiveStoreCode()) {
+    // Each store gets its own dedicated, isolated IndexedDB container:
+    // e.g., 'MaranthPOS_mar-market', 'MaranthPOS_ftest'
+    super(`MaranthPOS_${storeCode}`);
 
-    // Keep version 6 history
-    this.version(6).stores({
-      products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId',
-      categories: 'id, name, tenantId',
-      transactions: 'id, timestamp, paymentMethod, customerPhone, storeId',
-      spoilageLogs: 'id, productId, timestamp, storeId',
-      cashLogs: 'id, type, timestamp, storeId',
-      customers: 'id, phone, name, afm',
-      suppliers: 'id, name, afm, phone',
-      purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
-      cashiers: 'id, pin, storeId, role, isActive',
-      shifts: 'id, cashierId, status, startTime, storeId'
-    });
-
-    // Version 8 - Preserves all tables & original primary keys while adding storeId + _syncStatus
-    this.version(8).stores({
+    this.version(1).stores({
       products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId, _syncStatus',
       categories: 'id, name, tenantId',
       transactions: 'id, timestamp, paymentMethod, customerPhone, storeId, mydataMark',
@@ -57,4 +58,10 @@ export class MarketDatabase extends Dexie {
   }
 }
 
+// Active singleton instance for current store
 export const marketDb = new MarketDatabase();
+
+// Expose globally to window for easy debugging in DevTools Console (F12)
+if (typeof window !== 'undefined') {
+  (window as any).marketDb = marketDb;
+}

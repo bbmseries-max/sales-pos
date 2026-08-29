@@ -14,40 +14,41 @@ export class SyncService {
 
   /**
    * Saves or updates a product in IndexedDB and marks it as 'dirty'
-   * so it gets picked up during the next cloud sync.
+   * so it gets picked up during the next cloud push.
    */
-  async saveProduct(product: Product): Promise<void> {
+  public async saveProduct(product: Product): Promise<void> {
     const now = new Date().toISOString();
     const barcode = String(product.barcode || product.sku || product.id).trim();
     const cleanDate = normalizeDateToInput(product.statusDate || product.expire);
-
     const currentStoreId = this.tenantConfig.activeShop()?.code || 'mar-market';
+
     const record: Product = {
-  ...product,
-  barcode: barcode,
-  statusDate: cleanDate,
-  expire: cleanDate,
-  storeId: product.storeId || 'currentStoreId',
-  updatedAt: now,
-  _syncStatus: 'dirty'
+      ...product,
+      barcode: barcode,
+      statusDate: cleanDate,
+      expire: cleanDate,
+      storeId: currentStoreId,
+      updatedAt: now,
+      _syncStatus: 'dirty'
     };
 
     await marketDb.products.put(record);
   }
 
   /**
-   * Pushes ONLY modified/new ('dirty') products to Maranth Hub Firestore.
+   * Pushes ONLY modified/new ('dirty') products from this store to Maranth Hub Firestore.
    */
-  async pushDeltaToHub(): Promise<number> {
+  public async pushDeltaToHub(): Promise<number> {
     if (this.isSyncing) {
       console.warn('[SyncService] Sync already in progress.');
       return 0;
     }
 
     this.isSyncing = true;
+    const currentStoreId = this.tenantConfig.activeShop()?.code || 'mar-market';
 
     try {
-      // 1. Fetch only dirty products from Dexie
+      // 1. Fetch only dirty products from this store's isolated Dexie DB
       const dirtyProducts = await marketDb.products
         .where('_syncStatus')
         .equals('dirty')
@@ -56,11 +57,9 @@ export class SyncService {
       if (dirtyProducts.length === 0) {
         console.log('[SyncService] Everything is up to date (0 items to sync).');
         return 0;
-      }
+      }      
 
-      
-
-      console.log(`[SyncService] Found ${dirtyProducts.length} modified items. Syncing to Hub...`);
+      console.log(`[SyncService] Found ${dirtyProducts.length} modified items in store "${currentStoreId}". Syncing to Hub...`);
 
       // 2. Batch commit in chunks of 400 (Firestore limit is 500 ops per batch)
       const BATCH_SIZE = 400;
@@ -70,10 +69,12 @@ export class SyncService {
 
         for (const item of chunk) {
           const { _syncStatus, ...cloudPayload } = item;
-          const cleanDocId = String(item.barcode).replace(/\//g, '-');
-          const docRef = doc(this.firestore, `products/${cleanDocId}`);
+          const cleanBarcode = String(item.barcode).replace(/\//g, '-');
+          
+          // Tenant-scoped Firestore document path
+          const docRef = doc(this.firestore, `tenants/${currentStoreId}/products/${cleanBarcode}`);
 
-          batch.set(docRef, cloudPayload, { merge: true });
+          batch.set(docRef, { ...cloudPayload, storeId: currentStoreId }, { merge: true });
         }
 
         await batch.commit();

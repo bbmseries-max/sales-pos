@@ -7,6 +7,10 @@ export interface ShopInfo {
   afm?: string;
   doy?: string;
   phone?: string;
+  currency?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isActive?: boolean;
 }
 
 const DEFAULT_SHOPS: ShopInfo[] = [

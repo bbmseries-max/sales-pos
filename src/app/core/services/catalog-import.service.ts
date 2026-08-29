@@ -8,6 +8,7 @@ export interface ImportParsedRow {
   sku?: string;
   name: string;
   categoryName?: string;
+  categoryId?: string;
   price: number;
   costPrice?: number;
   vatRate: number;
@@ -65,21 +66,52 @@ export class CatalogImportService {
     const cleanText = rawText.replace(/^\uFEFF/, '').trim();
     if (!cleanText) return [];
 
-    const lines = cleanText.split(/\r?\n/).filter(line => line.trim().length > 0);
-    if (lines.length < 2) return [];
+    const lines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return [];
 
-    const headerLine = lines[0];
-    const delimiter = (headerLine.match(/;/g) || []).length >= (headerLine.match(/,/g) || []).length
-      ? (headerLine.includes(';') ? ';' : ',')
-      : (headerLine.includes('\t') ? '\t' : ',');
+    // Auto-detect delimiter
+    const firstLine = lines[0];
+    let delimiter = ';';
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const tabCount = (firstLine.match(/\t/g) || []).length;
+    const pipeCount = (firstLine.match(/\|/g) || []).length;
 
-    const headers = this.parseLine(headerLine, delimiter).map(h => h.trim().toLowerCase());
-    const colIndex = this.mapHeaderIndices(headers);
+    if (tabCount > semicolonCount && tabCount > commaCount) delimiter = '\t';
+    else if (pipeCount > semicolonCount && pipeCount > commaCount) delimiter = '|';
+    else if (commaCount > semicolonCount) delimiter = ',';
+
+    // Check if line 1 is a header or data
+    const hasHeader = /barcode|ean|κωδικ|name|ονομα|τιμη|price|retail|category/i.test(firstLine);
+
+    let colIndex: HeaderIndices;
+    let dataLines: string[];
+
+    if (hasHeader) {
+      const headers = this.parseLine(firstLine, delimiter).map(h => h.trim().toLowerCase());
+      colIndex = this.mapHeaderIndices(headers);
+      dataLines = lines.slice(1);
+    } else {
+      // Positional defaults: [0: barcode, 1: name, 2: price, 3: vat, 4: stock, 5: category]
+      colIndex = {
+        barcode: 0,
+        name: 1,
+        price: 2,
+        vat: 3,
+        stock: 4,
+        category: 5,
+        cost: -1,
+        expiry: -1,
+        shelf: -1,
+        weighted: -1
+      };
+      dataLines = lines;
+    }
 
     const parsedRows: ImportParsedRow[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const cols = this.parseLine(lines[i], delimiter);
+    for (let i = 0; i < dataLines.length; i++) {
+      const cols = this.parseLine(dataLines[i], delimiter);
       if (cols.length === 0 || (cols.length === 1 && !cols[0].trim())) continue;
 
       const barcode = this.getCol(cols, colIndex.barcode).trim();
@@ -89,25 +121,26 @@ export class CatalogImportService {
       const rawVat = this.getCol(cols, colIndex.vat).replace(',', '.').trim();
       const rawStock = this.getCol(cols, colIndex.stock).replace(',', '.').trim();
       const rawExpiry = this.getCol(cols, colIndex.expiry).trim();
-      const categoryName = this.getCol(cols, colIndex.category).trim() || 'General';
+      const categoryName = this.getCol(cols, colIndex.category).trim() || 'Παντοπωλείο & Τρόφιμα';
       const shelfLocation = this.getCol(cols, colIndex.shelf).trim();
       const rawWeighted = this.getCol(cols, colIndex.weighted).trim().toLowerCase();
 
-      const price = parseFloat(rawPrice);
-      const costPrice = rawCost ? parseFloat(rawCost) : undefined;
+      const price = parseFloat(rawPrice) || 0;
+      const costPrice = rawCost ? parseFloat(rawCost) : Number((price * 0.7).toFixed(2));
       const vatRate = rawVat !== '' && !isNaN(parseInt(rawVat, 10)) ? parseInt(rawVat, 10) : 13;
-      const stockQuantity = rawStock ? parseFloat(rawStock) : 0;
+      const stockQuantity = rawStock !== '' && !isNaN(parseFloat(rawStock)) ? parseFloat(rawStock) : 10;
       const isWeighted = rawWeighted === '1' || rawWeighted === 'true' || rawWeighted === 'yes' || rawWeighted === 'ναι';
 
       let isValid = true;
       let validationError = '';
 
+      if (!barcode && !name) {
+        continue; // Skip empty rows
+      }
+
       if (!name) {
         isValid = false;
         validationError = 'Λείπει το Όνομα Προϊόντος';
-      } else if (isNaN(price) || price < 0) {
-        isValid = false;
-        validationError = 'Μη έγκυρη Λιανική Τιμή';
       } else if (!barcode) {
         isValid = false;
         validationError = 'Λείπει το Barcode / EAN';
@@ -118,15 +151,15 @@ export class CatalogImportService {
         sku: barcode,
         name,
         categoryName,
-        price: isNaN(price) ? 0 : Number(price.toFixed(2)),
-        costPrice: costPrice && !isNaN(costPrice) ? Number(costPrice.toFixed(2)) : undefined,
-        vatRate: isNaN(vatRate) ? 13 : vatRate,
-        stockQuantity: isNaN(stockQuantity) ? 0 : stockQuantity,
+        price: Number(price.toFixed(2)),
+        costPrice: Number(costPrice.toFixed(2)),
+        vatRate,
+        stockQuantity,
         expire: rawExpiry || undefined,
         shelfLocation: shelfLocation || undefined,
         isWeighted,
         isValid,
-        validationError
+        validationError: validationError || undefined
       });
     }
 
@@ -167,31 +200,33 @@ export class CatalogImportService {
           expire: row.expire || existing.expire,
           shelfLocation: row.shelfLocation || existing.shelfLocation,
           isWeighted: row.isWeighted ?? existing.isWeighted,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          _syncStatus: 'dirty'
         };
         productsToPut.push(updatedProd);
         updated++;
       } else {
         const newProd: Product = {
-          id: 'PROD-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
-  barcode: row.barcode,
-  sku: row.sku || row.barcode,
-  name: row.name,
-  categoryId: 'cat-pantry',
-  categoryName: row.categoryName || 'Παντοπωλείο',
-  price: row.price,
-  costPrice: row.costPrice,
-  vatRate: row.vatRate !== undefined ? row.vatRate : 13,
-  stockQuantity: row.stockQuantity,
-  stock: row.stockQuantity,
-  expire: row.expire,
-  shelfLocation: row.shelfLocation,
-  isWeighted: row.isWeighted || false,
-  isActive: true,
-  isPinned: false,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
-};
+          id: `PROD-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          barcode: row.barcode,
+          sku: row.sku || row.barcode,
+          name: row.name,
+          categoryId: row.categoryId || 'cat-pantry',
+          categoryName: row.categoryName || 'Παντοπωλείο & Τρόφιμα',
+          price: row.price,
+          costPrice: row.costPrice,
+          vatRate: row.vatRate,
+          stockQuantity: row.stockQuantity,
+          stock: row.stockQuantity,
+          expire: row.expire,
+          shelfLocation: row.shelfLocation,
+          isWeighted: row.isWeighted || false,
+          isActive: true,
+          isPinned: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          _syncStatus: 'dirty'
+        };
         productsToPut.push(newProd);
         barcodeMap.set(row.barcode, newProd);
         added++;
