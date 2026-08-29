@@ -1,168 +1,112 @@
 <div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
 
-  <!-- ================= 1. TOP APP HEADER ================= -->
-  <header class="h-16 bg-slate-900 border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between shrink-0 shadow-md font-sans">
+ <!-- Top Main Header Bar -->
+<header class="w-full bg-slate-900/95 border-b border-slate-800 px-3 py-2 text-white backdrop-blur flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0 select-none">
   
- <!-- LEFT: Brand, Store Selector, Cashier Info & Staff -->
-<div class="flex items-center gap-3">
-  <!-- Secret 5-Tap Brand Target -->
-  <div 
-    (click)="onSecretLogoClick()" 
-    class="flex items-center gap-2 pr-3 border-r border-slate-800 cursor-pointer select-none active:scale-95 transition-transform"
-    title="Maranth POS">
-    <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></span>
-    <h1 class="text-base font-black tracking-widest text-slate-100 uppercase font-mono">
-      MARANTH <span class="text-emerald-400">POS</span>
-    </h1>
-  </div>
-
-  <!-- Store Indicator / Super-Admin Switcher -->
-  @if (tenantConfig.isSuperAdmin()) {
-    <div class="flex items-center gap-1.5 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl">
-      <select 
-      #storeSelect
-        [value]="tenantConfig.activeShop().code" 
-        (change)="tenantConfig.switchShop($any($event.target).value)"
-        class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer">
-        @for (s of tenantConfig.registeredShops(); track s.code) {
-          <option [value]="s.code">⚡ {{ s.name }} ({{ s.code }})</option>
-        }
-      </select>
-      <button 
-      type="button" 
-      (click)="isNewStoreModalOpen.set(true)" 
-      title="Create New Store"
-      class="px-2 py-1 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer">
-      <span>➕</span>
-      <span class="text-[10px]">New Store</span>
-    </button>
-      <button 
-      type="button" 
-      (click)="tenantConfig.lockSuperAdmin()" 
-      title="Exit Super-Admin Mode"
-      class="px-2 py-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1">
-      <span>🔒</span>
-      <span class="text-[10px] uppercase tracking-wider">Lock</span>
-    </button>
-      <button 
-        type="button" 
-        (click)="tenantConfig.lockSuperAdmin()" 
-        title="Lock Super-Admin Mode"
-        class="px-2 py-1 text-slate-400 hover:text-rose-400 text-xs transition cursor-pointer">
-        🔒
-      </button>
+  <!-- Left Side: Brand & Active Store Badge -->
+  <div class="flex items-center gap-2 shrink-0">
+    <div 
+      (click)="onSecretLogoClick()" 
+      class="flex items-center gap-1.5 cursor-pointer active:scale-95 transition select-none bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/60"
+      title="Tap 5 times for Super-Admin">
+      <span class="text-xl">🏪</span>
+      <div class="leading-tight">
+        <h1 class="text-xs md:text-sm font-black tracking-tight bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
+          {{ tenantConfig.activeShop().name }}
+        </h1>
+        <span class="text-[9px] text-slate-400 font-mono block">[{{ tenantConfig.activeShop().code }}]</span>
+      </div>
     </div>
-  } @else {
-    <div class="px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-semibold text-slate-300">
-      🏪 {{ tenantConfig.activeShop().name }}
-    </div>
-  }
 
-    <!-- Cashier Session & Quick Actions -->
-    <div class="flex items-center gap-2 pl-3 border-l border-slate-800">
-      @if (shiftService.currentCashier(); as cashier) {
-        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-black text-sm flex items-center justify-center border border-emerald-500/40">
-          {{ cashier.name.charAt(0) }}
-        </div>
-        <span class="text-sm font-mono font-black text-slate-100">{{ cashier.name }}</span>
-        
-        <!-- Handover / X-Report -->
+    <!-- Super-Admin Dropdown Strip (if unlocked) -->
+    @if (tenantConfig.isSuperAdmin()) {
+      <div class="flex items-center gap-1 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl shrink-0">
+        <select 
+          #storeSelect
+          [value]="tenantConfig.activeShop().code" 
+          (change)="handleStoreSwitch(storeSelect.value)"
+          class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer max-w-[130px] md:max-w-[180px] truncate">
+          @for (s of tenantConfig.registeredShops(); track s.code) {
+            <option [value]="s.code" [selected]="s.code === tenantConfig.activeShop().code">
+              ⚡ {{ s.name }} ({{ s.code }})
+            </option>
+          }
+        </select>
+
         <button 
           type="button" 
-          (click)="openShiftHandover()"
-          title="Παράδοση Βάρδιας / Δελτίο Χ"
-          class="h-9 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-400 border border-amber-500/40 rounded-xl cursor-pointer transition flex items-center gap-1"
-        >
-          📄 Δελτίο "Χ"
+          (click)="isNewStoreModalOpen.set(true)" 
+          title="Add New Store"
+          class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0">
+          <span>➕</span>
+          <span class="hidden md:inline text-[11px]">New</span>
         </button>
 
-        <!-- Lock Screen -->
         <button 
           type="button" 
-          (click)="shiftService.lockScreen()"
-          title="Κλείδωμα Οθόνης [F12]"
-          class="h-9 px-2.5 bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700 rounded-xl text-sm cursor-pointer transition"
-        >
+          (click)="tenantConfig.lockSuperAdmin()" 
+          title="Lock Super-Admin"
+          class="px-1.5 py-1 text-slate-400 hover:text-rose-400 text-xs transition shrink-0">
           🔒
         </button>
-      } @else {
-        <!-- Fallback Login button if locked out or no active cashier session -->
-        <button 
-          type="button" 
-          (click)="shiftService.lockScreen()"
-          class="h-9 px-3 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
-          title="Σύνδεση Ταμία"
-        >
-          <span>🔑</span>
-          <span>Σύνδεση Ταμία</span>
-        </button>
-      }
-
-      <!-- Manage Employees Button (Always Visible) -->
-      <button 
-        type="button" 
-        (click)="openEmployeeModal()"
-        class="h-9 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
-        title="Διαχείριση Προσωπικού & PIN"
-      >
-        <span>👥</span>
-        <span>Προσωπικό</span>
-      </button>
-    </div>
+      </div>
+    }
   </div>
 
-  <!-- RIGHT: Cashier Front-Desk Controls -->
-  <div class="flex items-center gap-2.5">
+  <!-- Right Side: Action Tool Buttons -->
+  <!-- 'overflow-x-auto' ensures any buttons that exceed the screen width can be smoothly swiped/scrolled -->
+  <div class="flex items-center gap-1.5 shrink-0 overflow-x-auto py-0.5">
     
-    <!-- myDATA Status & Config -->
+    <!-- Price Check F2 -->
     <button 
-      type="button" 
-      (click)="showMyDataConfig.set(true)"
-      class="h-11 px-4 bg-slate-800 hover:bg-slate-750 active:scale-95 text-sm font-mono font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-slate-100 transition-all flex items-center gap-2.5 cursor-pointer shadow-sm"
-    >
-      <span 
-        class="w-2.5 h-2.5 rounded-full shrink-0" 
-        [class.bg-emerald-400]="myDataService.credentials().environment === 'production'" 
-        [class.bg-amber-400]="myDataService.credentials().environment === 'sandbox'"
-      ></span>
-      <span class="tracking-wide">myDATA</span>
-      <span 
-        class="text-[10px] px-1.5 py-0.5 rounded-md font-bold uppercase"
-        [class.bg-emerald-950/70]="myDataService.credentials().environment === 'production'"
-        [class.text-emerald-400]="myDataService.credentials().environment === 'production'"
-        [class.bg-amber-950/70]="myDataService.credentials().environment === 'sandbox'"
-        [class.text-amber-400]="myDataService.credentials().environment === 'sandbox'"
-      >
-        {{ myDataService.credentials().environment === 'production' ? 'PROD' : 'SANDBOX' }}
-      </span>
+      (click)="openPriceCheck()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
+      <span>🔍</span>
+      <span class="hidden lg:inline">Έλεγχος Τιμής</span>
+      <span class="text-[9px] bg-slate-700 px-1 py-0.5 rounded text-slate-400 hidden xl:inline">F2</span>
     </button>
 
-    <!-- Spoilage / Φθορές -->
+    <!-- Cash Movement / Drawer -->
     <button 
-      type="button" 
-      (click)="navigateToSpoilage()"
-      class="h-11 px-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-rose-500/60 text-rose-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-    >
-      <span>🗑️ Φθορές</span>
+      (click)="openCashDrawerModal()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
+      <span>💵</span>
+      <span class="hidden lg:inline">Ταμείο</span>
     </button>
 
-    <!-- Z-Report -->
+    <!-- Add Employee -->
     <button 
-      type="button" 
-      (click)="navigateToZReport()"
-      class="h-11 px-4 bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold rounded-xl border border-slate-700 hover:border-amber-500/60 text-amber-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-    >
-      <span>📊 "Ζ"</span>
+      (click)="openEmployeeModal()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
+      <span>👤</span>
+      <span class="hidden lg:inline">Υπάλληλοι</span>
     </button>
 
-    <!-- Warehouse / Back-Office -->
+    <!-- Apothiki / Inventory Link -->
     <button 
-      type="button" 
-      (click)="navigateToInventory()"
-      class="h-11 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs font-black text-slate-950 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
-    >
-      <span>📦 Αποθήκη</span>
+      (click)="navigateToInventory()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 transition flex items-center gap-1 shrink-0">
+      <span>📦</span>
+      <span class="hidden md:inline">Αποθήκη</span>
     </button>
+
+    <!-- Shift / X-Report -->
+    <button 
+      (click)="openShiftHandover()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
+      <span>📋</span>
+      <span class="hidden lg:inline">Βάρδια</span>
+    </button>
+
+    <!-- Lock Terminal (F12) -->
+    <button 
+      (click)="shiftService.lockScreen()" 
+      class="px-2.5 py-1.5 bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 rounded-xl text-xs font-bold border border-rose-800/50 transition flex items-center gap-1 shrink-0"
+      title="Lock POS">
+      <span>🔒</span>
+      <span class="hidden md:inline">Κλείδωμα</span>
+    </button>
+
   </div>
 </header>
 
