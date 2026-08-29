@@ -1,190 +1,103 @@
-import { Injectable, inject } from '@angular/core';
-import { marketDb } from '../../core/db/market-db';
-import { Product } from '../../core/models';
-import { TenantConfigService } from '../../core/services/tenant-config.service';
-import { MarketCatalogService } from '../../core/services/market-catalog.service';
-export interface ImportParsedRow {
-  barcode: string;
-  name: string;
-  price: number;
-  costPrice?: number;
-  vatRate?: number;
-  stockQuantity?: number;
-  categoryId?: string;
-  categoryName?: string;
-  isPinned?: boolean;
-  isValid: boolean;
-  error?: string;
-  raw?: any;
-}
+import { Component, signal, computed, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { CatalogImportService, ImportParsedRow } from '../../core/services/catalog-import.service';
 
-@Injectable({ providedIn: 'root' })
-export class CatalogImportService {
-  private tenantConfig = inject(TenantConfigService);
-  private catalogService = inject(MarketCatalogService);
+@Component({
+  selector: 'app-catalog-importer',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  templateUrl: './catalog-importer.component.html'
+})
+export class CatalogImporterComponent {
+  private router = inject(Router);
+  private importService = inject(CatalogImportService);
 
-  /**
-   * Universal parser for CSV, TSV, Semicolon (;), or Pipe (|) TXT files
-   */
-  public parseCsvText(rawText: string): ImportParsedRow[] {
-    const lines = rawText
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(l => l.length > 0);
+  // State Signals
+  public rawText = signal<string>('');
+  public parsedRows = signal<ImportParsedRow[]>([]);
+  public importMode = signal<'UPSERT' | 'REPLACE'>('UPSERT');
+  public isProcessing = signal<boolean>(false);
+  public isDragOver = signal<boolean>(false);
+  public statusMessage = signal<string>('');
 
-    if (lines.length === 0) return [];
+  // Computed Counts
+  public validCount = computed(() => this.parsedRows().filter(r => r.isValid).length);
+  public invalidCount = computed(() => this.parsedRows().filter(r => !r.isValid).length);
 
-    // Detect delimiter from the first line
-    const firstLine = lines[0];
-    let delimiter = ',';
-    if (firstLine.includes(';')) delimiter = ';';
-    else if (firstLine.includes('\t')) delimiter = '\t';
-    else if (firstLine.includes('|')) delimiter = '|';
-
-    // Check if line 1 is a header
-    const hasHeader = /barcode|name|title|price|sku|τιμη|ονομα/i.test(firstLine);
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-
-    return dataLines.map((line, idx) => {
-      const cols = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
-      
-      const barcode = cols[0] || '';
-      const name = cols[1] || '';
-      
-      // Clean up price (convert "1,50" -> 1.50)
-      const rawPrice = cols[2] ? cols[2].replace(',', '.') : '0';
-      const price = parseFloat(rawPrice) || 0;
-
-      const rawVat = cols[3] ? cols[3].replace(',', '.') : '13';
-      const vatRate = parseFloat(rawVat) || 13;
-
-      const rawStock = cols[4] ? cols[4].replace(',', '.') : '10';
-      const stockQuantity = parseFloat(rawStock) || 10;
-
-      const categoryName = cols[5] || 'Παντοπωλείο & Τρόφιμα';
-      const categoryId = cols[6] || 'cat-pantry';
-
-      let isValid = true;
-      let error = '';
-
-      if (!barcode) {
-        isValid = false;
-        error = 'Λείπει το Barcode / Κωδικός';
-      } else if (!name) {
-        isValid = false;
-        error = 'Λείπει το όνομα προϊόντος';
-      }
-
-      return {
-        barcode,
-        name,
-        price,
-        costPrice: Number((price * 0.7).toFixed(2)),
-        vatRate,
-        stockQuantity,
-        categoryId,
-        categoryName,
-        isValid,
-        error: error || undefined
-      };
-    });
+  public navigateTo(path: string): void {
+    this.router.navigate([path]);
   }
 
-  /**
-   * Commits the parsed rows to Dexie stamped with the active tenant
-   */
-  public async commitImport(
-    rows: ImportParsedRow[], 
-    mode: 'UPSERT' | 'REPLACE' = 'UPSERT'
-  ): Promise<{ added: number; updated: number }> {
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
-    const validRows = rows.filter(r => r.isValid);
-
-    if (validRows.length === 0) {
-      return { added: 0, updated: 0 };
-    }
-
-    if (mode === 'REPLACE') {
-      // Clear ONLY products belonging to this specific store
-      const all = await marketDb.products.toArray();
-      const idsToDelete = all
-  .filter(p => (p.storeId || 'mar-market') === activeStoreCode)
-  .map(p => p.id)
-  .filter((id): id is string => id !== undefined && id !== null);
-
-if (idsToDelete.length > 0) {
-  await marketDb.products.bulkDelete(idsToDelete);
-      }
-    }
-
-    let added = 0;
-    let updated = 0;
-
-    const existingProducts = await marketDb.products.toArray();
-    const existingStoreMap = new Map<string, Product>();
-
-    existingProducts
-      .filter(p => (p.storeId || 'mar-market') === activeStoreCode)
-      .forEach(p => existingStoreMap.set(p.barcode, p));
-
-    const productsToSave: Product[] = [];
-
-    for (const r of validRows) {
-      const existing = existingStoreMap.get(r.barcode);
-
-      if (existing) {
-        productsToSave.push({
-          ...existing,
-          name: r.name,
-          price: r.price,
-          vatRate: r.vatRate ?? existing.vatRate,
-          stockQuantity: r.stockQuantity ?? existing.stockQuantity,
-          categoryId: r.categoryId || existing.categoryId,
-          categoryName: r.categoryName || existing.categoryName,
-          storeId: activeStoreCode,
-          updatedAt: new Date().toISOString(),
-          _syncStatus: 'dirty'
-        });
-        updated++;
-      } else {
-        productsToSave.push({
-          id: `PROD-${activeStoreCode}-${r.barcode}`,
-          barcode: r.barcode,
-          sku: r.barcode,
-          name: r.name,
-          price: r.price,
-          costPrice: r.costPrice || Number((r.price * 0.7).toFixed(2)),
-          vatRate: r.vatRate ?? 13,
-          stockQuantity: r.stockQuantity ?? 10,
-          stock: r.stockQuantity ?? 10,
-          categoryId: r.categoryId || 'cat-pantry',
-          categoryName: r.categoryName || 'Παντοπωλείο & Τρόφιμα',
-          storeId: activeStoreCode,
-          isActive: true,
-          isPinned: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          _syncStatus: 'dirty'
-        });
-        added++;
-      }
-    }
-
-    // Write to Dexie/IndexedDB
-    await marketDb.products.bulkPut(productsToSave);
-
-    // Refresh active catalog signals
-    await this.catalogService.loadInitialCatalog();
-
-    return { added, updated };
+  public downloadTemplate(): void {
+    const csvContent = this.importService.generateSampleCsv();
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'maranth_catalog_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
-  public generateSampleCsv(): string {
-    return [
-      'barcode;name;price;vatRate;stockQuantity;categoryName;categoryId',
-      '5201010101010;Φρέσκο Γάλα 1L;1.65;13;20;Γαλακτοκομικά;cat-dairy',
-      '5202020202020;Ψωμί Τοστ 500g;1.40;24;15;Αρτοποιείο & Snacks;cat-bakery',
-      '5203030303030;Coca Cola 330ml;0.90;24;48;Αναψυκτικά & Ποτά;cat-drinks'
-    ].join('\n');
+  public parseContent(): void {
+    const text = this.rawText().trim();
+    if (!text) {
+      this.parsedRows.set([]);
+      return;
+    }
+    const rows = this.importService.parseCsvText(text);
+    this.parsedRows.set(rows);
+    this.statusMessage.set(`Αναγνωρίστηκαν ${rows.length} γραμμές.`);
+  }
+
+  public onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input?.files && input.files[0]) {
+      this.readFile(input.files[0]);
+    }
+  }
+
+  public onFileDropped(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragOver.set(false);
+    if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
+      this.readFile(event.dataTransfer.files[0]);
+    }
+  }
+
+  private readFile(file: File): void {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = (e.target?.result as string) || '';
+      this.rawText.set(content);
+      this.parseContent();
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  public async executeImport(): Promise<void> {
+    if (this.validCount() === 0 || this.isProcessing()) return;
+
+    this.isProcessing.set(true);
+    this.statusMessage.set('Εκτέλεση εισαγωγής στη βάση δεδομένων...');
+
+    try {
+      const result = await this.importService.commitImport(this.parsedRows(), this.importMode());
+      this.statusMessage.set(`Επιτυχία! Προστέθηκαν: ${result.added}, Ενημερώθηκαν: ${result.updated}`);
+      
+      // Auto-navigate to POS or Inventory after 1.5s
+      setTimeout(() => {
+        this.router.navigate(['/pos']);
+      }, 1500);
+    } catch (err: any) {
+      console.error('[CatalogImporter] Import failed:', err);
+      this.statusMessage.set(`Σφάλμα κατά την εισαγωγή: ${err?.message || 'Άγνωστο σφάλμα'}`);
+    } finally {
+      this.isProcessing.set(false);
+    }
   }
 }
