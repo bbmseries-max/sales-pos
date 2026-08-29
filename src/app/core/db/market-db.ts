@@ -41,10 +41,12 @@ export class MarketDatabase extends Dexie {
       shifts: 'id, cashierId, status, startTime, storeId'
     });
 
-    // Version 7: Add sync, expiration, and timestamp indexes
-    this.version(7).stores({
-      products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId, statusDate, expire, updatedAt, _syncStatus'
-    });
+  this.version(8).stores({
+  products: '++id, barcode, name, categoryId, storeId, isActive, _syncStatus',
+  categories: '++id, name, tenantId',
+  cashiers: '++id, pin, storeId, isActive',
+  shifts: '++id, cashierId, status, startTime'
+});
   }
 }
 

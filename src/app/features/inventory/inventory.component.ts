@@ -9,7 +9,8 @@ import {
   Product, 
   Category, 
   SUPERMARKET_DEPARTMENTS, 
-  MasterCategory, normalizeDateToInput
+  MasterCategory, 
+  normalizeDateToInput 
 } from '../../core/models/market.models';
 
 export interface CategoryTab {
@@ -115,7 +116,7 @@ export class InventoryComponent implements OnInit {
         (p.name && p.name.toLowerCase().includes(term)) ||
         (p.barcode && String(p.barcode).toLowerCase().includes(term)) ||
         (p.brand && p.brand.toLowerCase().includes(term)) ||
-        (p.id && String(p.id).toLowerCase().includes(term))
+        (p.id && String(p.id).toLowerCase() === term)
       );
     }
 
@@ -123,7 +124,7 @@ export class InventoryComponent implements OnInit {
     if (catId !== 'all') {
       items = items.filter(p => 
         p.categoryId === catId || 
-        p.categoryName === catId ||
+        p.categoryName === catId || 
         (p.categoryName && `cat-${p.categoryName}` === catId)
       );
     }
@@ -134,7 +135,6 @@ export class InventoryComponent implements OnInit {
     } else if (tab === 'pinned') {
       items = items.filter(p => !!p.isPinned);
     } else if (tab === 'expiring') {
-      // Direct call to normalized expiration checker
       items = items.filter(p => this.isProductExpired(p));
     }
 
@@ -149,43 +149,61 @@ export class InventoryComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.loadAllInventory();
   }
+
   public isItemExpired(expireDate?: string | null): boolean {
     if (!expireDate) return false;
     return this.isProductExpired({ expire: expireDate } as Product);
   }
 
   /**
-   * Loads inventory and recalculates summary badges
+   * Loads inventory strictly isolated for the active tenant
    */
- public async loadAllInventory(): Promise<void> {
-  try {
-    this.isLoading.set(true);
+  public async loadAllInventory(): Promise<void> {
+    try {
+      this.isLoading.set(true);
 
-    // 1. Fetch raw rows from Dexie
-    const rawItems = await marketDb.products.toArray();
-    const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+      const rawItems = await marketDb.products.toArray();
+      const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
 
-    // 2. Allow items belonging to active store, legacy 'mar-market'/'SHOP-01', or unassigned
-    const storeItems = rawItems.filter(p => 
-      !p.storeId || 
-      p.storeId === activeCode || 
-      p.storeId === 'mar-market' || 
-      p.storeId === 'SHOP-01'
-    );
+      // STRICT ISOLATION FILTER:
+      // - If on 'mar-market': show items with storeId === 'mar-market', 'SHOP-01', or unassigned legacy items.
+      // - If on any other store (e.g., 'ftest'): ONLY show items explicitly tagged with that storeId.
+      const storeItems = rawItems.filter(p => {
+        const itemStore = p.storeId || 'mar-market';
+        const isLegacyCentral = (!p.storeId || p.storeId === 'SHOP-01') && activeCode === 'mar-market';
+        const isExactMatch = itemStore === activeCode;
+        const isActive = p.isActive !== false;
 
-    // 3. Update the base signals that feed computed()
-    this.allProducts.set(storeItems);
-    this.totalCount.set(storeItems.length);
+        return (isExactMatch || isLegacyCentral) && isActive;
+      });
 
-    console.log(`[Apothiki] Initialized ${storeItems.length} items from Dexie.`);
-  } catch (err) {
-    console.error('[Apothiki] Error loading inventory:', err);
-  } finally {
-    this.isLoading.set(false);
+      this.allProducts.set(storeItems);
+      this.totalCount.set(storeItems.length);
+
+      // Recalculate summary badge counters
+      let low = 0;
+      let exp = 0;
+      let pin = 0;
+
+      for (const p of storeItems) {
+        if ((p.stockQuantity ?? 0) <= (p.minStockWarning ?? 5)) low++;
+        if (this.isProductExpired(p)) exp++;
+        if (p.isPinned) pin++;
+      }
+
+      this.lowStockCount.set(low);
+      this.expiringCount.set(exp);
+      this.pinnedCount.set(pin);
+
+      console.log(`[Apothiki] Loaded ${storeItems.length} items for store "${activeCode}".`);
+    } catch (err) {
+      console.error('[Apothiki] Error loading inventory:', err);
+    } finally {
+      this.isLoading.set(false);
+    }
   }
-}
 
- /**
+  /**
    * Unified expiration checker
    */
   public isProductExpired(product: Product): boolean {
@@ -242,11 +260,13 @@ export class InventoryComponent implements OnInit {
     const item = this.editingProduct();
     if (!item) return;
 
+    const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+
     const updated: Product = {
       ...item,
-      storeId: item.storeId || this.tenantConfig.activeShop().code || 'SHOP-01',
+      storeId: item.storeId || activeCode,
       updatedAt: new Date().toISOString(),
-      _syncStatus: 'dirty' // Mark for delta sync
+      _syncStatus: 'dirty'
     };
 
     await marketDb.products.put(updated);
@@ -254,7 +274,6 @@ export class InventoryComponent implements OnInit {
     await this.loadAllInventory();
     await this.catalogService.loadInitialCatalog();
 
-    // Push changes in background
     this.syncService.pushDeltaToHub().catch(console.error);
     this.showToast(`Ενημερώθηκε: "${updated.name}"`);
   }
@@ -358,9 +377,9 @@ export class InventoryComponent implements OnInit {
 
   public navigateToImport(): void {
     if (!this.tenantConfig.isSuperAdmin()) {
-    console.warn('[Security] Unauthorized attempt to access bulk import.');
-    return;
-  }
+      console.warn('[Security] Unauthorized attempt to access bulk import.');
+      return;
+    }
     this.router.navigate(['/import']);
   }
 
@@ -370,7 +389,7 @@ export class InventoryComponent implements OnInit {
 
   public onImageError(event: Event): void {
     const img = event.target as HTMLImageElement;
-    img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%23475569" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+    img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%23475569" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2" stroke="%2310b981"/></svg>';
   }
 
   private showToast(msg: string): void {

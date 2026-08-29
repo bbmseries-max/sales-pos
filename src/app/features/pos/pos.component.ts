@@ -13,6 +13,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
+import { SuperAdminModalComponent } from '../../shared/super-admin-modal.component';
+
 // Standalone Modals
 import { PosLockScreenComponent } from './components/pos-lock-screen.component';
 import { PosShiftHandoverModalComponent } from './components/pos-shift-handover-modal.component';
@@ -36,7 +38,6 @@ import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.ser
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { marketDb } from '../../core/db/market-db';
-import { SuperAdminModalComponent } from '../../shared/super-admin-modal.component';
 import { 
   Product, 
   TransactionRecord, 
@@ -158,7 +159,6 @@ export class PosComponent implements OnInit, AfterViewInit {
       this.secretClickCount = 0;
       this.isUnlockModalOpen.set(true);
     } else {
-      // Resets count if 5 taps are not completed within 1.5 seconds
       this.secretClickTimer = setTimeout(() => {
         this.secretClickCount = 0;
       }, 1500);
@@ -195,28 +195,27 @@ export class PosComponent implements OnInit, AfterViewInit {
     return tendered >= payable ? Number((tendered - payable).toFixed(2)) : 0;
   });
 
-  private logoClicks = 0;
-
-public onLogoClick(): void {
-  this.logoClicks++;
-  if (this.logoClicks >= 5) {
-    const pin = prompt('Enter Super-Admin Master Key:');
-    if (pin === 'YOUR_SECRET_MASTER_PIN') {
-      this.tenantConfig.isSuperAdmin.set(true);
-      alert('Super-Admin Mode Activated: Store Switching Enabled');
-    }
-    this.logoClicks = 0;
-  }
-}
-
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
+    await this.refreshPinnedProducts();
+  }
 
+  /**
+   * Refreshes pinned products strictly for the current active store
+   */
+  public async refreshPinnedProducts(): Promise<void> {
+    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
     const all = await marketDb.products.toArray();
-    const active = all.filter(p => p.isActive !== false);
-    const pinned = active.filter(p => p.isPinned === true || (p.isPinned as any) === 1 || (p.isPinned as any) === 'true');
-    this.pinnedProducts.set(pinned.length > 0 ? pinned : active.slice(0, 24));
+
+    // STRICT STORE FILTER
+    const storeProducts = all.filter(p => {
+      const itemStore = p.storeId || 'mar-market';
+      return itemStore === activeStoreCode && p.isActive !== false;
+    });
+
+    const pinned = storeProducts.filter(p => p.isPinned === true || (p.isPinned as any) === 1 || (p.isPinned as any) === 'true');
+    this.pinnedProducts.set(pinned.length > 0 ? pinned : storeProducts.slice(0, 24));
   }
 
   ngAfterViewInit(): void {
@@ -231,6 +230,7 @@ public onLogoClick(): void {
                              this.showStoreModal() || this.showWeightModal() ||
                              this.showMyDataConfig() || this.showOutOfStockModal() ||
                              this.showEmployeeModal() || this.showDiscountModal() ||
+                             this.isUnlockModalOpen() || this.isNewStoreModalOpen() ||
                              this.shiftService.isLocked();
 
       if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
@@ -259,6 +259,7 @@ public onLogoClick(): void {
                         this.showStoreModal() || this.showWeightModal() ||
                         this.showMyDataConfig() || this.showOutOfStockModal() ||
                         this.showEmployeeModal() || this.showDiscountModal() ||
+                        this.isUnlockModalOpen() || this.isNewStoreModalOpen() ||
                         this.shiftService.isLocked();
 
     if (this.showOutOfStockModal() && (event.key === 'Enter' || event.key === 'Escape')) {
@@ -292,7 +293,7 @@ public onLogoClick(): void {
       name: '',
       pin: '',
       role: 'CASHIER',
-      storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
+      storeId: this.tenantConfig.activeShop().code || 'mar-market'
     };
     this.showEmployeeModal.set(true);
   }
@@ -317,7 +318,7 @@ public onLogoClick(): void {
         name: data.name.trim(),
         pin: data.pin.trim(),
         role: data.role,
-        storeId: data.storeId || this.tenantConfig.activeShop().code || 'SHOP-01',
+        storeId: data.storeId || this.tenantConfig.activeShop().code || 'mar-market',
         isActive: true
       });
 
@@ -330,7 +331,7 @@ public onLogoClick(): void {
         name: '',
         pin: '',
         role: 'CASHIER',
-        storeId: this.tenantConfig.activeShop().code || 'SHOP-01'
+        storeId: this.tenantConfig.activeShop().code || 'mar-market'
       };
       this.showEmployeeModal.set(false);
       this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
@@ -521,6 +522,7 @@ public onLogoClick(): void {
     this.showQuickRegisterModal.set(false);
     this.discoveredExternalProduct.set(null);
     this.cart.addProduct(registered);
+    await this.refreshPinnedProducts();
     this.flashFeedback('✔ Προστέθηκε: ' + registered.name + ' (€' + registered.price.toFixed(2) + ')', 'success');
     this.focusBarcodeInput();
   }
@@ -565,16 +567,6 @@ public onLogoClick(): void {
     this.cart.clear();
     this.tenantConfig.switchShop(newStoreCode);
     this.showStoreModal.set(false);
-    
-    // Reload catalog & cashiers strictly for the selected store
-    await Promise.all([
-      this.catalogService.loadInitialCatalog(),
-      this.shiftService.loadAllCashiers()
-    ]);
-
-    const active = this.tenantConfig.activeShop();
-    this.flashFeedback(`✔ Ενεργό Κατάστημα: ${active.name} [${active.code}]`, 'success');
-    this.focusBarcodeInput();
   }
 
   public async onCustomerSearch(phone: string): Promise<void> {
@@ -788,7 +780,7 @@ public onLogoClick(): void {
     const img = event.target as HTMLImageElement;
     if (img) {
       img.onerror = null;
-      img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+      img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2" stroke="%2310b981"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
     }
   }
 }
