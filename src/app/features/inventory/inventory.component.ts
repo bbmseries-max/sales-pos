@@ -357,6 +357,10 @@ export class InventoryComponent implements OnInit {
   }
 
   public navigateToImport(): void {
+    if (!this.tenantConfig.isSuperAdmin()) {
+    console.warn('[Security] Unauthorized attempt to access bulk import.');
+    return;
+  }
     this.router.navigate(['/import']);
   }
 

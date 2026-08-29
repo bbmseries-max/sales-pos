@@ -16,12 +16,14 @@
     </div>
 <div class="flex items-center gap-3">
     <!-- Audit Navigation Tabs -->
+     @if (tenantConfig.isSuperAdmin()) {
      <button 
   type="button" 
   (click)="downloadHubCatalog()" 
   class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow flex items-center gap-2 text-sm transition-all">
   ☁️ Cloud (Hub)
 </button>
+     }
     <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
       <button 
         (click)="setTab('all')"
@@ -66,13 +68,14 @@
         <span>📌 Pinned at POS</span>
         <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'pinned'" [class.text-sky-400]="selectedTab() === 'pinned'" [class.bg-slate-800]="selectedTab() !== 'pinned'">{{ pinnedCount() }}</span>
       </button>
-
+@if (tenantConfig.isSuperAdmin()) {
       <button 
         (click)="navigateToImport()"
         class="h-9 px-3.5 bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-emerald-500/50 transition flex items-center gap-2 cursor-pointer"
       >
         <span>📥 Μαζική Εισαγωγή CSV</span>
       </button>
+    }
     </div>
     </div>
   </header>

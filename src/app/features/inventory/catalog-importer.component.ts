@@ -20,6 +20,7 @@ export class CatalogImporterComponent {
   public statusMessage = signal<string>('');
   public isDragOver = signal<boolean>(false);
   private router = inject(Router);
+  
 
 
   public validCount = computed(() => this.parsedRows().filter(r => r.isValid).length);
