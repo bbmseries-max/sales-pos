@@ -51,19 +51,26 @@ export class TenantConfigService {
 
   private initialize(): void {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_TENANTS);
-      let shops: StoreTenant[] = raw ? JSON.parse(raw) : this.defaultShops;
-      
+      const rawTenants = localStorage.getItem(STORAGE_KEY_TENANTS);
+      let shops: StoreTenant[] = rawTenants ? JSON.parse(rawTenants) : [];
+
+      // If empty or missing, seed default and persist
       if (!Array.isArray(shops) || shops.length === 0) {
         shops = this.defaultShops;
         localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(shops));
       }
       this.registeredShops.set(shops);
 
-      const activeCode = localStorage.getItem(STORAGE_KEY_ACTIVE) || 'mar-market';
-      const found = shops.find(s => s.code === activeCode) || shops[0];
-      this.activeShop.set(found);
-    } catch {
+      // Read saved active code
+      const savedCode = localStorage.getItem(STORAGE_KEY_ACTIVE);
+      const active = shops.find(s => s.code === savedCode) || shops[0];
+      
+      this.activeShop.set(active);
+      localStorage.setItem(STORAGE_KEY_ACTIVE, active.code);
+
+      console.log(`[Tenant] Active tenant initialized: ${active.code} (${active.name})`);
+    } catch (err) {
+      console.error('[Tenant] Failed to initialize tenant storage:', err);
       this.registeredShops.set(this.defaultShops);
       this.activeShop.set(this.defaultShops[0]);
     }
@@ -84,28 +91,57 @@ export class TenantConfigService {
     sessionStorage.removeItem(SESSION_SUPER_ADMIN);
   }
 
+ /**
+   * Registers a brand new shop / tenant branch
+   */
+  public registerShop(newShop: StoreTenant): void {
+    // 1. Merge without duplicates
+    const currentList = this.registeredShops();
+    const filtered = currentList.filter(s => s.code !== newShop.code);
+    const updated = [...filtered, newShop];
+
+    // 2. Persist list AND new active code BEFORE switching
+    this.registeredShops.set(updated);
+    localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(updated));
+    localStorage.setItem(STORAGE_KEY_ACTIVE, newShop.code);
+
+    // 3. Update signal state
+    this.activeShop.set(newShop);
+
+    // 4. Force reload after a microtask tick so localStorage write is guaranteed
+    setTimeout(() => {
+      location.reload();
+    }, 50);
+  }
+
+  /**
+   * Switches active shop
+   */
   public switchShop(target: StoreTenant | Shop | string): void {
     if (!this.isSuperAdmin()) {
       console.warn('[Tenant] Unauthorized attempt to switch shop.');
       return;
     }
+
     const code = typeof target === 'string' ? target : target.code;
-    const shopObj = this.registeredShops().find(s => s.code === code);
-    if (!shopObj) {
-      console.error(`[Tenant] Shop "${code}" not found.`);
+    const shops = this.registeredShops();
+    const found = shops.find(s => s.code === code);
+
+    if (!found) {
+      console.error(`[Tenant] Shop code "${code}" not found in registered shops:`, shops);
       return;
     }
 
-    this.activeShop.set(shopObj);
-    localStorage.setItem(STORAGE_KEY_ACTIVE, shopObj.code);
-    location.reload();
-  }
+    // 1. Update signal & synchronous localStorage
+    this.activeShop.set(found);
+    localStorage.setItem(STORAGE_KEY_ACTIVE, found.code);
 
-  public registerShop(newShop: StoreTenant): void {
-    const updated = [...this.registeredShops().filter(s => s.code !== newShop.code), newShop];
-    this.registeredShops.set(updated);
-    localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(updated));
-    this.switchShop(newShop);
+    console.log(`[Tenant] Switched active shop to: ${found.code}`);
+
+    // 2. Short delay ensures browser flushes localStorage to disk before restart
+    setTimeout(() => {
+      location.reload();
+    }, 50);
   }
 
   public updateActiveShopDetails(updated: Partial<StoreTenant>): void {
