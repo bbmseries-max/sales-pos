@@ -23,8 +23,7 @@ async function hashPin(pin: string): Promise<string> {
 export class TenantConfigService {
   private firestore = inject(Firestore);
 
-  // SHA-256 hash of "8820"
-  private readonly MASTER_PIN_HASH = '31b8160408544cb4469f3efec825f77db27d046d2a76f2d22a84b06fa45d6dd0';
+  private readonly MASTER_PIN_HASH = '31b8160408544cb4469f3efec825f77db27d046d2a76f2d22a84b06fa45d6dd0'; // 8820
 
   private defaultShops: StoreTenant[] = [
     {
@@ -35,7 +34,7 @@ export class TenantConfigService {
       address: 'Leof. Pentelis 45, Vrilissia',
       phone: '210-6800000',
       currency: 'EUR',
-      createdAt: new Date().toISOString()
+      createdAt: '2026-01-01T00:00:00.000Z'
     }
   ];
 
@@ -48,28 +47,34 @@ export class TenantConfigService {
 
   constructor() {
     this.initialize();
+    this.fetchRemoteShops();
   }
 
-  private async initialize(): Promise<void> {
-    // 1. First hydrate instantly from local storage for zero-delay startup
+  /**
+   * Public initialize method to load synchronous local storage state
+   */
+  public initialize(): void {
     try {
       const rawTenants = localStorage.getItem(STORAGE_KEY_TENANTS);
       let localShops: StoreTenant[] = rawTenants ? JSON.parse(rawTenants) : this.defaultShops;
+      
       if (!Array.isArray(localShops) || localShops.length === 0) {
         localShops = this.defaultShops;
+        localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(localShops));
       }
       this.registeredShops.set(localShops);
 
-      const savedCode = localStorage.getItem(STORAGE_KEY_ACTIVE) || 'mar-market';
-      const active = localShops.find(s => s.code === savedCode) || localShops[0];
-      this.activeShop.set(active);
-    } catch {
+      const targetCode = localStorage.getItem(STORAGE_KEY_ACTIVE) || 'mar-market';
+      const found = localShops.find(s => s.code === targetCode) || localShops[0];
+      
+      this.activeShop.set(found);
+      localStorage.setItem(STORAGE_KEY_ACTIVE, found.code);
+      console.log(`[Tenant] Initialized active shop: ${found.code} (${found.name})`);
+    } catch (e) {
+      console.error('[Tenant] Local init error:', e);
       this.registeredShops.set(this.defaultShops);
       this.activeShop.set(this.defaultShops[0]);
     }
-
-    // 2. Fetch all globally registered stores from Firestore
-    await this.fetchRemoteShops();
   }
 
   public async fetchRemoteShops(): Promise<void> {
@@ -83,7 +88,7 @@ export class TenantConfigService {
           remoteShops.push(docSnap.data() as StoreTenant);
         });
 
-        // Merge local default with remote
+        // Merge defaults, local, and Firestore
         const mergedMap = new Map<string, StoreTenant>();
         this.defaultShops.forEach(s => mergedMap.set(s.code, s));
         this.registeredShops().forEach(s => mergedMap.set(s.code, s));
@@ -93,36 +98,50 @@ export class TenantConfigService {
         this.registeredShops.set(updatedList);
         localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(updatedList));
 
-        // Re-align active shop
-        const savedCode = localStorage.getItem(STORAGE_KEY_ACTIVE) || 'mar-market';
-        const found = updatedList.find(s => s.code === savedCode) || updatedList[0];
-        this.activeShop.set(found);
+        // Preserve current active selection strictly
+        const currentActiveCode = localStorage.getItem(STORAGE_KEY_ACTIVE);
+        const match = updatedList.find(s => s.code === currentActiveCode);
+        if (match) {
+          this.activeShop.set(match);
+        }
       }
     } catch (err) {
-      console.warn('[Tenant] Could not fetch remote shops from cloud (offline mode active):', err);
+      console.warn('[Tenant] Remote sync skipped or offline:', err);
     }
   }
 
   public async registerShop(newShop: StoreTenant): Promise<void> {
-    const updated = [...this.registeredShops().filter(s => s.code !== newShop.code), newShop];
-    
-    // Save locally
-    this.registeredShops.set(updated);
-    localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(updated));
-    localStorage.setItem(STORAGE_KEY_ACTIVE, newShop.code);
-    this.activeShop.set(newShop);
+    const cleanCode = newShop.code.trim().toLowerCase().replace(/\s+/g, '-');
+    const shopToSave: StoreTenant = {
+      ...newShop,
+      code: cleanCode
+    };
 
-    // Save globally to Firestore `shops` collection
+    // 1. Update list locally
+    const currentList = this.registeredShops().filter(s => s.code !== shopToSave.code);
+    const updated = [...currentList, shopToSave];
+
+    this.registeredShops.set(updated);
+    this.activeShop.set(shopToSave);
+
+    // 2. Synchronously write both keys to localStorage
+    localStorage.setItem(STORAGE_KEY_TENANTS, JSON.stringify(updated));
+    localStorage.setItem(STORAGE_KEY_ACTIVE, shopToSave.code);
+
+    console.log(`[Tenant] Registered and switched to ${shopToSave.code}`);
+
+    // 3. Save to Firestore in background
     try {
-      const shopDocRef = doc(this.firestore, `shops/${newShop.code}`);
-      await setDoc(shopDocRef, newShop, { merge: true });
+      const shopDocRef = doc(this.firestore, `shops/${shopToSave.code}`);
+      await setDoc(shopDocRef, shopToSave, { merge: true });
     } catch (err) {
-      console.error('[Tenant] Failed to save store to Firestore:', err);
+      console.error('[Tenant] Firestore write failed:', err);
     }
 
+    // 4. Reload page to initialize new active store
     setTimeout(() => {
-      location.reload();
-    }, 100);
+      window.location.href = window.location.origin + window.location.pathname;
+    }, 150);
   }
 
   public switchShop(target: StoreTenant | Shop | string): void {
@@ -133,17 +152,18 @@ export class TenantConfigService {
 
     const code = typeof target === 'string' ? target : target.code;
     const found = this.registeredShops().find(s => s.code === code);
+    
     if (!found) {
-      console.error(`[Tenant] Shop "${code}" not found.`);
+      console.error(`[Tenant] Cannot switch: code "${code}" not found.`);
       return;
     }
 
-    this.activeShop.set(found);
     localStorage.setItem(STORAGE_KEY_ACTIVE, found.code);
+    this.activeShop.set(found);
 
     setTimeout(() => {
-      location.reload();
-    }, 50);
+      window.location.href = window.location.origin + window.location.pathname;
+    }, 150);
   }
 
   public async unlockSuperAdmin(enteredPin: string): Promise<boolean> {
