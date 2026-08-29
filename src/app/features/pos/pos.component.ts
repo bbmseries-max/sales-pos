@@ -36,6 +36,7 @@ import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.ser
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { marketDb } from '../../core/db/market-db';
+import { SuperAdminModalComponent } from '../../shared/super-admin-modal.component';
 import { 
   Product, 
   TransactionRecord, 
@@ -60,7 +61,8 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     PosCustomerModalComponent,
     PosLockScreenComponent,
     PosShiftHandoverModalComponent,
-    PosStoreSwitcherModalComponent
+    PosStoreSwitcherModalComponent,
+    SuperAdminModalComponent
   ],
   templateUrl: './pos.component.html'
 })
@@ -140,6 +142,26 @@ export class PosComponent implements OnInit, AfterViewInit {
   private isProcessingScan = false;
   private lastScannedCode = '';
   private lastScannedTimestamp = 0;
+
+  public isUnlockModalOpen = signal<boolean>(false);
+
+  private secretClickCount = 0;
+  private secretClickTimer: any = null;
+
+  public onSecretLogoClick(): void {
+    this.secretClickCount++;
+    clearTimeout(this.secretClickTimer);
+
+    if (this.secretClickCount >= 5) {
+      this.secretClickCount = 0;
+      this.isUnlockModalOpen.set(true);
+    } else {
+      // Resets count if 5 taps are not completed within 1.5 seconds
+      this.secretClickTimer = setTimeout(() => {
+        this.secretClickCount = 0;
+      }, 1500);
+    }
+  }
 
   // Employee Form State
   public employeeForm: {

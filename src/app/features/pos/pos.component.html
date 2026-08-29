@@ -3,30 +3,43 @@
   <!-- ================= 1. TOP APP HEADER ================= -->
   <header class="h-16 bg-slate-900 border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between shrink-0 shadow-md font-sans">
   
-  <!-- LEFT: Brand, Store Selector, Cashier Info & Staff -->
-  <div class="flex items-center gap-3">
-    <div class="flex items-center gap-2 pr-3 border-r border-slate-800">
-      <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></span>
-      <h1 class="text-base font-black tracking-widest text-slate-100 uppercase font-mono">
-        MARANTH <span class="text-emerald-400">POS</span>
-      </h1>
-    </div>
-
-<!-- Store Indicator for Regular Users -->
-@if (tenantConfig.isSuperAdmin()) {
-  <select 
-    [value]="tenantConfig.activeShop().code" 
-    (change)="tenantConfig.switchShop($any($event.target).value)"
-    class="bg-indigo-950 border border-indigo-500/50 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold">
-    @for (s of tenantConfig.registeredShops(); track s.code) {
-      <option [value]="s.code">⚡ {{ s.name }} ({{ s.code }})</option>
-    }
-  </select>
-} @else {
-  <div class="px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-semibold text-slate-300">
-    🏪 {{ tenantConfig.activeShop().name }}
+ <!-- LEFT: Brand, Store Selector, Cashier Info & Staff -->
+<div class="flex items-center gap-3">
+  <!-- Secret 5-Tap Brand Target -->
+  <div 
+    (click)="onSecretLogoClick()" 
+    class="flex items-center gap-2 pr-3 border-r border-slate-800 cursor-pointer select-none active:scale-95 transition-transform"
+    title="Maranth POS">
+    <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></span>
+    <h1 class="text-base font-black tracking-widest text-slate-100 uppercase font-mono">
+      MARANTH <span class="text-emerald-400">POS</span>
+    </h1>
   </div>
-}
+
+  <!-- Store Indicator / Super-Admin Switcher -->
+  @if (tenantConfig.isSuperAdmin()) {
+    <div class="flex items-center gap-1.5 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl">
+      <select 
+        [value]="tenantConfig.activeShop().code" 
+        (change)="tenantConfig.switchShop($any($event.target).value)"
+        class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer">
+        @for (s of tenantConfig.registeredShops(); track s.code) {
+          <option [value]="s.code">⚡ {{ s.name }} ({{ s.code }})</option>
+        }
+      </select>
+      <button 
+        type="button" 
+        (click)="tenantConfig.lockSuperAdmin()" 
+        title="Lock Super-Admin Mode"
+        class="px-2 py-1 text-slate-400 hover:text-rose-400 text-xs transition cursor-pointer">
+        🔒
+      </button>
+    </div>
+  } @else {
+    <div class="px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-semibold text-slate-300">
+      🏪 {{ tenantConfig.activeShop().name }}
+    </div>
+  }
 
     <!-- Cashier Session & Quick Actions -->
     <div class="flex items-center gap-2 pl-3 border-l border-slate-800">
@@ -986,6 +999,8 @@
     </div>
   }
 
+  
+
   <!-- Modal Component Selectors -->
   <app-pos-price-check-modal 
     [isOpen]="showPriceCheckModal()"
@@ -1038,3 +1053,7 @@
   />
 
 </div>
+<!-- Super-Admin PIN Modal -->
+@if (isUnlockModalOpen()) {
+  <app-super-admin-modal (close)="isUnlockModalOpen.set(false)" />
+}
