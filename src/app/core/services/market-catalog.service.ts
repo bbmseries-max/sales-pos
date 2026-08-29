@@ -79,7 +79,7 @@ export class MarketCatalogService {
     return found ? found.icon : '🥫';
   }
 
-  public async loadInitialCatalog(): Promise<void> {
+ public async loadInitialCatalog(): Promise<void> {
     const activeStoreCode = this.tenantConfig.activeShop().code;
 
     const [allProds, cats] = await Promise.all([
@@ -87,9 +87,12 @@ export class MarketCatalogService {
       marketDb.categories.toArray()
     ]);
 
-    // Filter only products belonging to the active store
+    // STRICT FILTER:
+    // If we are on 'mar-market', show items with storeId 'mar-market' OR items without storeId (legacy).
+    // If we are on any other store (e.g. 'ftest'), ONLY show items where storeId === activeStoreCode.
     const activeStoreProducts = (allProds || []).filter(p => {
-      const matchesStore = !p.storeId || p.storeId === activeStoreCode;
+      const itemStore = p.storeId || 'mar-market';
+      const matchesStore = itemStore === activeStoreCode;
       const isActive = p.isActive !== false;
       return matchesStore && isActive;
     });
@@ -97,7 +100,7 @@ export class MarketCatalogService {
     this.products.set(activeStoreProducts);
 
     if (cats && cats.length > 0) {
-      this.categories.set(cats.filter(c => !c.tenantId || c.tenantId === activeStoreCode));
+      this.categories.set(cats.filter(c => (c.tenantId || 'mar-market') === activeStoreCode));
     } else {
       const derivedCats = this.departments.map(d => ({
         id: d.id,

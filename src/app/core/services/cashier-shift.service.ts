@@ -5,32 +5,47 @@ import { Cashier, CashierShift, ShiftPaymentSummary } from '../models/market.mod
 
 @Injectable({ providedIn: 'root' })
 export class CashierShiftService {
+  public tenantConfig = inject(TenantConfigService);
+
   public currentCashier = signal<Cashier | null>(null);
   public currentShift = signal<CashierShift | null>(null);
   public isLocked = signal<boolean>(true);
   public allCashiers = signal<Cashier[]>([]);
-  public tenantConfig = inject(TenantConfigService);
 
   /**
-   * Initializes store-scoped cashiers and restores open shift if present
+   * Initializes store-scoped cashiers and restores open shift strictly for the active store
    */
   public async initialize(): Promise<void> {
+    const currentStore = this.tenantConfig.activeShop();
+    const currentStoreId = currentStore.code || 'mar-market';
+
+    // 1. Load active store's cashiers
     await this.loadAllCashiers();
 
-    const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
+    // 2. Clear state in case of tenant switch
+    this.currentCashier.set(null);
+    this.currentShift.set(null);
+    this.isLocked.set(true);
 
-    // Restore last open shift for this active store if exists
-    const openShift = await marketDb.shifts
+    // 3. Find only OPEN shifts belonging explicitly to this active store
+    const openShifts = await marketDb.shifts
       .where('status')
       .equals('OPEN')
-      .and(s => s.notes?.includes(currentStoreId) ?? true)
-      .last();
+      .toArray();
+
+    const openShift = openShifts.find(s => {
+      // Direct storeId check or notes match
+      const shiftStore = (s as any).storeId || (s.notes?.includes('Store: ') ? s.notes.split('Store: ')[1]?.trim() : 'mar-market');
+      return shiftStore === currentStoreId;
+    });
 
     if (openShift) {
-      this.currentShift.set(openShift);
       const cashier = this.allCashiers().find(c => c.id === openShift.cashierId) || null;
-      this.currentCashier.set(cashier);
-      this.isLocked.set(false);
+      if (cashier) {
+        this.currentShift.set(openShift);
+        this.currentCashier.set(cashier);
+        this.isLocked.set(false);
+      }
     }
   }
 
@@ -38,7 +53,8 @@ export class CashierShiftService {
    * Loads cashiers strictly belonging to the active store and bootstraps Admin if empty
    */
   public async loadAllCashiers(): Promise<void> {
-    const currentStoreId = this.tenantConfig.activeShop().code || 'SHOP-01';
+    const currentStore = this.tenantConfig.activeShop();
+    const currentStoreId = currentStore.code || 'mar-market';
 
     let list = await marketDb.table('cashiers')
       .where('storeId')
@@ -52,7 +68,7 @@ export class CashierShiftService {
     if (list.length === 0) {
       const initialStoreAdmin: Cashier = {
         id: `CASH-${currentStoreId}-ADMIN`,
-        name: `Διαχειριστής (${this.tenantConfig.activeShop().name})`,
+        name: `Διαχειριστής (${currentStore.name})`,
         pin: '1234',
         role: 'ADMIN',
         storeId: currentStoreId,
@@ -67,7 +83,7 @@ export class CashierShiftService {
   }
 
   public async createCashier(cashier: Omit<Cashier, 'id'>): Promise<{ success: boolean; message?: string; cashier?: Cashier }> {
-    const targetStore = cashier.storeId || this.tenantConfig.activeShop().code || 'SHOP-01';
+    const targetStore = cashier.storeId || this.tenantConfig.activeShop().code || 'mar-market';
     const cleanPin = cashier.pin.trim();
 
     // 1. Check if PIN is already taken in THIS store
@@ -109,16 +125,18 @@ export class CashierShiftService {
    */
   public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
-    const cashier = this.allCashiers().find(c => c.pin === cleanPin && c.isActive);
+    const currentStoreId = this.tenantConfig.activeShop().code || 'mar-market';
+
+    // Must match PIN AND belong to THIS active store
+    const cashier = this.allCashiers().find(c => c.pin === cleanPin && c.isActive && c.storeId === currentStoreId);
 
     if (!cashier) {
-      return { success: false, message: 'Λάθος PIN. Δοκιμάστε ξανά.' };
+      return { success: false, message: 'Λάθος PIN για αυτό το κατάστημα. Δοκιμάστε ξανά.' };
     }
 
     this.currentCashier.set(cashier);
-    const targetStore = cashier.storeId || this.tenantConfig.activeShop().code || 'SHOP-01';
 
-    // Look ONLY for an OPEN shift belonging to this cashier at this store
+    // Look ONLY for an OPEN shift belonging to this cashier
     let shift = await marketDb.shifts
       .where('cashierId').equals(cashier.id)
       .and(s => s.status === 'OPEN')
@@ -135,7 +153,7 @@ export class CashierShiftService {
         cashInTotal: 0,
         cashOutTotal: 0,
         cashMovements: [],
-        notes: `Store: ${targetStore}`,
+        notes: `Store: ${currentStoreId}`,
         sales: {
           cash: 0,
           card: 0,
