@@ -43,21 +43,33 @@ export class TenantConfigService {
     }
   }
 
-  public registerNewStore(shop: ShopInfo): void {
+public registerShop(shop: ShopInfo): void {
     const current = this.registeredShops();
     const updated = [...current.filter(s => s.code !== shop.code), shop];
     this.registeredShops.set(updated);
     localStorage.setItem('registered_shops', JSON.stringify(updated));
   }
 
+  public updateActiveShopDetails(details: Partial<ShopInfo>): void {
+    const current = this.activeShop();
+    const updated: ShopInfo = { ...current, ...details };
+
+    this.activeShop.set(updated);
+    localStorage.setItem('active_shop', JSON.stringify(updated));
+
+    // Update in registered shops list as well
+    this.registerShop(updated);
+  }
+
+  public registerNewStore(shop: ShopInfo): void {
+    this.registerShop(shop);
+  }
+
   public switchShop(storeCode: string): void {
     const match = this.registeredShops().find(s => s.code === storeCode);
     if (!match) return;
-
     localStorage.setItem('active_shop', JSON.stringify(match));
     localStorage.setItem('active_shop_code', match.code);
-
-    // Clean page reload into the isolated DB sandbox
     window.location.reload();
   }
 
@@ -72,4 +84,5 @@ export class TenantConfigService {
   public lockSuperAdmin(): void {
     this.isSuperAdmin.set(false);
   }
+
 }
