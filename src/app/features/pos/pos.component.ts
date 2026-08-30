@@ -166,22 +166,6 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-  public async printReceipt(transaction: TransactionRecord): Promise<void> {
-    try {
-      // Check if Chrome extension or print bridge exists before sending message
-      if (typeof window !== 'undefined' && (window as any).chrome?.runtime?.sendMessage) {
-        (window as any).chrome.runtime.sendMessage({ action: 'PRINT_RECEIPT', data: transaction }, (response: any) => {
-          if ((window as any).chrome.runtime.lastError) {
-            // Silently fall back to standard browser print
-            console.info('[Print] Hardware extension bridge not connected, using standard printer.');
-          }
-        });
-      }
-    } catch (printErr) {
-      console.warn('[Print] Hardware print suppressed:', printErr);
-    }
-  }
-
   // Employee Form State
   public employeeForm: {
     name: string;
@@ -218,14 +202,10 @@ export class PosComponent implements OnInit, AfterViewInit {
     await this.refreshPinnedProducts();
   }
 
-  /**
-   * Refreshes pinned products strictly for the current active store
-   */
   public async refreshPinnedProducts(): Promise<void> {
     const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
     const all = await marketDb.products.toArray();
 
-    // STRICT STORE FILTER
     const storeProducts = all.filter(p => {
       const itemStore = p.storeId || 'mar-market';
       return itemStore === activeStoreCode && p.isActive !== false;
@@ -244,10 +224,10 @@ export class PosComponent implements OnInit, AfterViewInit {
       const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
                              this.showPriceCheckModal() || this.showCashDrawerModal() || 
                              this.showCustomerModal() || this.showShiftHandoverModal() || 
-                             this.showStoreModal() || this.showWeightModal() ||
-                             this.showMyDataConfig() || this.showOutOfStockModal() ||
-                             this.showEmployeeModal() || this.showDiscountModal() ||
-                             this.isUnlockModalOpen() || this.isNewStoreModalOpen() ||
+                             this.showStoreModal() || this.showWeightModal() || 
+                             this.showMyDataConfig() || this.showOutOfStockModal() || 
+                             this.showEmployeeModal() || this.showDiscountModal() || 
+                             this.isUnlockModalOpen() || this.isNewStoreModalOpen() || 
                              this.shiftService.isLocked();
 
       if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
@@ -273,10 +253,10 @@ export class PosComponent implements OnInit, AfterViewInit {
     const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
                         this.showPriceCheckModal() || this.showCashDrawerModal() || 
                         this.showCustomerModal() || this.showShiftHandoverModal() || 
-                        this.showStoreModal() || this.showWeightModal() ||
-                        this.showMyDataConfig() || this.showOutOfStockModal() ||
-                        this.showEmployeeModal() || this.showDiscountModal() ||
-                        this.isUnlockModalOpen() || this.isNewStoreModalOpen() ||
+                        this.showStoreModal() || this.showWeightModal() || 
+                        this.showMyDataConfig() || this.showOutOfStockModal() || 
+                        this.showEmployeeModal() || this.showDiscountModal() || 
+                        this.isUnlockModalOpen() || this.isNewStoreModalOpen() || 
                         this.shiftService.isLocked();
 
     if (this.showOutOfStockModal() && (event.key === 'Enter' || event.key === 'Escape')) {
@@ -620,11 +600,17 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
+  // Handover Modal: End Shift (Z-Report)
   public async handleShiftClose(countedCash: number): Promise<void> {
     try {
+      const active = this.shiftService.currentShift();
+      if (active) {
+        // 1. Dispatch 58mm Z-Report to physical printer
+        this.printerService.printShiftReportHtml(active, 'Z');
+      }
+
+      // 2. Close shift in database
       const closedShift = await this.shiftService.closeShift(countedCash);
-      const bytes = this.printerService.buildEscPosXReport(closedShift);
-      await this.printerService.printViaSerial(bytes);
       this.showShiftHandoverModal.set(false);
       this.flashFeedback('✔ Η βάρδια έκλεισε. Διαφορά: €' + (closedShift.discrepancy || 0).toFixed(2), 'success');
     } catch (err: any) {
@@ -632,12 +618,12 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
+  // Handover Modal: Intermediate Audit (X-Report)
   public async printXReportSlip(): Promise<void> {
     const shift = this.shiftService.currentShift();
     if (!shift) return;
-    const bytes = this.printerService.buildEscPosXReport(shift);
-    await this.printerService.printViaSerial(bytes);
-    this.flashFeedback('✔ Το Δελτίο "Χ" εκτυπώθηκε!', 'success');
+    this.printerService.printShiftReportHtml(shift, 'X');
+    this.flashFeedback('✔ Το Δελτίο "Χ" στάλθηκε στον εκτυπωτή!', 'success');
   }
 
   public toggleHoldTicket(): void {
@@ -684,12 +670,16 @@ export class PosComponent implements OnInit, AfterViewInit {
     try {
       const cashierName = this.shiftService.currentCashier()?.name || 'Cashier 01';
       const tx = await this.cart.checkout('Card', cashierName, this.cardAmount(), 0);
+      
+      // RECORD TO SHIFT FINANCIALS
+      await this.shiftService.recordSaleToShift(tx.grandTotal, 'Card');
+
       this.isCardProcessing.set(false);
       this.cardTxSuccess.set(true);
       this.showPaymentModal.set(false);
 
       await this.handleFiscalPostProcessing(tx);
-      this.flashFeedback('✔ Card Payment Approved', 'success');
+      this.flashFeedback('✔ Card Payment Approved & Recorded', 'success');
     } catch (err: any) {
       this.isCardProcessing.set(false);
       this.flashFeedback('⛔ ' + (err.message || 'Card Payment Failed'), 'error');
@@ -723,7 +713,8 @@ export class PosComponent implements OnInit, AfterViewInit {
         tx.pointsEarned = pointsEarned;
       }
 
-      await this.shiftService.recordSaleToShift(tx.grandTotal, mappedMethod as any);
+      // Record sale to shift
+      await this.shiftService.recordSaleToShift(tx.grandTotal, mappedMethod);
       this.pointsToRedeem.set(0);
       this.showPaymentModal.set(false);
 
@@ -736,7 +727,7 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
- private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
+  private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
     const activeShop = this.tenantConfig.activeShop();
     const companyProfile: MarketCompanyProfile = {
       storeName: activeShop.name || 'MARANTH MARKET',
@@ -746,7 +737,7 @@ export class PosComponent implements OnInit, AfterViewInit {
       phone: activeShop.phone || '210-6800000'
     };
 
-    // 1. myDATA Fiscal Transmission (Safe Fallback)
+    // 1. myDATA Fiscal Transmission
     try {
       if (this.myDataService?.transmitReceipt) {
         const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
@@ -758,15 +749,39 @@ export class PosComponent implements OnInit, AfterViewInit {
         }
       }
     } catch (fiscalErr) {
-      console.warn('[Fiscal/myDATA] Local transmission bridge skipped:', fiscalErr);
+      console.warn('[Fiscal/myDATA] Transmission skipped:', fiscalErr);
     }
 
-    // 2. ESC/POS Thermal Receipt Dispatch (Safe Fallback)
+    // 2. Dispatch Customer Receipt via HTML 58mm printer dialogue
     try {
-      const rawBuffer = this.printerService.buildEscPosReceipt(tx, companyProfile);
-      await this.printerService.printRaw(rawBuffer);
+      const storeTitle = this.printerService.transliterateGreek(companyProfile.storeName || 'MARANTH SUPERMARKET');
+      const itemsHtml = tx.items.map(item => `
+        <div class="row">
+          <span>${this.printerService.transliterateGreek(item.product.name).substring(0, 16)}</span>
+          <span>${item.quantity}x ${(item.quantity * item.product.price).toFixed(2)}&euro;</span>
+        </div>
+      `).join('');
+
+      const slip = `
+        <div class="center bold large">${storeTitle}</div>
+        <div class="center small">APODEIXI LIANIKIS POLISIS</div>
+        <div class="divider"></div>
+        <div class="small">HM/NIA: ${new Date(tx.timestamp).toLocaleString('el-GR')}</div>
+        <div class="small">PARAST.: ${tx.id.substring(0, 8)}</div>
+        <div class="divider"></div>
+        ${itemsHtml}
+        <div class="divider"></div>
+        <div class="row bold large"><span>SYNOLO:</span><span>${tx.grandTotal.toFixed(2)} &euro;</span></div>
+        <div class="row"><span>TROPOS:</span><span>${tx.paymentMethod.toUpperCase()}</span></div>
+        ${tx.cashTendered ? `<div class="row"><span>METRHTA:</span><span>${tx.cashTendered.toFixed(2)} &euro;</span></div>` : ''}
+        ${tx.changeDue ? `<div class="row"><span>RESTA:</span><span>${tx.changeDue.toFixed(2)} &euro;</span></div>` : ''}
+        <div class="divider"></div>
+        <div class="center small">EYXARISTOYME GIA THN PROTIMHSH!</div>
+      `;
+
+      this.printerService.printHtmlThermalSlip(slip);
     } catch (printErr) {
-      console.warn('[Printer] Receipt print skipped (No thermal hardware connected):', printErr);
+      console.warn('[Printer] Receipt print skipped:', printErr);
     }
   }
 
@@ -813,23 +828,20 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-// 1. X-Report Handler
-public onPrintXReport(): void {
-  const active = this.shiftService.currentShift();
-  if (active) {
-    this.printerService.printShiftReportHtml(active, 'X');
+  // Top/Header X-Report action
+  public onPrintXReport(): void {
+    const active = this.shiftService.currentShift();
+    if (active) {
+      this.printerService.printShiftReportHtml(active, 'X');
+    }
   }
-}
 
-// 2. Z-Report / Close Shift Handler
-public async onCloseZReport(countedCash: number = 0): Promise<void> {
-  const active = this.shiftService.currentShift();
-  if (active) {
-    // Print the Z report slip first
-    this.printerService.printShiftReportHtml(active, 'Z');
-    
-    // Then let your existing closeShift handle the database update and locking
-    await this.shiftService.closeShift(countedCash);
+  // Top/Header Z-Report / Shift Close action
+  public async onCloseZReport(countedCash: number = 0): Promise<void> {
+    const active = this.shiftService.currentShift();
+    if (active) {
+      this.printerService.printShiftReportHtml(active, 'Z');
+      await this.shiftService.closeShift(countedCash);
+    }
   }
-}
 }

@@ -15,13 +15,11 @@ export class CashierShiftService {
   public async initialize(): Promise<void> {
     await this.loadAllCashiers();
 
-    // 1. Fetch only real, valid OPEN shifts
     const openShifts = await marketDb.shifts
       .where('status')
       .equals('OPEN')
       .toArray();
 
-    // Defensive check: filter out undefined or corrupted entries
     const validShift = (openShifts || []).filter(s => s && s.id).pop();
 
     if (validShift) {
@@ -29,12 +27,15 @@ export class CashierShiftService {
         validShift.startTime = new Date().toISOString();
         await marketDb.shifts.put(validShift);
       }
+      // Ensure sales structure exists
+      if (!validShift.sales) {
+        validShift.sales = { cash: 0, card: 0, split: 0, totalSales: 0, transactionCount: 0 };
+      }
       this.currentShift.set(validShift);
       const cashier = this.allCashiers().find(c => c.id === validShift.cashierId) || null;
       this.currentCashier.set(cashier);
       this.isLocked.set(false);
     } else {
-      // Clean slate for new shop
       this.currentShift.set(null);
       this.currentCashier.set(null);
       this.isLocked.set(true);
@@ -45,7 +46,6 @@ export class CashierShiftService {
     let list = await marketDb.cashiers.toArray();
     list = (list || []).filter(c => c.isActive !== false);
 
-    // Bootstrap default admin if store DB is fresh
     if (list.length === 0) {
       const activeStore = this.tenantConfig.activeShop();
       const initialAdmin: Cashier = {
@@ -65,7 +65,6 @@ export class CashierShiftService {
   public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
 
-    // Emergency Master Key 8820
     if (cleanPin === '8820') {
       const admin = this.allCashiers().find(c => c.role === 'ADMIN') || this.allCashiers()[0];
       this.currentCashier.set(admin);
@@ -136,25 +135,45 @@ export class CashierShiftService {
     return { success: true, cashier: newCashier };
   }
 
-  public async recordSaleToShift(amount: number, method: 'Cash' | 'Card' | 'Split'): Promise<void> {
+  /**
+   * Safe Case-Insensitive Sale Recording
+   */
+  public async recordSaleToShift(amount: number, method: string): Promise<void> {
     const shift = this.currentShift();
     if (!shift) return;
 
-    const sales: ShiftPaymentSummary = { ...shift.sales };
-    sales.totalSales = Number((sales.totalSales + amount).toFixed(2));
+    const numAmount = Number(amount) || 0;
+    const sales: ShiftPaymentSummary = {
+      cash: Number(shift.sales?.cash) || 0,
+      card: Number(shift.sales?.card) || 0,
+      split: Number(shift.sales?.split) || 0,
+      totalSales: Number(shift.sales?.totalSales) || 0,
+      transactionCount: Number(shift.sales?.transactionCount) || 0
+    };
+
+    sales.totalSales = Number((sales.totalSales + numAmount).toFixed(2));
     sales.transactionCount += 1;
 
-    if (method === 'Cash') sales.cash = Number((sales.cash + amount).toFixed(2));
-    else if (method === 'Card') sales.card = Number((sales.card + amount).toFixed(2));
-    else if (method === 'Split') sales.split = Number((sales.split + amount).toFixed(2));
+    const normalized = (method || '').toUpperCase();
+    if (normalized.includes('CARD') || normalized.includes('POS')) {
+      sales.card = Number((sales.card + numAmount).toFixed(2));
+    } else if (normalized.includes('SPLIT')) {
+      sales.split = Number((sales.split + numAmount).toFixed(2));
+    } else {
+      sales.cash = Number((sales.cash + numAmount).toFixed(2));
+    }
 
-    const updated = { ...shift, sales };
+    const updated: CashierShift = { ...shift, sales };
     await marketDb.shifts.update(shift.id, { sales });
     this.currentShift.set(updated);
   }
 
   public calculateExpectedCash(shift: CashierShift): number {
-    return Number((shift.openingFloat + shift.sales.cash + shift.cashInTotal - shift.cashOutTotal).toFixed(2));
+    const opening = Number(shift.openingFloat) || 0;
+    const cashSales = Number(shift.sales?.cash) || 0;
+    const cashIn = Number(shift.cashInTotal) || 0;
+    const cashOut = Number(shift.cashOutTotal) || 0;
+    return Number((opening + cashSales + cashIn - cashOut).toFixed(2));
   }
 
   public async closeShift(countedCash: number, notes?: string): Promise<CashierShift> {
