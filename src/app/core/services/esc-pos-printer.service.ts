@@ -402,12 +402,12 @@ export class EscPosPrinterService {
   }
 
 /**
-   * Universal Thermal/Label Print Dispatcher with Auto-Fit & Orientation Control
+   * Fixed-Alignment Thermal / Label Slip Dispatcher
    */
   public printHtmlThermalSlip(htmlBody: string): void {
     if (typeof window === 'undefined') return;
 
-    const printWin = window.open('', '_blank', 'width=400,height=600,left=10000,top=10000');
+    const printWin = window.open('', '_blank', 'width=350,height=550,left=10000,top=10000');
     if (!printWin) {
       console.warn('[Printer] Popup blocked. Please allow popups for this POS site.');
       return;
@@ -421,8 +421,8 @@ export class EscPosPrinterService {
           <title>POS Receipt</title>
           <style>
             @page {
-              size: auto;
-              margin: 0mm;
+              size: portrait;
+              margin: 0;
             }
             *, *:before, *:after {
               box-sizing: border-box;
@@ -435,46 +435,50 @@ export class EscPosPrinterService {
               color: #000;
               font-family: 'Courier New', Courier, monospace;
               font-size: 11px;
-              line-height: 1.25;
+              line-height: 1.3;
               font-weight: bold;
               text-transform: uppercase;
+              -webkit-print-color-adjust: exact;
             }
-            .slip-container {
-              width: 100%;
-              max-width: 48mm;
-              padding: 2mm 1mm;
-              margin: 0 auto;
-              word-break: break-word;
-              overflow: hidden;
+            .slip-wrapper {
+              width: 48mm;
+              margin: 0;
+              padding: 2mm 1mm 25mm 1mm; /* 25mm bottom gap prevents text cut-off */
+              page-break-inside: avoid;
+              page-break-after: avoid;
+              overflow: visible;
             }
             .center { text-align: center; }
             .bold { font-weight: 900; }
             .large { font-size: 13px; }
-            .divider { border-top: 1px dashed #000; margin: 3px 0; }
+            .divider { border-top: 1px dashed #000; margin: 4px 0; }
             .row { 
               display: flex; 
               justify-content: space-between; 
               align-items: flex-start;
-              gap: 4px;
+              gap: 2px;
               margin: 2px 0; 
             }
             .row span:first-child {
               flex: 1;
               text-align: left;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              white-space: nowrap;
+              word-break: break-word;
             }
             .row span:last-child {
               text-align: right;
               white-space: nowrap;
             }
             .small { font-size: 9px; }
+            .feed-gap {
+              height: 20mm;
+              display: block;
+            }
           </style>
         </head>
         <body>
-          <div class="slip-container">
+          <div class="slip-wrapper">
             ${htmlBody}
+            <div class="feed-gap"></div>
           </div>
           <script>
             window.onload = function() {
