@@ -15,21 +15,29 @@ export class CashierShiftService {
   public async initialize(): Promise<void> {
     await this.loadAllCashiers();
 
-    // Check for active open shift in this store's DB
-    const openShift = await marketDb.shifts
+    // 1. Fetch only real, valid OPEN shifts
+    const openShifts = await marketDb.shifts
       .where('status')
       .equals('OPEN')
-      .last();
+      .toArray();
 
-    if (openShift) {
-      if (!openShift.startTime) {
-        openShift.startTime = new Date().toISOString();
-        await marketDb.shifts.put(openShift);
+    // Defensive check: filter out undefined or corrupted entries
+    const validShift = (openShifts || []).filter(s => s && s.id).pop();
+
+    if (validShift) {
+      if (!validShift.startTime) {
+        validShift.startTime = new Date().toISOString();
+        await marketDb.shifts.put(validShift);
       }
-      this.currentShift.set(openShift);
-      const cashier = this.allCashiers().find(c => c.id === openShift.cashierId) || null;
+      this.currentShift.set(validShift);
+      const cashier = this.allCashiers().find(c => c.id === validShift.cashierId) || null;
       this.currentCashier.set(cashier);
       this.isLocked.set(false);
+    } else {
+      // Clean slate for new shop
+      this.currentShift.set(null);
+      this.currentCashier.set(null);
+      this.isLocked.set(true);
     }
   }
 

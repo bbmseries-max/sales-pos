@@ -165,6 +165,22 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
+  public async printReceipt(transaction: TransactionRecord): Promise<void> {
+    try {
+      // Check if Chrome extension or print bridge exists before sending message
+      if (typeof window !== 'undefined' && (window as any).chrome?.runtime?.sendMessage) {
+        (window as any).chrome.runtime.sendMessage({ action: 'PRINT_RECEIPT', data: transaction }, (response: any) => {
+          if ((window as any).chrome.runtime.lastError) {
+            // Silently fall back to standard browser print
+            console.info('[Print] Hardware extension bridge not connected, using standard printer.');
+          }
+        });
+      }
+    } catch (printErr) {
+      console.warn('[Print] Hardware print suppressed:', printErr);
+    }
+  }
+
   // Employee Form State
   public employeeForm: {
     name: string;
