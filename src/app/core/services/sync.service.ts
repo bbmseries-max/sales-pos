@@ -71,10 +71,18 @@ export class SyncService {
           const { _syncStatus, ...cloudPayload } = item;
           const cleanBarcode = String(item.barcode).replace(/\//g, '-');
           
+          // Clean all undefined fields to prevent Firestore serialization errors
+          const sanitizedPayload: Record<string, any> = {};
+          for (const [k, v] of Object.entries(cloudPayload)) {
+            if (v !== undefined) {
+              sanitizedPayload[k] = v;
+            }
+          }
+
           // Tenant-scoped Firestore document path
           const docRef = doc(this.firestore, `tenants/${currentStoreId}/products/${cleanBarcode}`);
 
-          batch.set(docRef, { ...cloudPayload, storeId: currentStoreId }, { merge: true });
+          batch.set(docRef, { ...sanitizedPayload, storeId: currentStoreId }, { merge: true });
         }
 
         await batch.commit();
