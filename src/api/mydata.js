@@ -1,4 +1,4 @@
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // CORS & Preflight Handling
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,7 +17,6 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Safely extract request body whether parsed by Vercel or received raw
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const { endpoint, xmlBody, aadeUserId, subscriptionKey } = body;
 
@@ -40,4 +39,4 @@ module.exports = async function handler(req, res) {
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Internal Proxy Error' });
   }
-};
+}
