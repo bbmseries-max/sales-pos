@@ -37,7 +37,7 @@ export class MarketCatalogService {
    * Syncs products from Firestore directly into this store's isolated DB
    */
   public async syncFromCloud(): Promise<number> {
-    const activeStoreCode = this.tenantConfig.activeShop().code;
+    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
     console.log(`[MarketCatalog] Fetching catalog for store "${activeStoreCode}" from Maranth Hub...`);
     
     const colRef = collection(this.firestore, 'products');

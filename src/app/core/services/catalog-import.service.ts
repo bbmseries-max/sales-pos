@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { marketDb } from '../db/market-db';
 import { Product } from '../models';
+import { TenantConfigService } from './tenant-config.service';
 import { MarketCatalogService } from './market-catalog.service';
 
 export interface ImportParsedRow {
@@ -36,6 +37,7 @@ interface HeaderIndices {
 @Injectable({ providedIn: 'root' })
 export class CatalogImportService {
   private catalogService = inject(MarketCatalogService);
+  public tenantConfig = inject(TenantConfigService);
 
   public generateSampleCsv(): string {
     const headers = [
@@ -166,17 +168,30 @@ export class CatalogImportService {
     return parsedRows;
   }
 
-  public async commitImport(rows: ImportParsedRow[], mode: 'UPSERT' | 'REPLACE' = 'UPSERT'): Promise<{ added: number; updated: number }> {
+  public async commitImport(
+    rows: ImportParsedRow[], 
+    mode: 'UPSERT' | 'REPLACE' = 'UPSERT'
+  ): Promise<{ added: number; updated: number }> {
     const validRows = rows.filter(r => r.isValid);
     if (validRows.length === 0) return { added: 0, updated: 0 };
 
+    // 1. Get the current active store code
+    const currentStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+
+    // 2. If REPLACE, only clear products belonging to THIS store
     if (mode === 'REPLACE') {
-      await marketDb.products.clear();
+      const storeProdKeys = await marketDb.products
+        .filter(p => (p.storeId || 'mar-market') === currentStoreCode)
+        .primaryKeys();
+      await marketDb.products.bulkDelete(storeProdKeys as string[]);
     }
 
-    const existingList = await marketDb.products.toArray();
+    // 3. Match existing barcodes ONLY within the active store
+    const allProducts = await marketDb.products.toArray();
+    const storeProducts = allProducts.filter(p => (p.storeId || 'mar-market') === currentStoreCode);
+
     const barcodeMap = new Map<string, Product>();
-    existingList.forEach(p => {
+    storeProducts.forEach(p => {
       if (p.barcode) barcodeMap.set(p.barcode, p);
     });
 
@@ -200,6 +215,7 @@ export class CatalogImportService {
           expire: row.expire || existing.expire,
           shelfLocation: row.shelfLocation || existing.shelfLocation,
           isWeighted: row.isWeighted ?? existing.isWeighted,
+          storeId: currentStoreCode, // Ensures storeId is preserved/repaired
           updatedAt: new Date().toISOString(),
           _syncStatus: 'dirty'
         };
@@ -221,6 +237,7 @@ export class CatalogImportService {
           expire: row.expire,
           shelfLocation: row.shelfLocation,
           isWeighted: row.isWeighted || false,
+          storeId: currentStoreCode, // FIX: Assign active store code
           isActive: true,
           isPinned: false,
           createdAt: new Date().toISOString(),
