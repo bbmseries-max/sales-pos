@@ -138,30 +138,31 @@ public async transmitReceipt(
     profile: MarketCompanyProfile
   ): Promise<{ success: boolean; mark?: string; uid?: string; qrUrl?: string }> {
     const creds = this.credentials();
-    const endpoint = creds.environment === 'production'
-      ? 'https://mydatapi.aade.gr/myDATA/SendInvoices'
-      : 'https://mydataapidev.aade.gr/SendInvoices';
+    const xmlBody = this.generateInvoiceXml(tx, profile);
 
     try {
-      const response = await fetch(endpoint, {
+      // Route through Vercel serverless proxy to bypass browser CORS
+      const response = await fetch('/api/mydata', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/xml',
-          'aade-user-id': creds.aadeUserId,
-          'Ocp-Apim-Subscription-Key': creds.subscriptionKey
+          'Content-Type': 'application/json'
         },
-        body: this.generateInvoiceXml(tx, profile)
+        body: JSON.stringify({
+          endpoint: creds.environment,
+          xmlBody: xmlBody,
+          aadeUserId: creds.aadeUserId,
+          subscriptionKey: creds.subscriptionKey
+        })
       });
 
       if (!response.ok) {
-        throw new Error(`AADE HTTP Error: ${response.status}`);
+        throw new Error(`Proxy HTTP Error: ${response.status}`);
       }
 
       const xmlText = await response.text();
       return this.parseAadeResponse(xmlText);
     } catch (err) {
-      console.info('[myDATA] Browser dispatch queued for sync:', err);
-      // Offline fallback ensures POS checkout never stalls
+      console.info('[myDATA] Storing locally with offline fallback mark:', err);
       const fallbackMark = `OFFLINE-${Date.now().toString(36).toUpperCase()}`;
       return {
         success: true,
