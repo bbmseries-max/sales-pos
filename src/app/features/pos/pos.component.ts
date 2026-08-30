@@ -165,6 +165,10 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
+  public async onTestPrinter(): Promise<void> {
+    await this.printerService.print58mmTestSlip();
+  }
+
   public async printReceipt(transaction: TransactionRecord): Promise<void> {
     try {
       // Check if Chrome extension or print bridge exists before sending message

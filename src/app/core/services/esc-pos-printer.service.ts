@@ -368,4 +368,84 @@ export class EscPosPrinterService {
     push(0x1D, 0x56, 0x41, 0x10);
     return new Uint8Array(bytes);
   }
+
+  public async connectPrinter(baudRate: number = 9600): Promise<boolean> {
+    if (typeof window === 'undefined' || !('serial' in navigator)) {
+      alert('Web Serial API is not supported in this browser. Please use Chrome or Edge.');
+      return false;
+    }
+
+    try {
+      this.port = await (navigator as any).serial.requestPort();
+      await this.port.open({ baudRate });
+      this.isConnected.set(true);
+      console.info('[Printer] Connected to Xprinter XP-58IIH at baud', baudRate);
+      return true;
+    } catch (err) {
+      console.warn('[Printer] Connection cancelled or failed:', err);
+      this.isConnected.set(false);
+      return false;
+    }
+  }
+
+  /**
+   * Send raw 58mm test slip directly to the print head
+   */
+  public async print58mmTestSlip(): Promise<void> {
+    if (!this.port || !this.port.writable) {
+      const connected = await this.connectPrinter();
+      if (!connected) return;
+    }
+
+    const encoder = new TextEncoder();
+
+    // Standard ESC/POS Commands
+    const ESC_INIT = [0x1B, 0x40];            // ESC @ : Initialize
+    const ESC_ALIGN_CENTER = [0x1B, 0x61, 1]; // ESC a 1 : Center
+    const ESC_ALIGN_LEFT = [0x1B, 0x61, 0];   // ESC a 0 : Left
+    const ESC_BOLD_ON = [0x1B, 0x45, 1];      // ESC E 1 : Bold ON
+    const ESC_BOLD_OFF = [0x1B, 0x45, 0];     // ESC E 0 : Bold OFF
+    const FEED_LINES = [0x1B, 0x64, 4];       // ESC d 4 : Feed 4 lines for tear bar
+
+    // Formatted for 32 columns (58mm paper)
+    const content =
+      "================================\n" +
+      "        MAR-MARKET POS          \n" +
+      "       XPRINTER XP-58IIH        \n" +
+      "================================\n" +
+      "STORE: FTEST (SANDBOX)          \n" +
+      "STATUS: HARDWARE CONNECTED      \n" +
+      "DATE: " + new Date().toLocaleDateString() + "            \n" +
+      "--------------------------------\n" +
+      "ITEM                 QTY   PRICE\n" +
+      "--------------------------------\n" +
+      "GALA FRESKO 1L       1x     1.85\n" +
+      "PSOMI HORIATIKO      1x     1.10\n" +
+      "--------------------------------\n" +
+      "SYNOLO EYRO:                2.95\n" +
+      "METRHTA:                    5.00\n" +
+      "RESTA:                      2.05\n" +
+      "================================\n" +
+      "   EYXARISTOYME GIA THN        \n" +
+      "        PROTIMHSH!              \n";
+
+    try {
+      const payload = new Uint8Array([
+        ...ESC_INIT,
+        ...ESC_ALIGN_CENTER,
+        ...ESC_BOLD_ON,
+        ...encoder.encode("MARANTH HUB POS\n"),
+        ...ESC_BOLD_OFF,
+        ...ESC_ALIGN_LEFT,
+        ...encoder.encode(content),
+        ...FEED_LINES
+      ]);
+
+      const writer = this.port.writable.getWriter();
+      await writer.write(payload);
+      writer.releaseLock();
+    } catch (err) {
+      console.error('[Printer] Write failed:', err);
+    }
+  }
 }
