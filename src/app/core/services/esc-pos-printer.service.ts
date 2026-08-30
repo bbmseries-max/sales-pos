@@ -6,6 +6,8 @@ export class EscPosPrinterService {
   public isConnected = signal<boolean>(false);
   private port: any = null;
   private device: any = null;
+  private usbDevice: any = null;
+  private usbOutEndpoint: number | null = null;
 
   public transliterateGreek(text: string): string {
     const map: Record<string, string> = {
@@ -369,45 +371,65 @@ export class EscPosPrinterService {
     return new Uint8Array(bytes);
   }
 
-  public async connectPrinter(baudRate: number = 9600): Promise<boolean> {
-    if (typeof window === 'undefined' || !('serial' in navigator)) {
-      alert('Web Serial API is not supported in this browser. Please use Chrome or Edge.');
+  public async connectPrinter(): Promise<boolean> {
+    if (typeof window === 'undefined' || !('usb' in navigator)) {
+      alert('WebUSB is not supported in this browser. Please use Chrome or Edge.');
       return false;
     }
 
     try {
-      this.port = await (navigator as any).serial.requestPort();
-      await this.port.open({ baudRate });
+      // Request any USB device or filter by known POS/Xprinter vendor IDs
+      this.usbDevice = await (navigator as any).usb.requestDevice({
+        filters: [] // Empty filter shows all plugged-in USB peripherals (XP-58, POS-58, etc.)
+      });
+
+      await this.usbDevice.open();
+      
+      // Claim the first configuration and interface
+      if (this.usbDevice.configuration === null) {
+        await this.usbDevice.selectConfiguration(1);
+      }
+      
+      await this.usbDevice.claimInterface(0);
+
+      // Find the Out Endpoint (Bulk Transfer to printer)
+      const endpoints = this.usbDevice.configuration.interfaces[0].alternate.endpoints;
+      const outEndpoint = endpoints.find((e: any) => e.direction === 'out');
+      
+      if (!outEndpoint) {
+        throw new Error('No OUT endpoint found on USB printer device.');
+      }
+
+      this.usbOutEndpoint = outEndpoint.endpointNumber;
       this.isConnected.set(true);
-      console.info('[Printer] Connected to Xprinter XP-58IIH at baud', baudRate);
+      console.info('[Printer] Connected via WebUSB to:', this.usbDevice.productName);
       return true;
     } catch (err) {
-      console.warn('[Printer] Connection cancelled or failed:', err);
+      console.warn('[Printer] USB connection cancelled or failed:', err);
       this.isConnected.set(false);
       return false;
     }
   }
 
   /**
-   * Send raw 58mm test slip directly to the print head
+   * Send 58mm raw ESC/POS test slip via WebUSB
    */
   public async print58mmTestSlip(): Promise<void> {
-    if (!this.port || !this.port.writable) {
+    if (!this.usbDevice || !this.usbDevice.opened) {
       const connected = await this.connectPrinter();
       if (!connected) return;
     }
 
     const encoder = new TextEncoder();
 
-    // Standard ESC/POS Commands
-    const ESC_INIT = [0x1B, 0x40];            // ESC @ : Initialize
-    const ESC_ALIGN_CENTER = [0x1B, 0x61, 1]; // ESC a 1 : Center
-    const ESC_ALIGN_LEFT = [0x1B, 0x61, 0];   // ESC a 0 : Left
-    const ESC_BOLD_ON = [0x1B, 0x45, 1];      // ESC E 1 : Bold ON
-    const ESC_BOLD_OFF = [0x1B, 0x45, 0];     // ESC E 0 : Bold OFF
-    const FEED_LINES = [0x1B, 0x64, 4];       // ESC d 4 : Feed 4 lines for tear bar
+    // ESC/POS Commands
+    const ESC_INIT = [0x1B, 0x40];
+    const ESC_ALIGN_CENTER = [0x1B, 0x61, 1];
+    const ESC_ALIGN_LEFT = [0x1B, 0x61, 0];
+    const ESC_BOLD_ON = [0x1B, 0x45, 1];
+    const ESC_BOLD_OFF = [0x1B, 0x45, 0];
+    const FEED_LINES = [0x1B, 0x64, 4];
 
-    // Formatted for 32 columns (58mm paper)
     const content =
       "================================\n" +
       "        MAR-MARKET POS          \n" +
@@ -441,11 +463,10 @@ export class EscPosPrinterService {
         ...FEED_LINES
       ]);
 
-      const writer = this.port.writable.getWriter();
-      await writer.write(payload);
-      writer.releaseLock();
+      await this.usbDevice.transferOut(this.usbOutEndpoint!, payload);
+      console.info('[Printer] Print payload sent successfully via WebUSB.');
     } catch (err) {
-      console.error('[Printer] Write failed:', err);
+      console.error('[Printer] WebUSB write failed:', err);
     }
   }
 }
