@@ -45,23 +45,12 @@ export class EscPosPrinterService {
     return qrBytes;
   }
 
-  /**
-   * Safe binary dispatcher that catches missing hardware or extension ports cleanly.
+/**
+   * Safe binary dispatcher for thermal printers
    */
   public async dispatchPrint(data: Uint8Array): Promise<boolean> {
     try {
-      // 1. Try Chrome Extension bridge if installed
-      if (typeof window !== 'undefined' && (window as any).chrome?.runtime?.sendMessage) {
-        try {
-          (window as any).chrome.runtime.sendMessage({ action: 'ESC_POS_PRINT', buffer: Array.from(data) }, () => {
-            if ((window as any).chrome?.runtime?.lastError) {
-              // Silently ignore extension port missing
-            }
-          });
-        } catch {}
-      }
-
-      // 2. Try Serial Port if active
+      // 1. Web Serial Port if connected
       if (this.port && this.port.writable) {
         const writer = this.port.writable.getWriter();
         await writer.write(data);
@@ -69,16 +58,17 @@ export class EscPosPrinterService {
         return true;
       }
 
-      // 3. Try WebUSB if active
+      // 2. WebUSB Device if connected and open
       if (this.device && this.device.opened) {
         await this.device.transferOut(1, data);
         return true;
       }
 
-      console.info(`[EscPosPrinter] Direct dispatch ready (${data.length} bytes simulated).`);
+      // 3. Fallback / Dev environment simulation
+      console.info(`[EscPosPrinter] Thermal print simulated (${data.length} bytes ready).`);
       return true;
     } catch (err) {
-      console.warn('[EscPosPrinter] Hardware print skipped cleanly:', err);
+      console.warn('[EscPosPrinter] Hardware dispatch skipped:', err);
       return false;
     }
   }
