@@ -400,4 +400,114 @@ export class EscPosPrinterService {
     push(0x1D, 0x56, 0x41, 0x10);
     return new Uint8Array(bytes);
   }
+
+  /**
+   * Universal 58mm Thermal Print Dispatcher (uses browser/OS print driver)
+   */
+  /**
+   * Universal 58mm Thermal Print Dispatcher
+   */
+  public printHtmlThermalSlip(htmlBody: string): void {
+    if (typeof window === 'undefined') return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            @page {
+              size: 58mm auto;
+              margin: 0mm;
+            }
+            body {
+              font-family: 'Courier New', Courier, monospace;
+              width: 48mm;
+              margin: 0 auto;
+              padding: 2mm 0 6mm 0;
+              font-size: 11px;
+              line-height: 1.25;
+              color: #000;
+              font-weight: bold;
+              text-transform: uppercase;
+            }
+            .center { text-align: center; }
+            .bold { font-weight: 900; }
+            .large { font-size: 13px; }
+            .divider { border-top: 1px dashed #000; margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; margin: 2px 0; }
+            .small { font-size: 9px; }
+            .feed { height: 12mm; }
+          </style>
+        </head>
+        <body>
+          ${htmlBody}
+          <div class="feed"></div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 1500);
+    }, 200);
+  }
+
+  /**
+   * Shift Report Generator for X and Z
+   */
+  public printShiftReportHtml(shift: CashierShift, type: 'X' | 'Z', profile?: Partial<MarketCompanyProfile>): void {
+    const storeTitle = this.transliterateGreek(profile?.storeName || 'MARANTH SUPERMARKET');
+    const cashier = this.transliterateGreek(shift.cashierName || 'TAMIAS');
+    const expected = (shift.openingFloat + (shift.sales?.cash || 0) + (shift.cashInTotal || 0) - (shift.cashOutTotal || 0));
+
+    const slip = `
+      <div class="center bold large">${storeTitle}</div>
+      <div class="center bold">DELTIO "${type}" - ${type === 'Z' ? 'ORISTIKO KLEISIMO' : 'ENDIAMESI VARIDIA'}</div>
+      <div class="divider"></div>
+      <div class="small">TAMIAS: ${cashier}</div>
+      <div class="small">KODIKOS: ${shift.id}</div>
+      <div class="small">ENARXI: ${new Date(shift.startTime).toLocaleString('el-GR')}</div>
+      ${shift.endTime ? `<div class="small">LIXI:   ${new Date(shift.endTime).toLocaleString('el-GR')}</div>` : ''}
+      <div class="small">EKTYPOSI: ${new Date().toLocaleString('el-GR')}</div>
+      <div class="divider"></div>
+      <div class="row"><span>FLOAT ENARXIS:</span><span>${(shift.openingFloat || 0).toFixed(2)} &euro;</span></div>
+      <div class="row"><span>METRHTA:</span><span>${(shift.sales?.cash || 0).toFixed(2)} &euro;</span></div>
+      <div class="row"><span>KARTES (POS):</span><span>${(shift.sales?.card || 0).toFixed(2)} &euro;</span></div>
+      <div class="row"><span>EISROES (+):</span><span>${(shift.cashInTotal || 0).toFixed(2)} &euro;</span></div>
+      <div class="row"><span>EKROES (-):</span><span>${(shift.cashOutTotal || 0).toFixed(2)} &euro;</span></div>
+      <div class="divider"></div>
+      <div class="row bold large"><span>TZIRAS:</span><span>${(shift.sales?.totalSales || 0).toFixed(2)} &euro;</span></div>
+      <div class="row small"><span>SYNALLAGES:</span><span>${shift.sales?.transactionCount || 0}</span></div>
+      <div class="divider"></div>
+      <div class="row bold"><span>ANAMENOMENO:</span><span>${expected.toFixed(2)} &euro;</span></div>
+      ${shift.countedCashInDrawer !== undefined ? `
+        <div class="row"><span>KATAMETRHMENO:</span><span>${shift.countedCashInDrawer.toFixed(2)} &euro;</span></div>
+        <div class="row bold"><span>DIAFORA:</span><span>${((shift.discrepancy || 0) >= 0 ? '+' : '') + (shift.discrepancy || 0).toFixed(2)} &euro;</span></div>
+      ` : ''}
+      <div class="divider"></div>
+      <div class="center small">${type === 'Z' ? 'TELOS IMERAS - VARIDIA EKLEISE' : 'PROSORINH ENDIAMESH EKTYPOSI'}</div>
+    `;
+
+    this.printHtmlThermalSlip(slip);
+  }
 }

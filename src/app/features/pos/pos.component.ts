@@ -38,6 +38,7 @@ import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.ser
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { marketDb } from '../../core/db/market-db';
+
 import { 
   Product, 
   TransactionRecord, 
@@ -811,4 +812,24 @@ export class PosComponent implements OnInit, AfterViewInit {
       img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2" stroke="%2310b981"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
     }
   }
+
+// 1. X-Report Handler
+public onPrintXReport(): void {
+  const active = this.shiftService.currentShift();
+  if (active) {
+    this.printerService.printShiftReportHtml(active, 'X');
+  }
+}
+
+// 2. Z-Report / Close Shift Handler
+public async onCloseZReport(countedCash: number = 0): Promise<void> {
+  const active = this.shiftService.currentShift();
+  if (active) {
+    // Print the Z report slip first
+    this.printerService.printShiftReportHtml(active, 'Z');
+    
+    // Then let your existing closeShift handle the database update and locking
+    await this.shiftService.closeShift(countedCash);
+  }
+}
 }
