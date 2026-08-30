@@ -6,9 +6,10 @@ export class EscPosPrinterService {
   public isConnected = signal<boolean>(false);
   private port: any = null;
   private device: any = null;
-  private usbDevice: any = null;
-  private usbOutEndpoint: number | null = null;
 
+  /**
+   * Transliterate Greek UTF-8 characters to clean ASCII for POS thermal printers
+   */
   public transliterateGreek(text: string): string {
     const map: Record<string, string> = {
       'Α': 'A', 'Β': 'B', 'Γ': 'G', 'Δ': 'D', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'I', 'Θ': 'TH',
@@ -28,6 +29,9 @@ export class EscPosPrinterService {
     return this.transliterateGreek(text);
   }
 
+  /**
+   * Build standard ESC/POS QR Code byte instructions
+   */
   public buildEscPosQrCode(content: string, moduleSize: number = 4): number[] {
     const qrBytes: number[] = [];
     const encoder = new TextEncoder();
@@ -47,12 +51,11 @@ export class EscPosPrinterService {
     return qrBytes;
   }
 
-/**
-   * Safe binary dispatcher for thermal printers
+  /**
+   * Safe binary dispatcher for thermal printers (Web Serial / WebUSB / Dev Log)
    */
   public async dispatchPrint(data: Uint8Array): Promise<boolean> {
     try {
-      // 1. Web Serial Port if connected
       if (this.port && this.port.writable) {
         const writer = this.port.writable.getWriter();
         await writer.write(data);
@@ -60,13 +63,11 @@ export class EscPosPrinterService {
         return true;
       }
 
-      // 2. WebUSB Device if connected and open
       if (this.device && this.device.opened) {
         await this.device.transferOut(1, data);
         return true;
       }
 
-      // 3. Fallback / Dev environment simulation
       console.info(`[EscPosPrinter] Thermal print simulated (${data.length} bytes ready).`);
       return true;
     } catch (err) {
@@ -99,6 +100,9 @@ export class EscPosPrinterService {
     await this.dispatchPrint(data);
   }
 
+  /**
+   * Standard Fiscal Retail Receipt
+   */
   public buildEscPosReceipt(
     tx: TransactionRecord,
     profile?: Partial<MarketCompanyProfile>,
@@ -174,7 +178,7 @@ export class EscPosPrinterService {
       pushLine('-'.repeat(lineWidth));
       push(0x1B, 0x61, 0x01);
       push(0x1B, 0x45, 0x01);
-      pushLine('AADE myDATA ELEGHOS PARASATIKOY');
+      pushLine('AADE myDATA ELEGHOS PARASTIKOY');
       push(0x1B, 0x45, 0x00);
 
       if (tx.mydataMark) {
@@ -204,6 +208,9 @@ export class EscPosPrinterService {
     return new Uint8Array(bytes);
   }
 
+  /**
+   * Cash In / Out Log Slip
+   */
   public buildEscPosCashLogSlip(log: CashLog, profile?: Partial<MarketCompanyProfile>): Uint8Array {
     const bytes: number[] = [];
     const push = (...b: number[]) => bytes.push(...b);
@@ -247,6 +254,9 @@ export class EscPosPrinterService {
     return new Uint8Array(bytes);
   }
 
+  /**
+   * Spoilage Protocol Slip
+   */
   public buildEscPosSpoilageSlip(log: SpoilageLog, profile?: Partial<MarketCompanyProfile>): Uint8Array {
     const bytes: number[] = [];
     const push = (...b: number[]) => bytes.push(...b);
@@ -305,7 +315,24 @@ export class EscPosPrinterService {
     return new Uint8Array(bytes);
   }
 
-  public buildEscPosXReport(shift: CashierShift): Uint8Array {
+  /**
+   * Intermediate Shift Audit (Deltio X)
+   */
+  public buildEscPosXReport(shift: CashierShift, profile?: Partial<MarketCompanyProfile>): Uint8Array {
+    return this.generateShiftAuditReport(shift, 'X', profile);
+  }
+
+  /**
+   * Final End-of-Day Closing Shift Audit (Deltio Z)
+   */
+  public buildEscPosZReport(shift: CashierShift, profile?: Partial<MarketCompanyProfile>): Uint8Array {
+    return this.generateShiftAuditReport(shift, 'Z', profile);
+  }
+
+  /**
+   * Unified X/Z Report ESC/POS Generator
+   */
+  private generateShiftAuditReport(shift: CashierShift, type: 'X' | 'Z', profile?: Partial<MarketCompanyProfile>): Uint8Array {
     const bytes: number[] = [];
     const push = (...b: number[]) => bytes.push(...b);
     const pushLine = (text: string) => {
@@ -325,15 +352,19 @@ export class EscPosPrinterService {
     push(0x1B, 0x40);
     push(0x1B, 0x61, 0x01);
     push(0x1B, 0x45, 0x01);
-    pushLine('DELTIO "X" - ENDIAMESI VARIDIA');
+    pushLine(profile?.storeName || 'MARANTH SUPERMARKET');
     push(0x1B, 0x45, 0x00);
-    pushLine('ELEGCHOS TAMEIOY & PARADOSI');
+    pushLine(`DELTIO "${type}" - ${type === 'Z' ? 'ORISTIKO KLEISIMO' : 'ENDIAMESI VARIDIA'}`);
+    pushLine('ELEGCHOS TAMEIOY & TZIRAS');
     pushLine('================================');
     push(0x1B, 0x61, 0x00);
 
     pushLine(`TAMIAS: ${shift.cashierName}`);
     pushLine(`KODIKOS: ${shift.id}`);
     pushLine(`ENARXI: ${new Date(shift.startTime).toLocaleString('el-GR')}`);
+    if (shift.endTime) {
+      pushLine(`LIXI:   ${new Date(shift.endTime).toLocaleString('el-GR')}`);
+    }
     pushLine(`EKTYPOSI: ${new Date().toLocaleString('el-GR')}`);
     pushLine('-'.repeat(lineWidth));
 
@@ -364,109 +395,10 @@ export class EscPosPrinterService {
 
     pushLine('\n\n');
     push(0x1B, 0x61, 0x01);
-    pushLine('YPOGRAFI PARADIDONTOS   YPOGRAFI PARALAMBANONTOS');
+    pushLine('YPOGRAFI TAMEIA        YPOGRAFI YPEYTHYNOY');
     pushLine('\n....................   ....................\n');
 
     push(0x1D, 0x56, 0x41, 0x10);
     return new Uint8Array(bytes);
-  }
-
-  public async connectPrinter(): Promise<boolean> {
-    if (typeof window === 'undefined' || !('usb' in navigator)) {
-      alert('WebUSB is not supported in this browser. Please use Chrome or Edge.');
-      return false;
-    }
-
-    try {
-      // Request any USB device or filter by known POS/Xprinter vendor IDs
-      this.usbDevice = await (navigator as any).usb.requestDevice({
-        filters: [] // Empty filter shows all plugged-in USB peripherals (XP-58, POS-58, etc.)
-      });
-
-      await this.usbDevice.open();
-      
-      // Claim the first configuration and interface
-      if (this.usbDevice.configuration === null) {
-        await this.usbDevice.selectConfiguration(1);
-      }
-      
-      await this.usbDevice.claimInterface(0);
-
-      // Find the Out Endpoint (Bulk Transfer to printer)
-      const endpoints = this.usbDevice.configuration.interfaces[0].alternate.endpoints;
-      const outEndpoint = endpoints.find((e: any) => e.direction === 'out');
-      
-      if (!outEndpoint) {
-        throw new Error('No OUT endpoint found on USB printer device.');
-      }
-
-      this.usbOutEndpoint = outEndpoint.endpointNumber;
-      this.isConnected.set(true);
-      console.info('[Printer] Connected via WebUSB to:', this.usbDevice.productName);
-      return true;
-    } catch (err) {
-      console.warn('[Printer] USB connection cancelled or failed:', err);
-      this.isConnected.set(false);
-      return false;
-    }
-  }
-
-  /**
-   * Send 58mm raw ESC/POS test slip via WebUSB
-   */
-  public async print58mmTestSlip(): Promise<void> {
-    if (!this.usbDevice || !this.usbDevice.opened) {
-      const connected = await this.connectPrinter();
-      if (!connected) return;
-    }
-
-    const encoder = new TextEncoder();
-
-    // ESC/POS Commands
-    const ESC_INIT = [0x1B, 0x40];
-    const ESC_ALIGN_CENTER = [0x1B, 0x61, 1];
-    const ESC_ALIGN_LEFT = [0x1B, 0x61, 0];
-    const ESC_BOLD_ON = [0x1B, 0x45, 1];
-    const ESC_BOLD_OFF = [0x1B, 0x45, 0];
-    const FEED_LINES = [0x1B, 0x64, 4];
-
-    const content =
-      "================================\n" +
-      "        MAR-MARKET POS          \n" +
-      "       XPRINTER XP-58IIH        \n" +
-      "================================\n" +
-      "STORE: FTEST (SANDBOX)          \n" +
-      "STATUS: HARDWARE CONNECTED      \n" +
-      "DATE: " + new Date().toLocaleDateString() + "            \n" +
-      "--------------------------------\n" +
-      "ITEM                 QTY   PRICE\n" +
-      "--------------------------------\n" +
-      "GALA FRESKO 1L       1x     1.85\n" +
-      "PSOMI HORIATIKO      1x     1.10\n" +
-      "--------------------------------\n" +
-      "SYNOLO EYRO:                2.95\n" +
-      "METRHTA:                    5.00\n" +
-      "RESTA:                      2.05\n" +
-      "================================\n" +
-      "   EYXARISTOYME GIA THN        \n" +
-      "        PROTIMHSH!              \n";
-
-    try {
-      const payload = new Uint8Array([
-        ...ESC_INIT,
-        ...ESC_ALIGN_CENTER,
-        ...ESC_BOLD_ON,
-        ...encoder.encode("MARANTH HUB POS\n"),
-        ...ESC_BOLD_OFF,
-        ...ESC_ALIGN_LEFT,
-        ...encoder.encode(content),
-        ...FEED_LINES
-      ]);
-
-      await this.usbDevice.transferOut(this.usbOutEndpoint!, payload);
-      console.info('[Printer] Print payload sent successfully via WebUSB.');
-    } catch (err) {
-      console.error('[Printer] WebUSB write failed:', err);
-    }
   }
 }
