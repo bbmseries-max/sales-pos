@@ -402,76 +402,74 @@ export class EscPosPrinterService {
   }
 
   /**
-   * Non-blocking Thermal / Label Slip Dispatcher
+   * Non-blocking 58mm Thermal Print Dispatcher (Isolated Context)
    */
   public printHtmlThermalSlip(htmlBody: string): void {
     if (typeof window === 'undefined') return;
 
-    // Remove any previous temporary container
-    const oldContainer = document.getElementById('thermal-print-container');
-    if (oldContainer) {
-      oldContainer.remove();
+    // Open an off-screen print window to prevent main-thread freezing
+    const printWin = window.open('', '_blank', 'width=300,height=450,left=10000,top=10000');
+    if (!printWin) {
+      console.warn('[Printer] Popup was blocked. Please allow popups for this POS site.');
+      return;
     }
 
-    const printContainer = document.createElement('div');
-    printContainer.id = 'thermal-print-container';
-    printContainer.innerHTML = `
-      <style>
-        @media screen {
-          #thermal-print-container {
-            display: none !important;
-          }
-        }
-        @media print {
-          body > *:not(#thermal-print-container) {
-            display: none !important;
-          }
-          #thermal-print-container {
-            display: block !important;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 48mm;
-            margin: 0;
-            padding: 0;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
-            line-height: 1.2;
-            font-weight: bold;
-            color: #000;
-            text-transform: uppercase;
-          }
-          .slip-inner {
-            width: 48mm;
-            padding: 2mm 1mm;
-            box-sizing: border-box;
-          }
-          .center { text-align: center; }
-          .bold { font-weight: 900; }
-          .large { font-size: 13px; }
-          .divider { border-top: 1px dashed #000; margin: 3px 0; }
-          .row { display: flex; justify-content: space-between; margin: 1px 0; }
-          .small { font-size: 9px; }
-        }
-      </style>
-      <div class="slip-inner">
-        ${htmlBody}
-      </div>
-    `;
-
-    document.body.appendChild(printContainer);
-
-    // Clean up DOM as soon as print completes or user cancels
-    const cleanup = () => {
-      window.removeEventListener('afterprint', cleanup);
-      printContainer.remove();
-    };
-    window.addEventListener('afterprint', cleanup);
-
-    // Yield control to the browser paint cycle before launching dialog
-    requestAnimationFrame(() => {
-      window.print();
-    });
+    printWin.document.open();
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>POS Print</title>
+          <style>
+            @page {
+              size: 58mm auto;
+              margin: 0mm;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              color: #000;
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 11px;
+              line-height: 1.25;
+              font-weight: bold;
+              text-transform: uppercase;
+            }
+            .slip-container {
+              width: 48mm;
+              padding: 2mm 1mm 6mm 1mm;
+              box-sizing: border-box;
+            }
+            .center { text-align: center; }
+            .bold { font-weight: 900; }
+            .large { font-size: 13px; }
+            .divider { border-top: 1px dashed #000; margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; margin: 2px 0; }
+            .small { font-size: 9px; }
+          </style>
+        </head>
+        <body>
+          <div class="slip-container">
+            ${htmlBody}
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+              window.onafterprint = function() {
+                window.close();
+              };
+              // Fallback close if onafterprint is unsupported
+              setTimeout(function() {
+                window.close();
+              }, 3000);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWin.document.close();
   }
 
   /**
