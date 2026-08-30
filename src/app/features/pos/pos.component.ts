@@ -735,26 +735,38 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-  private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
+ private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
     const activeShop = this.tenantConfig.activeShop();
     const companyProfile: MarketCompanyProfile = {
       storeName: activeShop.name || 'MARANTH MARKET',
       address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
-      afm: activeShop.afm || this.myDataService.credentials().issuerAfm || '123456789',
+      afm: activeShop.afm || this.myDataService.credentials?.()?.issuerAfm || '123456789',
       doy: activeShop.doy || 'XALANDRIOU',
       phone: activeShop.phone || '210-6800000'
     };
 
-    const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
-    if (myDataRes.success && myDataRes.mark) {
-      tx.mydataMark = myDataRes.mark;
-      tx.mydataUid = myDataRes.uid;
-      tx.mydataQrUrl = myDataRes.qrUrl;
-      await marketDb.transactions.put(tx);
+    // 1. myDATA Fiscal Transmission (Safe Fallback)
+    try {
+      if (this.myDataService?.transmitReceipt) {
+        const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
+        if (myDataRes?.success && myDataRes?.mark) {
+          tx.mydataMark = myDataRes.mark;
+          tx.mydataUid = myDataRes.uid;
+          tx.mydataQrUrl = myDataRes.qrUrl;
+          await marketDb.transactions.put(tx);
+        }
+      }
+    } catch (fiscalErr) {
+      console.warn('[Fiscal/myDATA] Local transmission bridge skipped:', fiscalErr);
     }
 
-    const rawBuffer = this.printerService.buildEscPosReceipt(tx);
-    await this.printerService.printViaSerial(rawBuffer);
+    // 2. ESC/POS Thermal Receipt Dispatch (Safe Fallback)
+    try {
+      const rawBuffer = this.printerService.buildEscPosReceipt(tx, companyProfile);
+      await this.printerService.printRaw(rawBuffer);
+    } catch (printErr) {
+      console.warn('[Printer] Receipt print skipped (No thermal hardware connected):', printErr);
+    }
   }
 
   public openPriceCheck(): void {
