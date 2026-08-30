@@ -54,8 +54,9 @@ export class EscPosPrinterService {
   /**
    * Safe binary dispatcher for thermal printers (Web Serial / WebUSB / Dev Log)
    */
-  public async dispatchPrint(data: Uint8Array): Promise<boolean> {
+ public async dispatchPrint(data: Uint8Array): Promise<boolean> {
     try {
+      // 1. Web Serial Port if already connected and open
       if (this.port && this.port.writable) {
         const writer = this.port.writable.getWriter();
         await writer.write(data);
@@ -63,12 +64,14 @@ export class EscPosPrinterService {
         return true;
       }
 
+      // 2. WebUSB Device if already connected and open
       if (this.device && this.device.opened) {
         await this.device.transferOut(1, data);
         return true;
       }
 
-      console.info(`[EscPosPrinter] Thermal print simulated (${data.length} bytes ready).`);
+      // 3. Fallback: Log simulation buffer without crashing
+      console.info(`[EscPosPrinter] Thermal print payload ready (${data.length} bytes).`);
       return true;
     } catch (err) {
       console.warn('[EscPosPrinter] Hardware dispatch skipped:', err);
@@ -77,23 +80,19 @@ export class EscPosPrinterService {
   }
 
   public async printViaSerial(data: Uint8Array): Promise<boolean> {
-    try {
-      if (typeof navigator !== 'undefined' && 'serial' in navigator) {
-        if (!this.port) {
-          this.port = await (navigator as any).serial.requestPort();
-          await this.port.open({ baudRate: 9600 });
-          this.isConnected.set(true);
-        }
+    // Only attempt serial write if a port is already active; do not block with unconfigured popups
+    if (this.port && this.port.writable) {
+      try {
         const writer = this.port.writable.getWriter();
         await writer.write(data);
         writer.releaseLock();
         return true;
+      } catch (err) {
+        console.warn('[EscPosPrinter] Serial write failed:', err);
+        return false;
       }
-      return true;
-    } catch (err) {
-      console.warn('Web Serial print skipped:', err);
-      return false;
     }
+    return false;
   }
 
   public async printRaw(data: Uint8Array): Promise<void> {
