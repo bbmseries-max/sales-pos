@@ -402,88 +402,76 @@ export class EscPosPrinterService {
   }
 
   /**
-   * Universal 58mm Thermal Print Dispatcher (uses browser/OS print driver)
-   */
-  /**
-   * Universal 58mm Thermal Print Dispatcher
-   */
-  /**
-   * Safe Thermal / Label Slip Dispatcher (Fixed boundary, zero runaway feed)
+   * Non-blocking Thermal / Label Slip Dispatcher
    */
   public printHtmlThermalSlip(htmlBody: string): void {
     if (typeof window === 'undefined') return;
 
-    // Clean up any stale iframes first
-    const existing = document.getElementById('thermal-print-frame');
-    if (existing) existing.remove();
+    // Remove any previous temporary container
+    const oldContainer = document.getElementById('thermal-print-container');
+    if (oldContainer) {
+      oldContainer.remove();
+    }
 
-    const iframe = document.createElement('iframe');
-    iframe.id = 'thermal-print-frame';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            @page {
-              size: auto;
-              margin: 0mm;
-            }
-            html, body {
-              margin: 0;
-              padding: 0;
-              background: #fff;
-              color: #000;
-              font-family: 'Courier New', Courier, monospace;
-              font-size: 11px;
-              line-height: 1.2;
-              font-weight: bold;
-              text-transform: uppercase;
-            }
-            .slip-container {
-              width: 48mm;
-              padding: 2mm 1mm;
-              box-sizing: border-box;
-            }
-            .center { text-align: center; }
-            .bold { font-weight: 900; }
-            .large { font-size: 13px; }
-            .divider { border-top: 1px dashed #000; margin: 3px 0; }
-            .row { display: flex; justify-content: space-between; margin: 1px 0; }
-            .small { font-size: 9px; }
-          </style>
-        </head>
-        <body>
-          <div class="slip-container">
-            ${htmlBody}
-          </div>
-        </body>
-      </html>
-    `);
-    doc.close();
-
-    // Trigger print after frame is fully painted
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
+    const printContainer = document.createElement('div');
+    printContainer.id = 'thermal-print-container';
+    printContainer.innerHTML = `
+      <style>
+        @media screen {
+          #thermal-print-container {
+            display: none !important;
+          }
         }
-      }, 2000);
-    }, 150);
+        @media print {
+          body > *:not(#thermal-print-container) {
+            display: none !important;
+          }
+          #thermal-print-container {
+            display: block !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 48mm;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            line-height: 1.2;
+            font-weight: bold;
+            color: #000;
+            text-transform: uppercase;
+          }
+          .slip-inner {
+            width: 48mm;
+            padding: 2mm 1mm;
+            box-sizing: border-box;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: 900; }
+          .large { font-size: 13px; }
+          .divider { border-top: 1px dashed #000; margin: 3px 0; }
+          .row { display: flex; justify-content: space-between; margin: 1px 0; }
+          .small { font-size: 9px; }
+        }
+      </style>
+      <div class="slip-inner">
+        ${htmlBody}
+      </div>
+    `;
+
+    document.body.appendChild(printContainer);
+
+    // Clean up DOM as soon as print completes or user cancels
+    const cleanup = () => {
+      window.removeEventListener('afterprint', cleanup);
+      printContainer.remove();
+    };
+    window.addEventListener('afterprint', cleanup);
+
+    // Yield control to the browser paint cycle before launching dialog
+    requestAnimationFrame(() => {
+      window.print();
+    });
   }
 
   /**
