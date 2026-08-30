@@ -407,10 +407,18 @@ export class EscPosPrinterService {
   /**
    * Universal 58mm Thermal Print Dispatcher
    */
+  /**
+   * Safe Thermal / Label Slip Dispatcher (Fixed boundary, zero runaway feed)
+   */
   public printHtmlThermalSlip(htmlBody: string): void {
     if (typeof window === 'undefined') return;
 
+    // Clean up any stale iframes first
+    const existing = document.getElementById('thermal-print-frame');
+    if (existing) existing.remove();
+
     const iframe = document.createElement('iframe');
+    iframe.id = 'thermal-print-frame';
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
     iframe.style.bottom = '0';
@@ -430,46 +438,52 @@ export class EscPosPrinterService {
         <head>
           <style>
             @page {
-              size: 58mm auto;
+              size: auto;
               margin: 0mm;
             }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              width: 48mm;
-              margin: 0 auto;
-              padding: 2mm 0 6mm 0;
-              font-size: 11px;
-              line-height: 1.25;
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
               color: #000;
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 11px;
+              line-height: 1.2;
               font-weight: bold;
               text-transform: uppercase;
+            }
+            .slip-container {
+              width: 48mm;
+              padding: 2mm 1mm;
+              box-sizing: border-box;
             }
             .center { text-align: center; }
             .bold { font-weight: 900; }
             .large { font-size: 13px; }
-            .divider { border-top: 1px dashed #000; margin: 4px 0; }
-            .row { display: flex; justify-content: space-between; margin: 2px 0; }
+            .divider { border-top: 1px dashed #000; margin: 3px 0; }
+            .row { display: flex; justify-content: space-between; margin: 1px 0; }
             .small { font-size: 9px; }
-            .feed { height: 12mm; }
           </style>
         </head>
         <body>
-          ${htmlBody}
-          <div class="feed"></div>
+          <div class="slip-container">
+            ${htmlBody}
+          </div>
         </body>
       </html>
     `);
     doc.close();
 
-    iframe.contentWindow?.focus();
+    // Trigger print after frame is fully painted
     setTimeout(() => {
+      iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
       setTimeout(() => {
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
         }
-      }, 1500);
-    }, 200);
+      }, 2000);
+    }, 150);
   }
 
   /**
