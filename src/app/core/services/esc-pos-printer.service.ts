@@ -401,16 +401,15 @@ export class EscPosPrinterService {
     return new Uint8Array(bytes);
   }
 
-  /**
-   * Non-blocking 58mm Thermal Print Dispatcher (Isolated Context)
+/**
+   * Universal Thermal/Label Print Dispatcher with Auto-Fit & Orientation Control
    */
   public printHtmlThermalSlip(htmlBody: string): void {
     if (typeof window === 'undefined') return;
 
-    // Open an off-screen print window to prevent main-thread freezing
-    const printWin = window.open('', '_blank', 'width=300,height=450,left=10000,top=10000');
+    const printWin = window.open('', '_blank', 'width=400,height=600,left=10000,top=10000');
     if (!printWin) {
-      console.warn('[Printer] Popup was blocked. Please allow popups for this POS site.');
+      console.warn('[Printer] Popup blocked. Please allow popups for this POS site.');
       return;
     }
 
@@ -419,15 +418,19 @@ export class EscPosPrinterService {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>POS Print</title>
+          <title>POS Receipt</title>
           <style>
             @page {
-              size: 58mm auto;
+              size: auto;
               margin: 0mm;
+            }
+            *, *:before, *:after {
+              box-sizing: border-box;
             }
             html, body {
               margin: 0;
               padding: 0;
+              width: 100%;
               background: #fff;
               color: #000;
               font-family: 'Courier New', Courier, monospace;
@@ -437,15 +440,35 @@ export class EscPosPrinterService {
               text-transform: uppercase;
             }
             .slip-container {
-              width: 48mm;
-              padding: 2mm 1mm 6mm 1mm;
-              box-sizing: border-box;
+              width: 100%;
+              max-width: 48mm;
+              padding: 2mm 1mm;
+              margin: 0 auto;
+              word-break: break-word;
+              overflow: hidden;
             }
             .center { text-align: center; }
             .bold { font-weight: 900; }
             .large { font-size: 13px; }
-            .divider { border-top: 1px dashed #000; margin: 4px 0; }
-            .row { display: flex; justify-content: space-between; margin: 2px 0; }
+            .divider { border-top: 1px dashed #000; margin: 3px 0; }
+            .row { 
+              display: flex; 
+              justify-content: space-between; 
+              align-items: flex-start;
+              gap: 4px;
+              margin: 2px 0; 
+            }
+            .row span:first-child {
+              flex: 1;
+              text-align: left;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+            .row span:last-child {
+              text-align: right;
+              white-space: nowrap;
+            }
             .small { font-size: 9px; }
           </style>
         </head>
@@ -460,10 +483,9 @@ export class EscPosPrinterService {
               window.onafterprint = function() {
                 window.close();
               };
-              // Fallback close if onafterprint is unsupported
               setTimeout(function() {
                 window.close();
-              }, 3000);
+              }, 4000);
             };
           </script>
         </body>
