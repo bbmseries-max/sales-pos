@@ -443,7 +443,7 @@ export class EscPosPrinterService {
             .slip-wrapper {
               width: 48mm;
               margin: 0 auto;
-              padding: 2mm 1mm 10mm 1mm;
+              padding: 1mm 1mm 10mm 1mm;
               page-break-inside: avoid;
               page-break-after: avoid;
             }
@@ -485,7 +485,7 @@ export class EscPosPrinterService {
             ${htmlBody}
             
             <!-- Force physical paper advance past the cutter -->
-            <div class="cutter-feed-gap">.&nbsp;<br>&nbsp;<br>&nbsp;</div>
+            <div class="cutter-feed-gap"></div>
           </div>
           <script>
             window.onload = function() {
