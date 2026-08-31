@@ -1,16 +1,61 @@
+import type { CartItem } from './cart.model';
+
 export type { Product, Category } from './product.model';
 export type { CartItem, HeldTicket } from './cart.model';
-export type { MarketCompanyProfile, PaymentMethod, TransactionRecord } from './transaction.model';
 export type { Customer } from './customer.model';
 export type { Cashier, CashierShift, ShiftPaymentSummary, CashMovement } from './cashier-shift.model';
 export type { SpoilageLog, CashLog, SpoilageReason } from './spoilage.model';
 export type { Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from './supplier.model';
+
+export type PaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
 
 export interface MasterCategory {
   id?: string | number;
   name: string;
   sku?: string;
   icon: string;
+}
+
+export interface MarketCompanyProfile {
+  name: string;
+  storeName?: string;
+  companyTitle?: string;
+  afm: string;
+  doy?: string;
+  address?: string;
+  phone?: string;
+  postalCode?: string;
+  city?: string;
+  email?: string;
+}
+
+export interface TransactionRecord {
+  id: string;
+  timestamp: string;
+  items: CartItem[];
+  subtotal: number;
+  taxAmount: number;
+  grandTotal: number;
+  paymentMethod: PaymentMethod;
+  cashier?: string;
+  cashierName?: string;
+  cashTendered?: number;
+  changeDue?: number;
+  vatBreakdown?: Record<string | number, { net: number; vat: number; gross: number }>;
+
+  // Customer & Loyalty
+  customerId?: string;
+  customerPhone?: string;
+  customerName?: string;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  discountApplied?: number;
+
+  // AADE myDATA
+  mydataMark?: string;
+  mydataUid?: string;
+  mydataQrUrl?: string;
+  _syncStatus?: 'synced' | 'pending' | 'dirty' | 'offline';
 }
 
 export const SUPERMARKET_DEPARTMENTS: MasterCategory[] = [
