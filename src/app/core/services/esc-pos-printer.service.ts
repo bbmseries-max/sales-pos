@@ -442,11 +442,10 @@ export class EscPosPrinterService {
             }
             .slip-wrapper {
               width: 48mm;
-              margin: 0;
-              padding: 2mm 1mm 25mm 1mm; /* 25mm bottom gap prevents text cut-off */
+              margin: 0 auto;
+              padding: 2mm 1mm 10mm 1mm;
               page-break-inside: avoid;
               page-break-after: avoid;
-              overflow: visible;
             }
             .center { text-align: center; }
             .bold { font-weight: 900; }
@@ -469,16 +468,24 @@ export class EscPosPrinterService {
               white-space: nowrap;
             }
             .small { font-size: 9px; }
-            .feed-gap {
-              height: 20mm;
+            
+            /* Physical Paper-Feed Buffer to clear the cutter blade */
+            .cutter-feed-gap {
               display: block;
+              min-height: 25mm;
+              height: 25mm;
+              line-height: 25mm;
+              visibility: visible;
+              color: transparent; /* Prevents dot/content from being visible */
             }
           </style>
         </head>
         <body>
           <div class="slip-wrapper">
             ${htmlBody}
-            <div class="feed-gap"></div>
+            
+            <!-- Force physical paper advance past the cutter -->
+            <div class="cutter-feed-gap">.&nbsp;<br>&nbsp;<br>&nbsp;</div>
           </div>
           <script>
             window.onload = function() {
