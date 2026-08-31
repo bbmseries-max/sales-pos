@@ -43,8 +43,8 @@ export class MarketDatabase extends Dexie {
     // e.g., 'MaranthPOS_mar-market', 'MaranthPOS_ftest'
     super(`MaranthPOS_${storeCode}`);
 
-    this.version(1).stores({
-      products: '++id, barcode, sku, categoryId, name, isPinned, isActive, storeId, _syncStatus',
+    this.version(2).stores({
+      products: 'id, barcode, sku, categoryId, name, isPinned, isActive, storeId, _syncStatus',
       categories: 'id, name, tenantId',
       transactions: 'id, timestamp, paymentMethod, customerPhone, storeId, mydataMark',
       spoilageLogs: 'id, productId, timestamp, storeId',

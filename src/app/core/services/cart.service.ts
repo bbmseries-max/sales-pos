@@ -236,29 +236,26 @@ public async checkout(
 
     // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
     await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
-      // Save Transaction
       await marketDb.transactions.add(record);
 
-      // Adjust stock for each line item
       for (const item of currentItems) {
         const prod = item.product;
-        const rawId = prod.id;
-        const numId = typeof rawId === 'string' && !isNaN(Number(rawId)) ? Number(rawId) : rawId;
+        const targetId = prod.id;
+        const targetBarcode = prod.barcode;
 
-        // Try lookup by numeric/raw ID first, then fallback to barcode
+        // Try lookup by exact ID first, then fallback to barcode
         let dbProd: Product | undefined;
-        if (numId !== undefined && numId !== null) {
-          dbProd = await marketDb.products.get(numId);
+        if (targetId) {
+          dbProd = await marketDb.products.get(targetId);
         }
-        if (!dbProd && prod.barcode) {
-          dbProd = await marketDb.products.where('barcode').equals(prod.barcode).first();
+        if (!dbProd && targetBarcode) {
+          dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
         }
 
-        if (dbProd && dbProd.id !== undefined) {
+        if (dbProd && dbProd.id) {
           const qtySold = Number(item.quantity) || 0;
           const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
           
-          // Refunds increase inventory; normal sales reduce inventory
           const delta = item.isRefund ? qtySold : -qtySold;
           const newQty = Number(Math.max(0, currentQty + delta).toFixed(3));
 
@@ -272,12 +269,10 @@ public async checkout(
       }
     });
 
-    // 2. Refresh in-memory catalog so UI and future adds see updated stock immediately
-    if (this.catalogService && typeof this.catalogService.loadInitialCatalog === 'function') {
-      await this.catalogService.loadInitialCatalog();
-    }
+    // 2. Refresh active catalog in UI
+    await this.catalogService.loadInitialCatalog();
 
-    // 3. Store last receipt for printing & clear cart
+    // 3. Store last receipt & reset cart
     this.lastProcessedReceipt.set(record);
     this.clear();
 
