@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterOutlet } from '@angular/router';
 import { SupplierOrderService } from '../../core/services/supplier-order.service';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/market.models';
@@ -8,7 +9,7 @@ import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/ma
 @Component({
   selector: 'app-goods-receipt',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterOutlet],
   templateUrl: './goods-receipt.component.html'
 })
 export class GoodsReceiptComponent implements OnInit {
