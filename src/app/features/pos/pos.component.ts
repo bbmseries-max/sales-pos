@@ -44,6 +44,7 @@ import {
   TransactionRecord, 
   MarketCompanyProfile, 
   Customer,
+  Cashier,
   CartItem,
   CashierRole
 } from '../../core/models';
@@ -84,6 +85,10 @@ export class PosComponent implements OnInit, AfterViewInit {
   public shiftService = inject(CashierShiftService);
   public tenantConfig = inject(TenantConfigService);
   private router = inject(Router);
+
+  public get currentCashier() {
+    return this.shiftService.currentCashier();
+  }
 
   public showEmployeeModal = signal<boolean>(false);
   public isSavingEmployee = signal<boolean>(false);
@@ -195,6 +200,14 @@ export class PosComponent implements OnInit, AfterViewInit {
     const payable = this.finalPayableAmount();
     return tendered >= payable ? Number((tendered - payable).toFixed(2)) : 0;
   });
+
+  // 3. Add switch cashier handler
+  public switchCashier(): void {
+    const confirmSwitch = confirm('Θέλετε να αποσυνδεθείτε / αλλάξετε ταμία;');
+    if (confirmSwitch) {
+      this.shiftService.currentCashier.set(null);
+    }
+  }
 
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();

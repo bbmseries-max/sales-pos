@@ -98,14 +98,34 @@
       <span class="hidden lg:inline">Βάρδια</span>
     </button>
 
-    <!-- Lock Terminal (F12) -->
+    @if (shiftService.currentCashier(); as cashier) {
+  <div class="flex items-center gap-2.5 bg-slate-950 border border-slate-700/80 px-3.5 py-1.5 rounded-xl shadow-inner">
+    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+    
+    <div class="flex flex-col text-left">
+      <span class="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-400">
+        {{ cashier.role === 'ADMIN' ? 'ΔΙΑΧΕΙΡΙΣΤΗΣ' : 'ΤΑΜΙΑΣ' }}
+      </span>
+      <span class="text-xs font-bold text-slate-100 flex items-center gap-1">
+        <span>👤</span>
+        <span>{{ cashier.name }}</span>
+      </span>
+    </div>
+
     <button 
-      (click)="shiftService.lockScreen()" 
-      class="px-2.5 py-1.5 bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 rounded-xl text-xs font-bold border border-rose-800/50 transition flex items-center gap-1 shrink-0"
-      title="Lock POS">
-      <span>🔒</span>
-      <span class="hidden md:inline">Κλείδωμα</span>
+      type="button" 
+      (click)="switchCashier()" 
+      title="Αλλαγή Ταμία / Αποσύνδεση"
+      class="ml-1 p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer">
+      🔒
     </button>
+  </div>
+} @else {
+  <div class="flex items-center gap-2 bg-amber-950/50 border border-amber-800/80 px-3 py-1.5 rounded-xl text-amber-300 text-xs font-bold font-mono">
+    <span>⚠️</span>
+    <span>ΧΩΡΙΣ ΤΑΜΙΑ</span>
+  </div>
+}
 
   </div>
 </header>
