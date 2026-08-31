@@ -404,6 +404,9 @@ export class EscPosPrinterService {
 /**
    * Fixed-Alignment Thermal / Label Slip Dispatcher
    */
+  /**
+   * Fixed-Alignment Thermal / Label Slip Dispatcher
+   */
   public printHtmlThermalSlip(htmlBody: string): void {
     if (typeof window === 'undefined') return;
 
@@ -428,24 +431,25 @@ export class EscPosPrinterService {
               box-sizing: border-box;
             }
             html, body {
-              margin: 0;
-              padding: 0;
-              width: 100%;
+              margin: 0 !important;
+              padding: 0 !important;
+              width: 100% !important;
               background: #fff;
               color: #000;
               font-family: 'Courier New', Courier, monospace;
               font-size: 11px;
-              line-height: 1.3;
+              line-height: 1.25;
               font-weight: bold;
               text-transform: uppercase;
               -webkit-print-color-adjust: exact;
             }
             .slip-wrapper {
-              width: 48mm;
-              margin: 0 auto;
-              padding: 1mm 1mm 10mm 1mm;
-              page-break-inside: avoid;
-              page-break-after: avoid;
+              /* Pinned strictly to the left with zero outer margin drift */
+              width: 100%;
+              max-width: 58mm; /* standard 58mm roll printable area */
+              margin: 0 !important;
+              padding: 0 1mm 0 0 !important;
+              text-align: left;
             }
             .center { text-align: center; }
             .bold { font-weight: 900; }
@@ -457,6 +461,7 @@ export class EscPosPrinterService {
               align-items: flex-start;
               gap: 2px;
               margin: 2px 0; 
+              width: 100%;
             }
             .row span:first-child {
               flex: 1;
@@ -469,14 +474,14 @@ export class EscPosPrinterService {
             }
             .small { font-size: 9px; }
             
-            /* Physical Paper-Feed Buffer to clear the cutter blade */
+            /* Physical Paper-Feed Buffer to push paper past the blade */
             .cutter-feed-gap {
-              display: block;
-              min-height: 25mm;
-              height: 25mm;
-              line-height: 25mm;
-              visibility: visible;
-              color: transparent; /* Prevents dot/content from being visible */
+              display: block !important;
+              width: 100% !important;
+              height: 38mm !important; /* Increased feed clearance */
+              min-height: 38mm !important;
+              margin-top: 8px !important;
+              page-break-inside: avoid !important;
             }
           </style>
         </head>
@@ -484,8 +489,8 @@ export class EscPosPrinterService {
           <div class="slip-wrapper">
             ${htmlBody}
             
-            <!-- Force physical paper advance past the cutter -->
-            <div class="cutter-feed-gap"></div>
+            <!-- Guaranteed physical feed -->
+            <div class="cutter-feed-gap">&nbsp;</div>
           </div>
           <script>
             window.onload = function() {
