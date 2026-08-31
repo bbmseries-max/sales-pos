@@ -253,9 +253,10 @@ export class MarketCatalogService {
     imageUrl?: string;
   }): Promise<Product> {
     const assignedCatId = params.categoryId || 'cat-pantry';
-    const activeStoreCode = this.tenantConfig.activeShop().code;
+    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
 
     const newProd: Product = {
+      id: `PROD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6)}`,
       barcode: params.barcode.trim(),
       sku: params.barcode.trim(),
       name: params.name.trim(),
@@ -276,9 +277,7 @@ export class MarketCatalogService {
       _syncStatus: 'dirty'
     };
 
-    // Dexie will assign the primary key auto-incrementally
-    const generatedId = await marketDb.products.add(newProd);
-    newProd.id = generatedId;
+    await marketDb.products.add(newProd);
 
     await this.loadInitialCatalog();
     return newProd;
