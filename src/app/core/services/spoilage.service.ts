@@ -35,7 +35,7 @@ export class SpoilageService {
   /**
    * Records a spoilage protocol, writes to Dexie DB, and automatically decrements product stock
    */
-  public async logSpoilage(params: {
+public async logSpoilage(params: {
     product: Product;
     quantity: number;
     reason: SpoilageReason;
@@ -45,9 +45,11 @@ export class SpoilageService {
     const { product, quantity, reason, cashierName, notes } = params;
 
     if (!product || !product.id) {
-      throw new Error('Cannot log spoilage: Invalid product reference.');
+      throw new Error('Invalid product or missing product ID');
     }
 
+    // 1. Lock the ID as a definite string so TypeScript never complains
+    const targetProductId = String(product.id);
     const validQty = Math.max(0, Number(quantity) || 0);
     const unitCost = Number(product.costPrice ?? (product.price * 0.7).toFixed(2));
     const retailPrice = Number(product.price || 0);
@@ -56,7 +58,7 @@ export class SpoilageService {
 
     const log: SpoilageLog = {
       id: `LOSS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6)}`,
-      productId: String(product.id),
+      productId: targetProductId,
       barcode: product.barcode || '',
       name: product.name,
       categoryName: product.categoryName || 'General',
@@ -70,16 +72,16 @@ export class SpoilageService {
       notes: notes?.trim() || ''
     };
 
-    // Atomic write: Log entry + Stock decrement together
+    // 2. Atomic write: Save the loss log & update physical stock in Dexie
     await marketDb.transaction('rw', [marketDb.spoilageLogs, marketDb.products], async () => {
       await marketDb.spoilageLogs.add(log);
 
-      const dbProduct: any = await marketDb.products.get(product.id);
+      const dbProduct = await marketDb.products.get(targetProductId);
       if (dbProduct) {
         const currentStock = Number(dbProduct.stockQuantity ?? dbProduct.stock ?? 0);
         const newStock = Math.max(0, Number((currentStock - validQty).toFixed(3)));
 
-        await marketDb.products.update(dbProduct.id, {
+        await marketDb.products.update(targetProductId, {
           stockQuantity: newStock,
           stock: newStock,
           storeId: dbProduct.storeId || activeStoreCode,
@@ -89,7 +91,7 @@ export class SpoilageService {
       }
     });
 
-    // Refresh UI catalog and logs
+    // 3. Refresh UI catalog and historical loss table
     await this.catalogService.loadInitialCatalog();
     await this.loadLogs();
 
