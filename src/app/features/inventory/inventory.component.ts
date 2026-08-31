@@ -1,6 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLinkActive, RouterLink, RouterOutlet } from '@angular/router';
 import { marketDb } from '../../core/db/market-db';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
@@ -24,7 +24,9 @@ export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
 @Component({
   selector: 'app-inventory',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule,
+    RouterLink,
+    RouterLinkActive, RouterOutlet],
   templateUrl: './inventory.component.html'
 })
 export class InventoryComponent implements OnInit {
