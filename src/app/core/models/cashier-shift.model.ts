@@ -45,4 +45,5 @@ export interface CashierShift {
   discrepancy?: number;
   notes?: string;
   sales: ShiftPaymentSummary;
+  storeId?: string;
 }

@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { marketDb } from '../db/market-db';
+import { CashierShiftService } from './cashier-shift.service';
 import { CartItem, Product, TransactionRecord } from '../models/market.models';
 import { EftTerminalService } from './eft-terminal.service';
 import { EscPosPrinterService } from './esc-pos-printer.service';
@@ -13,6 +14,7 @@ export class CartService {
   private printerService = inject(EscPosPrinterService);
   private eftService = inject(EftTerminalService);
   public cartDiscountPercent = signal<number>(0);
+  private shiftService = inject(CashierShiftService);
 
   // Cart State Signals
   public heldTickets = signal<{ id: string; timestamp: string; items: CartItem[]; note?: string }[]>([]);
@@ -234,7 +236,7 @@ public async checkout(
       vatBreakdown: this.taxBreakdown()
     };
 
-  // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
+    // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
     await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
       console.log('[CHECKOUT] 🚀 Starting checkout transaction for items:', currentItems);
       await marketDb.transactions.add(record);
@@ -246,17 +248,15 @@ public async checkout(
 
         console.log(`[CHECKOUT] Processing item: ${prod.name}, Barcode: ${targetBarcode}, Qty: ${qtySold}`);
 
-        // Direct lookup by barcode (guaranteed to match)
+        // Direct lookup by barcode
         const dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
 
         if (dbProd) {
           const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
-          const delta = item.isRefund ? qtySold : -qtySold;
-          const newQty = Number(Math.max(0, currentQty + delta).toFixed(3));
+          const newQty = Number(Math.max(0, currentQty - qtySold).toFixed(3));
 
           console.log(`[CHECKOUT] Found in DB! Current: ${currentQty} -> New: ${newQty}`);
 
-          // Update using the record's primary key
           const keyToUpdate = dbProd.id !== undefined ? dbProd.id : dbProd.barcode;
           await marketDb.products.update(keyToUpdate, {
             stockQuantity: newQty,
@@ -272,10 +272,14 @@ public async checkout(
       }
     });
 
+    // 2. Record sale once to active shift (outside loop & transaction)
+    await this.shiftService.recordSaleToShift(grandTotal, paymentMethod, false);
+
+    // 3. Refresh active catalog in UI
     console.log('[CHECKOUT] Refreshing UI catalog...');
     await this.catalogService.loadInitialCatalog();
 
-    // 3. Store last receipt & reset cart
+    // 4. Store last receipt & reset cart
     this.lastProcessedReceipt.set(record);
     this.clear();
 
