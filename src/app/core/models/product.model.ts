@@ -7,7 +7,7 @@ export interface Category {
 }
 
 export interface Product {
-  id?: string;
+  id?: string | number;
   barcode: string;
   name: string;
   price: number;

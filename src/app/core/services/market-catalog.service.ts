@@ -1,12 +1,10 @@
 import { Injectable, signal, inject } from '@angular/core';
+import { Firestore, collection, getDocs, query, where } from '@angular/fire/firestore';
 import { marketDb } from '../db/market-db';
 import { 
   Product, 
   Category, 
-  normalizeDateToInput 
-} from '../models';
-import { Firestore, collection, getDocs } from '@angular/fire/firestore';
-import { 
+  normalizeDateToInput,
   SUPERMARKET_DEPARTMENTS, 
   MasterCategory 
 } from '../models/market.models';
@@ -34,17 +32,19 @@ export class MarketCatalogService {
   public isSearchingExternal = signal<boolean>(false);
 
   /**
-   * Syncs products from Firestore directly into this store's isolated DB
+   * Syncs products from Firestore scoped to the active tenant/store
    */
   public async syncFromCloud(): Promise<number> {
     const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
-    console.log(`[MarketCatalog] Fetching catalog for store "${activeStoreCode}" from Maranth Hub...`);
+    console.log(`[MarketCatalog] Fetching catalog for store "${activeStoreCode}" from cloud...`);
     
+    // Scoped query by storeId to prevent cross-store data leakage
     const colRef = collection(this.firestore, 'products');
-    const snap = await getDocs(colRef);
+    const storeQuery = query(colRef, where('storeId', '==', activeStoreCode));
+    const snap = await getDocs(storeQuery);
 
     if (snap.empty) {
-      console.warn('[MarketCatalog] No products found in Firestore "products" collection.');
+      console.warn(`[MarketCatalog] No products found for store "${activeStoreCode}" in cloud.`);
       return 0;
     }
 
@@ -66,7 +66,7 @@ export class MarketCatalogService {
     // Save into this store's isolated IndexedDB
     await marketDb.products.bulkPut(fetchedProducts);
 
-    // Refresh active catalog
+    // Refresh active catalog signal
     await this.loadInitialCatalog();
 
     return this.products().length;
@@ -83,7 +83,7 @@ export class MarketCatalogService {
   }
 
   /**
-   * Loads catalog directly from this store's database sandbox
+   * Loads catalog directly from this store's isolated IndexedDB sandbox
    */
   public async loadInitialCatalog(): Promise<void> {
     const [allProds, cats] = await Promise.all([
@@ -91,15 +91,14 @@ export class MarketCatalogService {
       marketDb.categories.toArray()
     ]);
 
-    // DB is already 100% store-isolated: load all active products
     const activeProducts = (allProds || []).filter(p => p.isActive !== false);
     this.products.set(activeProducts);
 
     if (cats && cats.length > 0) {
       this.categories.set(cats);
     } else {
-      const derivedCats = this.departments.map(d => ({
-        id: d.id,
+      const derivedCats: Category[] = this.departments.map(d => ({
+        id: String(d.id || 'cat-gen'),
         name: d.name
       }));
       this.categories.set(derivedCats);
@@ -107,17 +106,25 @@ export class MarketCatalogService {
   }
 
   public getByBarcode(barcode: string): Product | undefined {
-    return this.products().find(p => p.barcode === barcode);
+    const clean = barcode.trim();
+    return this.products().find(p => p.barcode === clean);
   }
 
-  public getProductByAnyIdentifier(query: string): Product | undefined {
-    const q = query.trim().toLowerCase();
-    return this.products().find(p => 
-      p.barcode === query || 
-      p.sku?.toLowerCase() === q || 
-      p.id?.toLowerCase() === q || 
-      p.name.toLowerCase() === q
-    );
+  /**
+   * Safe identifier lookup: supports barcode, exact SKU/ID, and substring name search
+   */
+  public getProductByAnyIdentifier(queryStr: string): Product | undefined {
+    const q = queryStr.trim().toLowerCase();
+    if (!q) return undefined;
+
+    return this.products().find(p => {
+      const barcodeMatch = p.barcode?.toLowerCase() === q;
+      const skuMatch = p.sku ? String(p.sku).toLowerCase() === q : false;
+      const idMatch = p.id !== undefined && String(p.id).toLowerCase() === q;
+      const nameMatch = p.name?.toLowerCase().includes(q);
+
+      return barcodeMatch || skuMatch || idMatch || nameMatch;
+    });
   }
 
   public getCategoryPlaceholderSvg(categoryId?: string): string {
@@ -227,7 +234,7 @@ export class MarketCatalogService {
           };
         }
       } catch {
-        // Timed out or failed, continue to next endpoint
+        // Timed out or network error, proceed to fallback endpoint
       } finally {
         clearTimeout(timer);
       }
@@ -249,10 +256,9 @@ export class MarketCatalogService {
     const activeStoreCode = this.tenantConfig.activeShop().code;
 
     const newProd: Product = {
-      id: 'PROD-' + Date.now().toString(36),
-      barcode: params.barcode,
-      sku: params.barcode,
-      name: params.name,
+      barcode: params.barcode.trim(),
+      sku: params.barcode.trim(),
+      name: params.name.trim(),
       storeId: activeStoreCode,
       categoryId: assignedCatId,
       categoryName: params.categoryName || this.getCategoryName(assignedCatId),
@@ -266,10 +272,14 @@ export class MarketCatalogService {
       imageUrl: params.imageUrl || '',
       isActive: true,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      _syncStatus: 'dirty'
     };
 
-    await marketDb.products.put(newProd);
+    // Dexie will assign the primary key auto-incrementally
+    const generatedId = await marketDb.products.add(newProd);
+    newProd.id = generatedId;
+
     await this.loadInitialCatalog();
     return newProd;
   }
@@ -278,22 +288,28 @@ export class MarketCatalogService {
     const trimmed = newName.trim();
     if (!categoryId || !trimmed) return;
 
-    if (marketDb.categories) {
-      await marketDb.categories.update(categoryId, { name: trimmed });
-    }
+    await marketDb.transaction('rw', [marketDb.categories, marketDb.products], async () => {
+      if (marketDb.categories) {
+        await marketDb.categories.update(categoryId, { name: trimmed });
+      }
 
-    const prods = await marketDb.products.where('categoryId').equals(categoryId).toArray();
-    for (const p of prods) {
-      if (!p.id) continue;
-      await marketDb.products.update(p.id, { categoryName: trimmed });
-    }
+      const prods = await marketDb.products.where('categoryId').equals(categoryId).toArray();
+      for (const p of prods) {
+        if (p.id !== undefined) {
+          await marketDb.products.update(p.id, { 
+            categoryName: trimmed,
+            _syncStatus: 'dirty' 
+          });
+        }
+      }
+    });
 
     await this.loadInitialCatalog();
   }
 
   public async autoInferCategoryNames(): Promise<void> {
     const list = await marketDb.products.toArray();
-    const updates: Promise<any>[] = [];
+    const toUpdate: Product[] = [];
 
     const keywordRules: { match: RegExp; catId: string; vatRate: number }[] = [
       { 
@@ -328,18 +344,19 @@ export class MarketCatalogService {
           }
         }
 
-        if (prod.id) {
-          updates.push(marketDb.products.update(prod.id, {
-            categoryId: targetCatId,
-            categoryName: this.getCategoryName(targetCatId),
-            vatRate: suggestedVat
-          }));
-        }
+        toUpdate.push({
+          ...prod,
+          categoryId: targetCatId,
+          categoryName: this.getCategoryName(targetCatId),
+          vatRate: suggestedVat,
+          updatedAt: new Date().toISOString(),
+          _syncStatus: 'dirty'
+        });
       }
     }
 
-    if (updates.length > 0) {
-      await Promise.all(updates);
+    if (toUpdate.length > 0) {
+      await marketDb.products.bulkPut(toUpdate);
       await this.loadInitialCatalog();
     }
   }

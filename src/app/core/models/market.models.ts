@@ -7,8 +7,9 @@ export type { SpoilageLog, CashLog, SpoilageReason } from './spoilage.model';
 export type { Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from './supplier.model';
 
 export interface MasterCategory {
-  id: string;
+  id?: string | number;
   name: string;
+  sku?: string;
   icon: string;
 }
 

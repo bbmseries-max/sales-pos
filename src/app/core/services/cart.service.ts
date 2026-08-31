@@ -22,7 +22,7 @@ export class CartService {
 
   // Computed Totals & Greek VAT Breakdown
   public grandTotal = computed(() => {
-  const lineTotal = this.items().reduce((sum, item) => {
+    const lineTotal = this.items().reduce((sum, item) => {
     const originalLine = (item.product.price || 0) * item.quantity;
     const itemDiscPct = item.discountPercent || 0;
     const itemDiscVal = item.discountAmount || (originalLine * (itemDiscPct / 100));
@@ -204,7 +204,7 @@ public setCartDiscount(percent: number): void {
 
   // --- CHECKOUT & TRANSACTION FINALIZATION ---
 
-  public async checkout(
+public async checkout(
     paymentMethod: 'Cash' | 'Card' | 'Debit' | 'Split' = 'Cash',
     cashierName = 'Cashier 01',
     cashTendered?: number,
@@ -216,8 +216,8 @@ public setCartDiscount(percent: number): void {
     }
 
     const grandTotal = this.grandTotal();
-    const taxAmount = this.totalTaxAmount ? this.totalTaxAmount() : 0;
-    const subtotal = this.netSubtotal ? this.netSubtotal() : grandTotal - taxAmount;
+    const taxAmount = this.totalTaxAmount();
+    const subtotal = this.netSubtotal();
 
     const record: TransactionRecord = {
       id: 'TX-' + Date.now().toString(36).toUpperCase(),
@@ -234,8 +234,52 @@ public setCartDiscount(percent: number): void {
       vatBreakdown: this.taxBreakdown()
     };
 
-    await marketDb.transactions.add(record);
-    this.clearCart();
+    // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
+    await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
+      // Save Transaction
+      await marketDb.transactions.add(record);
+
+      // Adjust stock for each line item
+      for (const item of currentItems) {
+        const prod = item.product;
+        const rawId = prod.id;
+        const numId = typeof rawId === 'string' && !isNaN(Number(rawId)) ? Number(rawId) : rawId;
+
+        // Try lookup by numeric/raw ID first, then fallback to barcode
+        let dbProd: Product | undefined;
+        if (numId !== undefined && numId !== null) {
+          dbProd = await marketDb.products.get(numId);
+        }
+        if (!dbProd && prod.barcode) {
+          dbProd = await marketDb.products.where('barcode').equals(prod.barcode).first();
+        }
+
+        if (dbProd && dbProd.id !== undefined) {
+          const qtySold = Number(item.quantity) || 0;
+          const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
+          
+          // Refunds increase inventory; normal sales reduce inventory
+          const delta = item.isRefund ? qtySold : -qtySold;
+          const newQty = Number(Math.max(0, currentQty + delta).toFixed(3));
+
+          await marketDb.products.update(dbProd.id, {
+            stockQuantity: newQty,
+            stock: newQty,
+            updatedAt: new Date().toISOString(),
+            _syncStatus: 'dirty'
+          });
+        }
+      }
+    });
+
+    // 2. Refresh in-memory catalog so UI and future adds see updated stock immediately
+    if (this.catalogService && typeof this.catalogService.loadInitialCatalog === 'function') {
+      await this.catalogService.loadInitialCatalog();
+    }
+
+    // 3. Store last receipt for printing & clear cart
+    this.lastProcessedReceipt.set(record);
+    this.clear();
 
     return record;
   }
