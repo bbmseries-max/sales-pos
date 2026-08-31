@@ -74,14 +74,6 @@
       <span class="hidden lg:inline">Ταμείο</span>
     </button>
 
-    <!-- Add Employee -->
-    <button 
-      (click)="openEmployeeModal()" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
-      <span>👤</span>
-      <span class="hidden lg:inline">Υπάλληλοι</span>
-    </button>
-
     <!-- Apothiki / Inventory Link -->
     <button 
       (click)="navigateToInventory()" 
@@ -96,6 +88,14 @@
       class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
       <span>📋</span>
       <span class="hidden lg:inline">Βάρδια</span>
+    </button>
+
+     <!-- Add Employee -->
+    <button 
+      (click)="openEmployeeModal()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
+      <span>👤</span>
+      <span class="hidden lg:inline">Υπάλληλοι</span>
     </button>
 
     @if (shiftService.currentCashier(); as cashier) {
