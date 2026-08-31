@@ -2,10 +2,12 @@ import { Injectable, signal, inject } from '@angular/core';
 import { marketDb } from '../db/market-db';
 import { SpoilageLog, SpoilageReason, Product } from '../models';
 import { MarketCatalogService } from './market-catalog.service';
+import { TenantConfigService } from './tenant-config.service';
 
 @Injectable({ providedIn: 'root' })
 export class SpoilageService {
   private catalogService = inject(MarketCatalogService);
+  private tenantConfig = inject(TenantConfigService);
 
   public logs = signal<SpoilageLog[]>([]);
   public isLoading = signal<boolean>(false);
@@ -42,17 +44,23 @@ export class SpoilageService {
   }): Promise<SpoilageLog> {
     const { product, quantity, reason, cashierName, notes } = params;
 
+    if (!product || !product.id) {
+      throw new Error('Cannot log spoilage: Invalid product reference.');
+    }
+
+    const validQty = Math.max(0, Number(quantity) || 0);
     const unitCost = Number(product.costPrice ?? (product.price * 0.7).toFixed(2));
     const retailPrice = Number(product.price || 0);
-    const totalLossCost = Number((unitCost * quantity).toFixed(2));
+    const totalLossCost = Number((unitCost * validQty).toFixed(2));
+    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
 
     const log: SpoilageLog = {
-      id: `LOSS-${Date.now().toString().slice(-6)}`,
+      id: `LOSS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6)}`,
       productId: String(product.id),
       barcode: product.barcode || '',
       name: product.name,
       categoryName: product.categoryName || 'General',
-      quantity,
+      quantity: validQty,
       unitCost,
       retailPrice,
       totalLossCost,
@@ -62,24 +70,29 @@ export class SpoilageService {
       notes: notes?.trim() || ''
     };
 
-    // 1. Add log entry in Dexie DB
-    if (!product.id) return null as any;
-    await marketDb.spoilageLogs.add(log);
+    // Atomic write: Log entry + Stock decrement together
+    await marketDb.transaction('rw', [marketDb.spoilageLogs, marketDb.products], async () => {
+      await marketDb.spoilageLogs.add(log);
 
-    // 2. Decrement physical stock in database
-    const dbProduct: any = await marketDb.products.get(product.id);
-    if (dbProduct) {
-      const currentStock = Number(dbProduct.stockQuantity ?? dbProduct.stock ?? 0);
-      const newStock = Math.max(0, currentStock - quantity);
+      const dbProduct: any = await marketDb.products.get(product.id);
+      if (dbProduct) {
+        const currentStock = Number(dbProduct.stockQuantity ?? dbProduct.stock ?? 0);
+        const newStock = Math.max(0, Number((currentStock - validQty).toFixed(3)));
 
-      const updateObj: Record<string, any> = { stockQuantity: newStock };
-      if ('stock' in dbProduct) updateObj['stock'] = newStock;
+        await marketDb.products.update(dbProduct.id, {
+          stockQuantity: newStock,
+          stock: newStock,
+          storeId: dbProduct.storeId || activeStoreCode,
+          updatedAt: new Date().toISOString(),
+          _syncStatus: 'dirty'
+        });
+      }
+    });
 
-      await marketDb.products.update(dbProduct.id, updateObj);
-      await this.catalogService.loadInitialCatalog(); // refresh catalog signal
-    }
-
+    // Refresh UI catalog and logs
+    await this.catalogService.loadInitialCatalog();
     await this.loadLogs();
+
     return log;
   }
 }
