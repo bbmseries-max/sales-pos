@@ -1,92 +1,78 @@
 <div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
 
-  <!-- TOP ACTION & AUDIT BAR -->
-  <header class="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
-    <div class="flex items-center gap-4">
-      <button 
-        (click)="navigateToPos()" 
-        class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
-      >
-        <span>← POS Checkout</span>
-      </button>
-      <div>
-        <h1 class="text-base font-black text-emerald-400">INVENTORY &amp; MASTER CATALOG</h1>
-        <p class="text-xs text-slate-400 font-mono">{{ totalCount() }} Total Products • {{ categories().length - 1 }} Categories</p>
-      </div>
-    </div>
-<div class="flex items-center gap-3">
-    <!-- Audit Navigation Tabs -->
-     @if (tenantConfig.isSuperAdmin()) {
-     <button 
-  type="button" 
-  (click)="downloadHubCatalog()" 
-  class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow flex items-center gap-2 text-sm transition-all">
-  ☁️ Cloud (Hub)
-</button>
-     }
-    <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
-      <button 
-        (click)="setTab('all')"
-        [class.bg-emerald-500]="selectedTab() === 'all'"
-        [class.text-slate-950]="selectedTab() === 'all'"
-        [class.text-slate-400]="selectedTab() !== 'all'"
-        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-      >
-        <span>All Items</span>
-        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'all'" [class.text-emerald-400]="selectedTab() === 'all'" [class.bg-slate-800]="selectedTab() !== 'all'">{{ totalCount() }}</span>
-      </button>
+<nav class="flex items-center gap-2 bg-slate-900 border-b border-slate-800 p-2.5 shadow-md">
+  
+  <!-- 1. POS / Ταμείο -->
+  <button 
+    type="button"
+    routerLink="/pos" 
+    routerLinkActive="!bg-emerald-600 !text-white !border-emerald-500 shadow-md ring-2 ring-emerald-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">🛒</span>
+    <span>Ταμείο</span>
+  </button>
 
-      <button 
-        (click)="setTab('low-stock')"
-        [class.bg-amber-500]="selectedTab() === 'low-stock'"
-        [class.text-slate-950]="selectedTab() === 'low-stock'"
-        [class.text-slate-400]="selectedTab() !== 'low-stock'"
-        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-      >
-        <span>⚠️ Low Stock</span>
-        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'low-stock'" [class.text-amber-400]="selectedTab() === 'low-stock'" [class.bg-slate-800]="selectedTab() !== 'low-stock'">{{ lowStockCount() }}</span>
-      </button>
+  <!-- 2. Inventory / Αποθήκη -->
+  <button 
+    type="button"
+    routerLink="/inventory" 
+    routerLinkActive="!bg-indigo-600 !text-white !border-indigo-500 shadow-md ring-2 ring-indigo-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">📦</span>
+    <span>Αποθήκη & Stock</span>
+  </button>
 
-      <button 
-  type="button"
-  routerLink="/spoilage" 
-  class="px-3 py-1.5 rounded-md font-medium text-sm transition-all flex items-center gap-1.5">
-  <span>🗑️</span>
-  <span>Απώλειες</span>
-</button>
+  <!-- 3. Deliveries / Παραλαβές -->
+  <button 
+    type="button"
+    routerLink="/deliveries" 
+    routerLinkActive="!bg-blue-600 !text-white !border-blue-500 shadow-md ring-2 ring-blue-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">🚚</span>
+    <span>Παραλαβές</span>
+  </button>
 
-      <button 
-        (click)="setTab('expiring')"
-        [class.bg-rose-500]="selectedTab() === 'expiring'"
-        [class.text-slate-950]="selectedTab() === 'expiring'"
-        [class.text-slate-400]="selectedTab() !== 'expiring'"
-        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-      >
-        <span>⏰ Expiring (&lt;30d)</span>
-        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'expiring'" [class.text-rose-400]="selectedTab() === 'expiring'" [class.bg-slate-800]="selectedTab() !== 'expiring'">{{ expiringCount() }}</span>
-      </button>
+  <!-- 4. Spoilage / Απώλειες & Φθορές -->
+  <button 
+    type="button"
+    routerLink="/spoilage" 
+    routerLinkActive="!bg-rose-600 !text-white !border-rose-500 shadow-md ring-2 ring-rose-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-rose-950/60 hover:text-rose-200 hover:border-rose-700 active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">💥</span>
+    <span>Απώλειες & Φθορές</span>
+  </button>
 
-      <button 
-        (click)="setTab('pinned')"
-        [class.bg-sky-500]="selectedTab() === 'pinned'"
-        [class.text-slate-950]="selectedTab() === 'pinned'"
-        [class.text-slate-400]="selectedTab() !== 'pinned'"
-        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-      >
-        <span>📌 Pinned at POS</span>
-        <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black" [class.bg-slate-900]="selectedTab() === 'pinned'" [class.text-sky-400]="selectedTab() === 'pinned'" [class.bg-slate-800]="selectedTab() !== 'pinned'">{{ pinnedCount() }}</span>
-      </button>
-@if (tenantConfig.isSuperAdmin()) {
-      <button 
-        (click)="navigateToImport()"
-        class="h-9 px-3.5 bg-slate-800 hover:bg-slate-750 text-emerald-400 text-xs font-mono font-bold rounded-xl border border-slate-700 hover:border-emerald-500/50 transition flex items-center gap-2 cursor-pointer"
-      >
-        <span>📥 Μαζική Εισαγωγή CSV</span>
-      </button>
-    }
-    </div>
-    </div>
-  </header>
+  <!-- 5. Shelf Labels / Ετικέτες Ραφιού -->
+  <button 
+    type="button"
+    routerLink="/labels" 
+    routerLinkActive="!bg-cyan-600 !text-white !border-cyan-500 shadow-md ring-2 ring-cyan-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">🏷️</span>
+    <span>Ετικέτες Ραφιού</span>
+  </button>
+
+  <!-- 6. Import / Εισαγωγή Καταλόγου -->
+  <button 
+    type="button"
+    routerLink="/import" 
+    routerLinkActive="!bg-purple-600 !text-white !border-purple-500 shadow-md ring-2 ring-purple-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">📥</span>
+    <span>Εισαγωγή Excel</span>
+  </button>
+
+  <!-- 7. Z-Report / Κλείσιμο Ημέρας (Pushed to Far Right) -->
+  <button 
+    type="button"
+    routerLink="/z-report" 
+    routerLinkActive="!bg-amber-600 !text-white !border-amber-500 shadow-md ring-2 ring-amber-500/30"
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-amber-950/60 hover:text-amber-200 hover:border-amber-700 active:scale-95 transition-all shadow-sm cursor-pointer ml-auto">
+    <span class="text-base">📊</span>
+    <span>Κλείσιμο Ημέρας (Ζ)</span>
+  </button>
+
+</nav>
 
   <!-- Flash Toast -->
   @if (feedbackMsg(); as msg) {
