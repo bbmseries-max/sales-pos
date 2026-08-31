@@ -4,7 +4,6 @@ export * from './cashier-shift.model';
 export * from './customer.model';
 export * from './spoilage.model';
 export * from './supplier.model';
-export * from './transaction.model';
 export * from './store-tenant.model';
 export * from './mydata.models';
 export * from './ui.model';
