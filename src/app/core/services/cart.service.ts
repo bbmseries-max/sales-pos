@@ -234,42 +234,45 @@ public async checkout(
       vatBreakdown: this.taxBreakdown()
     };
 
-    // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
+  // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
     await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
+      console.log('[CHECKOUT] 🚀 Starting checkout transaction for items:', currentItems);
       await marketDb.transactions.add(record);
 
       for (const item of currentItems) {
         const prod = item.product;
-        const targetId = prod.id;
-        const targetBarcode = prod.barcode;
+        const targetBarcode = String(prod.barcode || '').trim();
+        const qtySold = Number(item.quantity) || 0;
 
-        // Try lookup by exact ID first, then fallback to barcode
-        let dbProd: Product | undefined;
-        if (targetId) {
-          dbProd = await marketDb.products.get(targetId);
-        }
-        if (!dbProd && targetBarcode) {
-          dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
-        }
+        console.log(`[CHECKOUT] Processing item: ${prod.name}, Barcode: ${targetBarcode}, Qty: ${qtySold}`);
 
-        if (dbProd && dbProd.id) {
-          const qtySold = Number(item.quantity) || 0;
+        // Direct lookup by barcode (guaranteed to match)
+        const dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
+
+        if (dbProd) {
           const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
-          
           const delta = item.isRefund ? qtySold : -qtySold;
           const newQty = Number(Math.max(0, currentQty + delta).toFixed(3));
 
-          await marketDb.products.update(dbProd.id, {
+          console.log(`[CHECKOUT] Found in DB! Current: ${currentQty} -> New: ${newQty}`);
+
+          // Update using the record's primary key
+          const keyToUpdate = dbProd.id !== undefined ? dbProd.id : dbProd.barcode;
+          await marketDb.products.update(keyToUpdate, {
             stockQuantity: newQty,
             stock: newQty,
             updatedAt: new Date().toISOString(),
             _syncStatus: 'dirty'
           });
+
+          console.log(`[CHECKOUT] ✅ Updated stock in Dexie for key ${keyToUpdate}`);
+        } else {
+          console.error(`[CHECKOUT] ❌ Product with barcode ${targetBarcode} NOT found in Dexie!`);
         }
       }
     });
 
-    // 2. Refresh active catalog in UI
+    console.log('[CHECKOUT] Refreshing UI catalog...');
     await this.catalogService.loadInitialCatalog();
 
     // 3. Store last receipt & reset cart
