@@ -41,7 +41,7 @@ export class InventoryComponent implements OnInit {
   // State Signals
   public allProducts = signal<Product[]>([]);
   public selectedTab = signal<FilterTab>('all');
-  public selectedCategoryId = signal<string>('all');
+  public selectedCategoryId = signal<string | number>('all');
   public searchQuery = signal<string>('');
 
   // Header Summary Counts
@@ -246,7 +246,7 @@ export class InventoryComponent implements OnInit {
     this.selectedTab.set(tab);
   }
 
-  public selectCategory(catId: string): void {
+  public selectCategory(catId: string | number): void {
     this.selectedCategoryId.set(catId);
   }
 
