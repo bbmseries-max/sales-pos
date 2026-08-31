@@ -17,7 +17,7 @@ export interface MasterCategory {
 }
 
 export interface MarketCompanyProfile {
-  name: string;
+  name?: string;
   storeName?: string;
   companyTitle?: string;
   afm: string;
