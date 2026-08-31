@@ -14,7 +14,7 @@ import {
 } from '../../core/models/market.models';
 
 export interface CategoryTab {
-  id: string;
+  id: string | number;
   name: string;
   count: number;
 }
@@ -78,7 +78,7 @@ export class InventoryComponent implements OnInit {
   // 1. DYNAMIC CATEGORIES: Computes product counts per category tab
   public categories = computed(() => {
     const prods = this.allProducts();
-    const countMap = new Map<string, number>();
+    const countMap = new Map<string | number, number>();
 
     for (const p of prods) {
       let catId = p.categoryId || 'cat-pantry';
@@ -93,10 +93,11 @@ export class InventoryComponent implements OnInit {
     ];
 
     for (const dept of SUPERMARKET_DEPARTMENTS) {
+      const deptId = String(dept.id ?? 'cat-gen');
       tabs.push({
-        id: dept.id,
+        id: deptId,
         name: `${dept.icon} ${dept.name}`,
-        count: countMap.get(dept.id) || 0
+        count: countMap.get(deptId) || 0
       });
     }
 
@@ -353,7 +354,7 @@ export class InventoryComponent implements OnInit {
   public async promptRenameCategory(cat: Category | CategoryTab): Promise<void> {
     const newName = prompt(`Εισάγετε νέο όνομα για την κατηγορία:`, cat.name);
     if (newName && newName.trim() !== '') {
-      await this.catalogService.updateCategoryName(cat.id, newName.trim());
+      await this.catalogService.updateCategoryName(String(cat.id), newName.trim());
       await this.loadAllInventory();
       this.showToast(`Η κατηγορία μετονομάστηκε σε "${newName.trim()}"`);
     }
