@@ -6,6 +6,8 @@ import { EftTerminalService } from './eft-terminal.service';
 import { EscPosPrinterService } from './esc-pos-printer.service';
 import { MarketCatalogService } from './market-catalog.service';
 import { ScaleBarcodeService } from './scale-barcode.service';
+import { MyDataService } from './mydata.service';
+import { TenantConfigService } from './tenant-config.service';
 
 @Injectable({ providedIn: 'root' })
 export class CartService {
@@ -15,6 +17,8 @@ export class CartService {
   private eftService = inject(EftTerminalService);
   public cartDiscountPercent = signal<number>(0);
   private shiftService = inject(CashierShiftService);
+  private myDataService = inject(MyDataService);
+  private tenantConfig = inject(TenantConfigService);
 
   // Cart State Signals
   public heldTickets = signal<{ id: string; timestamp: string; items: CartItem[]; note?: string }[]>([]);
@@ -221,6 +225,7 @@ public async checkout(
     const taxAmount = this.totalTaxAmount();
     const subtotal = this.netSubtotal();
 
+    // 1. Prepare initial record object
     const record: TransactionRecord = {
       id: 'TX-' + Date.now().toString(36).toUpperCase(),
       timestamp: new Date().toISOString(),
@@ -236,7 +241,26 @@ public async checkout(
       vatBreakdown: this.taxBreakdown()
     };
 
-    // 1. Atomic Transaction: Save TX & Deduct Product Stock from Dexie
+    // 2. Transmit to AADE myDATA (Generates MARK, UID, and QR Code URL)
+    try {
+      const activeShop = this.tenantConfig.activeShop();
+      const myDataRes = await this.myDataService.transmitReceipt(record, {
+        name: activeShop.name,
+        afm: activeShop.afm || '123456789',
+        doy: activeShop.doy || 'DOY',
+        address: activeShop.address || ''
+      });
+
+      if (myDataRes.success) {
+        record.mydataMark = myDataRes.mark;
+        record.mydataUid = myDataRes.uid;
+        record.mydataQrUrl = myDataRes.qrUrl;
+      }
+    } catch (err) {
+      console.warn('[CHECKOUT] AADE sync fallback:', err);
+    }
+
+    // 3. Atomic Transaction: Save TX (with myDATA fields) & Deduct Product Stock from Dexie
     await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
       console.log('[CHECKOUT] 🚀 Starting checkout transaction for items:', currentItems);
       await marketDb.transactions.add(record);
@@ -272,14 +296,14 @@ public async checkout(
       }
     });
 
-    // 2. Record sale once to active shift (outside loop & transaction)
+    // 4. Record sale once to active shift (outside loop & transaction)
     await this.shiftService.recordSaleToShift(grandTotal, paymentMethod, false);
 
-    // 3. Refresh active catalog in UI
+    // 5. Refresh active catalog in UI
     console.log('[CHECKOUT] Refreshing UI catalog...');
     await this.catalogService.loadInitialCatalog();
 
-    // 4. Store last receipt & reset cart
+    // 6. Store last receipt & reset cart
     this.lastProcessedReceipt.set(record);
     this.clear();
 

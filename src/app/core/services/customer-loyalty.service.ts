@@ -9,30 +9,60 @@ export class CustomerLoyaltyService {
   public pointsPerEuro = 1;         // 1 Euro spent = 1 Point earned
 
   /**
-   * Search customers by phone (exact or partial match)
+   * Search customers by phone, AFM (Tax ID), or Name
    */
-  public async searchByPhone(query: string): Promise<Customer[]> {
-    const clean = query.trim();
+  public async searchCustomers(query: string): Promise<Customer[]> {
+    const clean = query.trim().toLowerCase();
     if (!clean) return [];
 
     const all = await marketDb.customers.toArray();
-    return all.filter(c => c.phone.includes(clean) || c.name.toLowerCase().includes(clean.toLowerCase())).slice(0, 8);
+    return all
+      .filter(c => 
+        (c.phone && c.phone.includes(clean)) ||
+        (c.afm && c.afm.includes(clean)) ||
+        (c.name && c.name.toLowerCase().includes(clean))
+      )
+      .slice(0, 8);
   }
 
   /**
-   * Get or register a quick customer on the fly
+   * Quick search backward compatibility
    */
-  public async quickRegisterCustomer(phone: string, name: string): Promise<Customer> {
+  public async searchByPhone(query: string): Promise<Customer[]> {
+    return this.searchCustomers(query);
+  }
+
+  /**
+   * Register or fetch an existing customer on the fly
+   */
+  public async quickRegisterCustomer(
+    phone: string, 
+    name: string, 
+    afm?: string
+  ): Promise<Customer> {
     const cleanPhone = phone.trim();
-    const existing = await marketDb.customers.where('phone').equals(cleanPhone).first();
-    if (existing) {
-      this.activeCustomer.set(existing);
-      return existing;
+    const cleanAfm = afm ? afm.trim() : undefined;
+
+    if (cleanPhone) {
+      const existing = await marketDb.customers.where('phone').equals(cleanPhone).first();
+      if (existing) {
+        this.activeCustomer.set(existing);
+        return existing;
+      }
+    }
+
+    if (cleanAfm) {
+      const existingByAfm = await marketDb.customers.where('afm').equals(cleanAfm).first();
+      if (existingByAfm) {
+        this.activeCustomer.set(existingByAfm);
+        return existingByAfm;
+      }
     }
 
     const newCustomer: Customer = {
-      id: 'CUST-' + Date.now().toString(36).toUpperCase(),
+      id: `CUST-${Date.now().toString(36).toUpperCase()}`,
       phone: cleanPhone,
+      afm: cleanAfm || '',
       name: name.trim() || 'Πελάτης Λιανικής',
       loyaltyPoints: 10, // 10 Welcome points
       totalSpent: 0,
@@ -50,32 +80,47 @@ export class CustomerLoyaltyService {
    * Calculate point rewards for checkout amount
    */
   public calculatePointsEarned(amount: number): number {
-    return Math.floor(amount * this.pointsPerEuro);
+    const validAmount = Number(amount) || 0;
+    return Math.floor(validAmount * this.pointsPerEuro);
   }
 
   /**
-   * Deduct or add points after checkout and update customer stats
+   * Convert points to cash discount equivalent
+   */
+  public convertPointsToDiscount(points: number): number {
+    const validPoints = Math.max(0, Number(points) || 0);
+    return Number((validPoints * this.pointDiscountValue).toFixed(2));
+  }
+
+  /**
+   * Deduct or add points after checkout and update customer stats in Dexie
    */
   public async processPostSale(
     customer: Customer,
     grandTotal: number,
     pointsRedeemed: number = 0
   ): Promise<{ pointsEarned: number; newBalance: number }> {
-    const pointsEarned = this.calculatePointsEarned(grandTotal);
-    const newBalance = Math.max(0, customer.loyaltyPoints - pointsRedeemed + pointsEarned);
+    const validTotal = Number(grandTotal) || 0;
+    const pointsEarned = this.calculatePointsEarned(validTotal);
+    const validRedeemed = Math.min(customer.loyaltyPoints || 0, Math.max(0, pointsRedeemed));
+    const newBalance = Math.max(0, (customer.loyaltyPoints || 0) - validRedeemed + pointsEarned);
 
     const updatedCustomer: Customer = {
       ...customer,
       loyaltyPoints: newBalance,
-      totalSpent: Number((customer.totalSpent + grandTotal).toFixed(2)),
-      totalVisits: customer.totalVisits + 1,
+      totalSpent: Number(((customer.totalSpent || 0) + validTotal).toFixed(2)),
+      totalVisits: (customer.totalVisits || 0) + 1,
       lastVisit: new Date().toISOString()
     };
 
     await marketDb.customers.put(updatedCustomer);
-    this.activeCustomer.set(null); // Reset active customer for next sale
+    this.activeCustomer.set(null); // Reset after successful sale
 
     return { pointsEarned, newBalance };
+  }
+
+  public selectCustomer(customer: Customer): void {
+    this.activeCustomer.set(customer);
   }
 
   public clearActiveCustomer(): void {
