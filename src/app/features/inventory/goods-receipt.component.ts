@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { SupplierOrderService } from '../../core/services/supplier-order.service';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/market.models';
-
+import { GoodsReceiptItem, GoodsReceiptRecord } from '../../core/models/market.models';
 @Component({
   selector: 'app-goods-receipt',
   standalone: true,

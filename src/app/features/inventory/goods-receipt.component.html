@@ -40,68 +40,121 @@
     </button>
   </div>
 
-  <!-- Orders Table View -->
+  <!-- Grouped Delivery Documents Stream -->
   <div class="flex-1 bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-xl">
-    <div class="flex-1 overflow-y-auto min-h-0">
-      <table class="w-full text-left border-collapse text-xs font-mono">
-        <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px] z-10">
-          <tr>
-            <th class="p-4">Κωδικός PO</th>
-            <th class="p-4">Προμηθευτής</th>
-            <th class="p-4">Ημ/νία</th>
-            <th class="p-4">Είδη</th>
-            <th class="p-4">Σύνολο Κόστους</th>
-            <th class="p-4">Κατάσταση</th>
-            <th class="p-4 text-right">Ενέργεια</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-800/60 text-slate-200">
-          @if (orderService.purchaseOrders().length === 0) {
-            <tr>
-              <td colspan="7" class="p-12 text-center text-slate-500 text-sm">
-                Δεν υπάρχουν καταχωρημένες παραγγελίες προμηθευτών.
-              </td>
-            </tr>
-          }
-          @for (po of orderService.purchaseOrders(); track po.id) {
-            <tr class="hover:bg-slate-850/50 transition">
-              <td class="p-4 font-black text-slate-100">{{ po.id }}</td>
-              <td class="p-4">
-                <span class="font-bold block text-slate-100">{{ po.supplierName }}</span>
-                <span class="text-[10px] text-slate-500">ΑΦΜ: {{ po.supplierAfm || '—' }}</span>
-              </td>
-              <td class="p-4 text-slate-400">{{ po.orderDate }}</td>
-              <td class="p-4">{{ po.items.length }} προϊόντα</td>
-              <td class="p-4 font-black text-emerald-400">€{{ (po.grandTotalCost || 0).toFixed(2) }}</td>
-              <td class="p-4">
-                <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border"
-                  [class.bg-amber-950]="po.status === 'ORDERED' || po.status === 'DRAFT'"
-                  [class.border-amber-700]="po.status === 'ORDERED' || po.status === 'DRAFT'"
-                  [class.text-amber-400]="po.status === 'ORDERED' || po.status === 'DRAFT'"
-                  [class.bg-emerald-950]="po.status === 'RECEIVED'"
-                  [class.border-emerald-700]="po.status === 'RECEIVED'"
-                  [class.text-emerald-400]="po.status === 'RECEIVED'"
-                >
-                  {{ po.status }}
-                </span>
-              </td>
-              <td class="p-4 text-right">
-                @if (po.status !== 'RECEIVED') {
-                  <button 
-                    type="button" 
-                    (click)="openReceiveDelivery(po)"
-                    class="h-8 px-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black rounded-lg transition active:scale-95 cursor-pointer shadow-md"
+    <div class="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
+      
+      @if (orderService.purchaseOrders().length === 0) {
+        <div class="h-64 flex flex-col items-center justify-center text-slate-500 text-sm space-y-2">
+          <span class="text-4xl">📄</span>
+          <span>Δεν υπάρχουν καταχωρημένες παραγγελίες ή παραλαβές προμηθευτών.</span>
+        </div>
+      }
+
+      @for (po of orderService.purchaseOrders(); track po.id) {
+        <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden transition shadow-md">
+          
+          <!-- Document Card Header -->
+          <div class="p-4 bg-slate-850 flex flex-wrap items-center justify-between gap-4 select-none">
+            <div class="flex items-center gap-3.5">
+              <div class="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-xl shrink-0">
+                {{ po.status === 'RECEIVED' ? '📦' : '📝' }}
+              </div>
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-black text-sm text-slate-100 uppercase tracking-wide">
+                    {{ po.invoiceNumber ? 'ΠΑΡΑΣΤΑΤΙΚΟ: ' + po.invoiceNumber : 'ΠΑΡΑΓΓΕΛΙΑ: #' + po.id }}
+                  </span>
+                  <span class="text-xs px-2.5 py-0.5 rounded-lg bg-indigo-950 border border-indigo-800 text-indigo-300 font-mono font-bold">
+                    {{ po.supplierName }}
+                  </span>
+                  <span class="px-2 py-0.5 rounded-lg text-[10px] font-bold border font-mono"
+                    [class.bg-amber-950]="po.status === 'ORDERED' || po.status === 'DRAFT'"
+                    [class.border-amber-700]="po.status === 'ORDERED' || po.status === 'DRAFT'"
+                    [class.text-amber-400]="po.status === 'ORDERED' || po.status === 'DRAFT'"
+                    [class.bg-emerald-950]="po.status === 'RECEIVED'"
+                    [class.border-emerald-700]="po.status === 'RECEIVED'"
+                    [class.text-emerald-400]="po.status === 'RECEIVED'"
                   >
-                    📦 ΠΑΡΑΛΑΒΗ
-                  </button>
-                } @else {
-                  <span class="text-[11px] text-slate-500">✔ Ολοκληρώθηκε</span>
+                    {{ po.status === 'RECEIVED' ? '✔ ΠΑΡΑΛΗΦΘΗΚΕ' : '⏳ ΣΕ ΕΚΚΡΕΜΟΤΗΤΑ' }}
+                  </span>
+                </div>
+                
+                <div class="text-[11px] font-mono text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                  <span>📅 {{ po.orderDate }}</span>
+                  <span class="text-slate-600">•</span>
+                  <span>ΑΦΜ: {{ po.supplierAfm || '—' }}</span>
+                  <span class="text-slate-600">•</span>
+                  <span>📦 {{ po.items.length }} είδη</span>
+                  @if (po.notes) {
+                    <span class="text-slate-600">•</span>
+                    <span class="text-slate-400 italic">"{{ po.notes }}"</span>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4 ml-auto">
+              <div class="text-right font-mono">
+                <span class="text-[10px] uppercase text-slate-400 block">Αξια Παραστατικου</span>
+                <span class="text-lg font-black text-emerald-400">€{{ (po.grandTotalCost || 0).toFixed(2) }}</span>
+              </div>
+
+              @if (po.status !== 'RECEIVED') {
+                <button 
+                  type="button" 
+                  (click)="openReceiveDelivery(po)"
+                  class="h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs rounded-xl transition active:scale-95 cursor-pointer shadow-md flex items-center gap-1.5"
+                >
+                  <span>📦</span>
+                  <span>ΠΑΡΑΛΑΒΗ</span>
+                </button>
+              } @else {
+                <span class="text-xs font-mono font-bold text-slate-500 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                  Ολοκληρωμένο
+                </span>
+              }
+            </div>
+          </div>
+
+          <!-- Document Line Items Breakdown Table -->
+          <div class="border-t border-slate-800 bg-slate-950/70 p-3">
+            <table class="w-full text-left border-collapse text-xs font-mono">
+              <thead class="text-slate-500 uppercase border-b border-slate-800 text-[10px]">
+                <tr>
+                  <th class="py-2 px-3">Προϊόν &amp; Barcode</th>
+                  <th class="py-2 px-3 text-center">Παραγγελθέντα</th>
+                  <th class="py-2 px-3 text-center">Παραληφθέντα</th>
+                  <th class="py-2 px-3 text-right">Τιμή Κόστους</th>
+                  <th class="py-2 px-3 text-center">Ημ/νία Λήξης</th>
+                  <th class="py-2 px-3 text-right">Σύνολο Γραμμής</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/40 text-slate-300">
+                @for (item of po.items; track item.productId) {
+                  <tr class="hover:bg-slate-900/40 transition">
+                    <td class="py-2 px-3 font-sans">
+                      <span class="font-bold text-slate-200 block">{{ item.name }}</span>
+                      <span class="text-[10px] font-mono text-slate-500">{{ item.barcode || 'Χωρίς Barcode' }}</span>
+                    </td>
+                    <td class="py-2 px-3 text-center text-slate-400">{{ item.orderedQty }}</td>
+                    <td class="py-2 px-3 text-center font-bold" [class.text-emerald-400]="item.receivedQty > 0">
+                      {{ item.receivedQty }}
+                    </td>
+                    <td class="py-2 px-3 text-right">€{{ (item.unitCost || 0).toFixed(2) }}</td>
+                    <td class="py-2 px-3 text-center text-slate-400">{{ item.expiryDate || '—' }}</td>
+                    <td class="py-2 px-3 text-right font-bold text-slate-100">
+                      €{{ (((item.receivedQty || item.orderedQty) * (item.unitCost || 0))).toFixed(2) }}
+                    </td>
+                  </tr>
                 }
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      }
+
     </div>
   </div>
 
@@ -210,56 +263,56 @@
 
         </div>
 
-       <!-- Catalog Quick Add Section with Fast Search Filter -->
-<div class="space-y-2 pt-1">
-  <div class="flex justify-between items-center">
-    <label class="text-[11px] font-bold text-slate-300 uppercase">
-      🔍 Προσθήκη Προϊόντων στην Παραγγελία
-    </label>
-    <span class="text-[10px] font-mono text-slate-400">
-      Εμφάνιση: <strong class="text-indigo-400">{{ filteredCatalogProducts().length }}</strong> ειδών
-    </span>
-  </div>
+        <!-- Catalog Quick Add Section with Fast Search Filter -->
+        <div class="space-y-2 pt-1">
+          <div class="flex justify-between items-center">
+            <label class="text-[11px] font-bold text-slate-300 uppercase">
+              🔍 Προσθήκη Προϊόντων στην Παραγγελία
+            </label>
+            <span class="text-[10px] font-mono text-slate-400">
+              Εμφάνιση: <strong class="text-indigo-400">{{ filteredCatalogProducts().length }}</strong> ειδών
+            </span>
+          </div>
 
-  <!-- Search Input Bar -->
-  <div class="relative">
-    <input 
-      type="text" 
-      [ngModel]="poProductSearch()" 
-      (ngModelChange)="onPoSearchChange($event)"
-      placeholder="Πληκτρολογήστε όνομα, barcode ή μάρκα για άμεση εύρεση..." 
-      class="w-full h-10 bg-slate-950 border border-slate-700/80 focus:border-indigo-500 rounded-xl pl-9 pr-8 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none transition shadow-inner"
-    />
-    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">🔎</span>
-    @if (poProductSearch().length > 0) {
-      <button 
-        type="button" 
-        (click)="onPoSearchChange('')" 
-        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-100 text-xs font-bold cursor-pointer">
-        ✕
-      </button>
-    }
-  </div>
+          <!-- Search Input Bar -->
+          <div class="relative">
+            <input 
+              type="text" 
+              [ngModel]="poProductSearch()" 
+              (ngModelChange)="onPoSearchChange($event)"
+              placeholder="Πληκτρολογήστε όνομα, barcode ή μάρκα για άμεση εύρεση..." 
+              class="w-full h-10 bg-slate-950 border border-slate-700/80 focus:border-indigo-500 rounded-xl pl-9 pr-8 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none transition shadow-inner"
+            />
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">🔎</span>
+            @if (poProductSearch().length > 0) {
+              <button 
+                type="button" 
+                (click)="onPoSearchChange('')" 
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-100 text-xs font-bold cursor-pointer">
+                ✕
+              </button>
+            }
+          </div>
 
-  <!-- Filtered Chips (Smooth Scrolling & Fast) -->
-  <div class="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800/80 shadow-inner">
-    @for (p of filteredCatalogProducts(); track p.id) {
-      <button 
-        type="button" 
-        (click)="addDraftItem(p)"
-        class="px-3 py-1.5 bg-slate-900 hover:bg-indigo-950 hover:border-indigo-500 active:scale-95 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-sm group"
-      >
-        <span class="text-indigo-400 group-hover:text-indigo-300 font-bold">+</span>
-        <span class="truncate max-w-[200px]">{{ p.name }}</span>
-        <span class="text-[10px] text-slate-500 font-normal">({{ p.barcode || 'χωρίς barcode' }})</span>
-      </button>
-    } @empty {
-      <div class="w-full p-4 text-center text-slate-500 text-xs font-mono">
-        Δεν βρέθηκαν προϊόντα με όρο «{{ poProductSearch() }}».
-      </div>
-    }
-  </div>
-</div>
+          <!-- Filtered Chips (Smooth Scrolling & Fast) -->
+          <div class="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800/80 shadow-inner">
+            @for (p of filteredCatalogProducts(); track p.id) {
+              <button 
+                type="button" 
+                (click)="addDraftItem(p)"
+                class="px-3 py-1.5 bg-slate-900 hover:bg-indigo-950 hover:border-indigo-500 active:scale-95 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-sm group"
+              >
+                <span class="text-indigo-400 group-hover:text-indigo-300 font-bold">+</span>
+                <span class="truncate max-w-[200px]">{{ p.name }}</span>
+                <span class="text-[10px] text-slate-500 font-normal">({{ p.barcode || 'χωρίς barcode' }})</span>
+              </button>
+            } @empty {
+              <div class="w-full p-4 text-center text-slate-500 text-xs font-mono">
+                Δεν βρέθηκαν προϊόντα με όρο «{{ poProductSearch() }}».
+              </div>
+            }
+          </div>
+        </div>
 
         <!-- Draft PO Items Table -->
         <div class="flex-1 overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950 min-h-[140px] shadow-inner">

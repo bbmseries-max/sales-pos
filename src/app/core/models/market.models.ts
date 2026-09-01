@@ -58,6 +58,35 @@ export interface TransactionRecord {
   _syncStatus?: 'synced' | 'pending' | 'dirty' | 'offline';
 }
 
+export interface GoodsReceiptItem {
+  productId: string;
+  barcode: string;
+  name: string;
+  quantityReceived: number;
+  unitCost: number;
+  retailPrice: number;
+  expiryDate?: string;
+  lineTotal: number;
+}
+
+export interface GoodsReceiptRecord {
+  id: string; // e.g. "REC-1772530000000"
+  documentTitle: string; // e.g. "ΔΑ #10492 — ΔΕΛΤΑ ΤΡΟΦΙΜΑ Α.Ε."
+  invoiceNumber: string;
+  supplierId: string;
+  supplierName: string;
+  supplierAfm?: string;
+  receivedAt: string; // ISO datetime or formatted date
+  cashierName: string;
+  cashierId?: string;
+  totalCost: number;
+  totalItemsCount: number;
+  notes?: string;
+  items: GoodsReceiptItem[];
+  storeId?: string;
+  _syncStatus?: 'synced' | 'dirty' | 'conflict';
+}
+
 export const SUPERMARKET_DEPARTMENTS: MasterCategory[] = [
   { id: 'cat-fruit', name: 'Οπωροπωλείο (Φρούτα & Λαχανικά)', icon: '🍎' },
   { id: 'cat-dairy', name: 'Γαλακτοκομικά, Τυριά & Αλλαντικά', icon: '🧀' },

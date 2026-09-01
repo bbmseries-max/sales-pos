@@ -53,7 +53,8 @@ export class MarketDatabase extends Dexie {
       suppliers: 'id, name, afm, phone',
       purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
       cashiers: 'id, pin, storeId, role, isActive',
-      shifts: 'id, cashierId, status, startTime, storeId'
+      shifts: 'id, cashierId, status, startTime, storeId',
+      goodsReceipts: 'id, supplierId, invoiceNumber, receivedAt, storeId, _syncStatus'
     });
   }
 }
