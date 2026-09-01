@@ -13,8 +13,8 @@ import { generateBarcodeSvg } from '../../core/utils/barcode-svg.util';
 
 export interface LabelItem {
   product: Product;
-  quantity: number; // Number of duplicate labels to print
-  unitMeasurement: string; // e.g., '1kg', '1L', '1τεμ'
+  quantity: number;
+  unitMeasurement: string;
   pricePerUnit: number;
 }
 
@@ -30,7 +30,6 @@ export class ShelfLabelsComponent implements OnInit {
   private sanitizer = inject(DomSanitizer);
   private router = inject(Router);
 
-  // Selection & Queue
   public queue = signal<LabelItem[]>([]);
   public searchQuery = signal<string>('');
   public selectedCategory = signal<string>('all');
@@ -40,9 +39,8 @@ export class ShelfLabelsComponent implements OnInit {
   public filteredCatalog = computed(() => {
     const term = this.searchQuery().toLowerCase().trim();
     const cat = this.selectedCategory().toLowerCase();
-    let prods = this.catalogService.products();
+    let prods = this.catalogService.products().filter(p => !p.deletedAt);
 
-    // Robust category matching: checks ID, name, or prefixed slug
     if (cat !== 'all') {
       prods = prods.filter(p => {
         const prodCatId = (p.categoryId || '').toLowerCase();
@@ -60,11 +58,12 @@ export class ShelfLabelsComponent implements OnInit {
       prods = prods.filter(p => 
         (p.name && p.name.toLowerCase().includes(term)) ||
         (p.barcode && p.barcode.toLowerCase().includes(term)) ||
-        (p.sku && p.sku.toLowerCase().includes(term))
+        (p.sku && p.sku.toLowerCase().includes(term)) ||
+        (p.brand && p.brand.toLowerCase().includes(term))
       );
     }
 
-    return prods.slice(0, 40);
+    return prods.slice(0, 60);
   });
 
   public flattenedLabels = computed(() => {
@@ -80,13 +79,13 @@ export class ShelfLabelsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
     
-    // Default queue with top 8 products to show preview
-    const initial = this.catalogService.products().slice(0, 8);
+    // Default queue with first 6 products for instant preview
+    const initial = this.catalogService.products().filter(p => !p.deletedAt).slice(0, 6);
     this.queue.set(initial.map(p => ({
       product: p,
       quantity: 1,
-      unitMeasurement: p.isWeighted ? '1 kg' : '1 τεμ',
-      pricePerUnit: p.price || 0
+      unitMeasurement: this.computeUnitDisplay(p),
+      pricePerUnit: this.computeUnitPriceValue(p)
     })));
   }
 
@@ -112,8 +111,8 @@ export class ShelfLabelsComponent implements OnInit {
         {
           product,
           quantity: 1,
-          unitMeasurement: product.isWeighted ? '1 kg' : '1 τεμ',
-          pricePerUnit: product.price || 0
+          unitMeasurement: this.computeUnitDisplay(product),
+          pricePerUnit: this.computeUnitPriceValue(product)
         }
       ]);
     }
@@ -122,6 +121,7 @@ export class ShelfLabelsComponent implements OnInit {
   public addEntireCategoryToQueue(catId: string): void {
     const target = catId.toLowerCase();
     const prods = this.catalogService.products().filter(p => {
+      if (p.deletedAt) return false;
       if (target === 'all') return true;
       const prodCatId = (p.categoryId || '').toLowerCase();
       const prodCatName = (p.categoryName || '').toLowerCase();
@@ -142,12 +142,16 @@ export class ShelfLabelsComponent implements OnInit {
   }
 
   public getBarcodeSvg(barcode?: string): SafeHtml {
-    const svg = generateBarcodeSvg(barcode || '5201004000000', 36);
+    const code = barcode || '5201004000000';
+    // Dynamic height based on media size
+    const height = this.labelSize() === 'THERMAL_ROLL' ? 24 : 32;
+    const svg = generateBarcodeSvg(code, height);
     return this.sanitizer.bypassSecurityTrustHtml(svg);
   }
 
   public getNetPrice(price: number, vatRate: number): string {
-    const net = price / (1 + vatRate / 100);
+    const vat = vatRate !== undefined ? vatRate : 24;
+    const net = (price || 0) / (1 + vat / 100);
     return net.toFixed(2);
   }
 
@@ -160,11 +164,36 @@ export class ShelfLabelsComponent implements OnInit {
     return decimals.toString().padStart(2, '0');
   }
 
+  // Mandatory Greek Reference Unit Calculation (Τιμή ανά Κιλό / Λίτρο)
+  public computeUnitDisplay(p: Product): string {
+    if (p.isWeighted) return 'kg';
+    const nameLower = (p.name || '').toLowerCase();
+    if (nameLower.includes('ml') || nameLower.includes('lt') || nameLower.includes('λίτρο')) return 'lt';
+    if (nameLower.includes('gr') || nameLower.includes('kg') || nameLower.includes('κιλό')) return 'kg';
+    return 'τεμ';
+  }
+
+  public computeUnitPriceValue(p: Product): number {
+    const price = p.price || 0;
+    if (p.isWeighted) return price;
+    
+    // Auto-parse package quantity (e.g., "ΓΑΛΑ 500ml" or "ΖΥΜΑΡΙΚΑ 500gr")
+    const match = (p.name || '').match(/(\d+[\.,]?\d*)\s*(gr|g|ml|lt|l|kg)/i);
+    if (match) {
+      const num = parseFloat(match[1].replace(',', '.'));
+      const unit = match[2].toLowerCase();
+      if ((unit === 'gr' || unit === 'g' || unit === 'ml') && num > 0) {
+        return Number(((price / num) * 1000).toFixed(2));
+      }
+    }
+    return price;
+  }
+
   public printLabels(): void {
     window.print();
   }
 
   public backToPos(): void {
-    this.router.navigate(['/']);
+    this.router.navigate(['/pos']);
   }
 }
