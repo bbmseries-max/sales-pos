@@ -4,7 +4,7 @@ import { marketDb } from '../db/market-db';
 import { Product, normalizeDateToInput } from '../models';
 import { TenantConfigService } from './tenant-config.service';
 import { MyDataService } from './mydata.service';
-import type { TransactionRecord } from '../models';
+//import type { TransactionRecord } from '../models';
 @Injectable({
   providedIn: 'root'
 })

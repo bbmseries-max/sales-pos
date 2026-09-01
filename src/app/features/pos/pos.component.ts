@@ -32,6 +32,7 @@ import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-
 import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { MarketCatalogService, ExternalProductMatch } from '../../core/services/market-catalog.service';
 import { CartService } from '../../core/services/cart.service';
+import { SyncService } from '../../core/services/sync.service';
 import { ScaleBarcodeService } from '../../core/services/scale-barcode.service';
 import { EscPosPrinterService } from '../../core/services/esc-pos-printer.service';
 import { MyDataService } from '../../core/services/mydata.service';
@@ -87,6 +88,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public shiftService = inject(CashierShiftService);
   public tenantConfig = inject(TenantConfigService);
   private router = inject(Router);
+  public syncService = inject(SyncService);
   public showDenominationModal = signal<boolean>(false);
 
   public get currentCashier() {
@@ -172,6 +174,13 @@ export class PosComponent implements OnInit, AfterViewInit {
         this.secretClickCount = 0;
       }, 1500);
     }
+  }
+
+  public async triggerManualSync(): Promise<void> {
+    if (!this.syncService.isOnline() || this.syncService.isSyncing()) {
+      return;
+    }
+    await this.syncService.syncAll();
   }
 
   // Employee Form State
