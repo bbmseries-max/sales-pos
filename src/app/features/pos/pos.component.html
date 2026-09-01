@@ -68,11 +68,12 @@
 
     <!-- Cash Movement / Drawer -->
     <button 
-      (click)="openCashDrawerModal()" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0">
-      <span>💵</span>
-      <span class="hidden lg:inline">Ταμείο</span>
-    </button>
+  type="button" 
+  (click)="showDenominationModal.set(true)" 
+  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1.5 shrink-0 cursor-pointer">
+  <span>🧮</span>
+  <span class="hidden lg:inline">Καταμέτρηση</span>
+</button>
 
     <!-- Apothiki / Inventory Link -->
     <button 
@@ -167,9 +168,9 @@
       </button>
 
       <!-- 3. Cash Drawer Movements -->
-      <button 
+<button 
   type="button" 
-  (click)="showCashDrawerModal()"
+  (click)="showCashDrawerModal.set(true)"
   class="h-14 px-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-slate-900 border-2 border-emerald-700/50 hover:border-emerald-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md">
   <div class="flex items-center gap-3">
     <span class="text-xl">💵</span>
@@ -989,11 +990,17 @@
     (addToCart)="handlePriceCheckAddToCart($event)"
   />
 
-  <app-pos-cash-drawer-modal 
-    [isOpen]="showCashDrawerModal()"
-    (submitLog)="handleCashLogSubmit($event)"
-    (cancel)="showCashDrawerModal.set(false)"
-  />
+ <app-pos-cash-drawer-modal 
+  [isOpen]="showCashDrawerModal()"
+  (submitLog)="handleCashLogSubmit($event)"
+  (cancel)="showCashDrawerModal.set(false)"
+/>
+
+<app-pos-denomination-modal
+  [isOpen]="showDenominationModal()"
+  (confirmCount)="handleDenominationConfirm($event)"
+  (cancel)="showDenominationModal.set(false)"
+/>
 
   <app-pos-quick-register-modal 
     [isOpen]="showQuickRegisterModal()"

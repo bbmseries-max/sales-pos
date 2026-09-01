@@ -17,6 +17,7 @@ import { SuperAdminModalComponent } from '../../shared/super-admin-modal.compone
 
 // Standalone Modals
 import { PosLockScreenComponent } from './components/pos-lock-screen.component';
+import { PosDenominationModalComponent } from './components/pos-denomination-modal.component';
 import { PosShiftHandoverModalComponent } from './components/pos-shift-handover-modal.component';
 import { PosCustomerModalComponent } from './components/pos-customer-modal.component';
 import { PosCashDrawerModalComponent, CashLogEvent } from './components/pos-cash-drawer-modal.component';
@@ -66,7 +67,8 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     PosShiftHandoverModalComponent,
     PosStoreSwitcherModalComponent,
     SuperAdminModalComponent,
-    NewStoreModalComponent
+    NewStoreModalComponent,
+    PosDenominationModalComponent
   ],
   templateUrl: './pos.component.html'
 })
@@ -85,6 +87,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public shiftService = inject(CashierShiftService);
   public tenantConfig = inject(TenantConfigService);
   private router = inject(Router);
+  public showDenominationModal = signal<boolean>(false);
 
   public get currentCashier() {
     return this.shiftService.currentCashier();
@@ -565,6 +568,16 @@ export class PosComponent implements OnInit, AfterViewInit {
     this.showCashDrawerModal.set(false);
     this.flashFeedback('✔ Καταχωρήθηκε ' + evt.type + ': €' + evt.amount.toFixed(2), 'success');
     this.focusBarcodeInput();
+  }
+
+  public handleDenominationConfirm(totalAmount: number): void {
+    if (this.shiftService?.activeShift()) {
+      const shift = this.shiftService.activeShift();
+      if (shift) {
+        shift.countedCashInDrawer = totalAmount;
+      }
+    }
+    this.showDenominationModal.set(false);
   }
 
   public async handleStoreSwitch(newStoreCode: string): Promise<void> {

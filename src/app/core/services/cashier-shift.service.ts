@@ -28,6 +28,7 @@ export class CashierShiftService {
   public isLocked = signal<boolean>(true);
   public allCashiers = signal<Cashier[]>([]);
 
+  public activeShift = signal<CashierShift | null>(null);
   public async initialize(): Promise<void> {
     await this.loadAllCashiers();
 
@@ -56,6 +57,18 @@ export class CashierShiftService {
       this.isLocked.set(true);
     }
   }
+
+  public setCountedCash(amount: number): void {
+    const current = this.activeShift();
+    if (current) {
+      this.activeShift.set({
+        ...current,
+        countedCashInDrawer: amount,
+        countedCash: amount
+      });
+    }
+  }
+
 
   public async loadAllCashiers(): Promise<void> {
     let list = await marketDb.cashiers.toArray();
