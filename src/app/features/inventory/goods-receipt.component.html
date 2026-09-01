@@ -210,25 +210,56 @@
 
         </div>
 
-        <!-- Catalog Quick Add Section -->
-        <div class="space-y-1.5 pt-1">
-          <div class="flex justify-between items-center">
-            <label class="text-[11px] font-bold text-slate-300 uppercase">Προσθήκη Προϊόντων από Κατάλογο</label>
-            <span class="text-[10px] font-mono text-slate-500">Κάντε κλικ για προσθήκη στη λίστα παραγγελίας</span>
-          </div>
-          <div class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2.5 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
-            @for (p of catalogService.products(); track p.id) {
-              <button 
-                type="button" 
-                (click)="addDraftItem(p)"
-                class="px-3 py-1.5 bg-slate-900 hover:bg-indigo-950/80 hover:border-indigo-500/80 active:scale-95 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-              >
-                <span class="text-indigo-400 font-bold">+</span>
-                <span>{{ p.name }}</span>
-              </button>
-            }
-          </div>
-        </div>
+       <!-- Catalog Quick Add Section with Fast Search Filter -->
+<div class="space-y-2 pt-1">
+  <div class="flex justify-between items-center">
+    <label class="text-[11px] font-bold text-slate-300 uppercase">
+      🔍 Προσθήκη Προϊόντων στην Παραγγελία
+    </label>
+    <span class="text-[10px] font-mono text-slate-400">
+      Εμφάνιση: <strong class="text-indigo-400">{{ filteredCatalogProducts().length }}</strong> ειδών
+    </span>
+  </div>
+
+  <!-- Search Input Bar -->
+  <div class="relative">
+    <input 
+      type="text" 
+      [ngModel]="poProductSearch()" 
+      (ngModelChange)="onPoSearchChange($event)"
+      placeholder="Πληκτρολογήστε όνομα, barcode ή μάρκα για άμεση εύρεση..." 
+      class="w-full h-10 bg-slate-950 border border-slate-700/80 focus:border-indigo-500 rounded-xl pl-9 pr-8 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none transition shadow-inner"
+    />
+    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">🔎</span>
+    @if (poProductSearch().length > 0) {
+      <button 
+        type="button" 
+        (click)="onPoSearchChange('')" 
+        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-100 text-xs font-bold cursor-pointer">
+        ✕
+      </button>
+    }
+  </div>
+
+  <!-- Filtered Chips (Smooth Scrolling & Fast) -->
+  <div class="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800/80 shadow-inner">
+    @for (p of filteredCatalogProducts(); track p.id) {
+      <button 
+        type="button" 
+        (click)="addDraftItem(p)"
+        class="px-3 py-1.5 bg-slate-900 hover:bg-indigo-950 hover:border-indigo-500 active:scale-95 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-sm group"
+      >
+        <span class="text-indigo-400 group-hover:text-indigo-300 font-bold">+</span>
+        <span class="truncate max-w-[200px]">{{ p.name }}</span>
+        <span class="text-[10px] text-slate-500 font-normal">({{ p.barcode || 'χωρίς barcode' }})</span>
+      </button>
+    } @empty {
+      <div class="w-full p-4 text-center text-slate-500 text-xs font-mono">
+        Δεν βρέθηκαν προϊόντα με όρο «{{ poProductSearch() }}».
+      </div>
+    }
+  </div>
+</div>
 
         <!-- Draft PO Items Table -->
         <div class="flex-1 overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950 min-h-[140px] shadow-inner">

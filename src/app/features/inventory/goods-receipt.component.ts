@@ -1,7 +1,7 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { SupplierOrderService } from '../../core/services/supplier-order.service';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/market.models';
@@ -9,10 +9,11 @@ import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/ma
 @Component({
   selector: 'app-goods-receipt',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './goods-receipt.component.html'
 })
 export class GoodsReceiptComponent implements OnInit {
+  public poProductSearch = signal<string>('');
   public orderService = inject(SupplierOrderService);
   public catalogService = inject(MarketCatalogService);
 
@@ -64,6 +65,30 @@ export class GoodsReceiptComponent implements OnInit {
       ? `${this.orderService.suppliers()[0].name} (ΑΦΜ: ${this.orderService.suppliers()[0].afm})`
       : '— Επιλέξτε Προμηθευτή —';
   }
+
+  public filteredCatalogProducts = computed(() => {
+    const term = this.poProductSearch().trim().toLowerCase();
+    const all = this.catalogService.products().filter(p => !p.deletedAt);
+
+    // If search term is present, filter by name, barcode, brand, or ID
+    if (term.length > 0) {
+      return all.filter(p => 
+        (p.name && p.name.toLowerCase().includes(term)) ||
+        (p.barcode && String(p.barcode).toLowerCase().includes(term)) ||
+        (p.brand && p.brand.toLowerCase().includes(term)) ||
+        (p.id !== undefined && String(p.id).toLowerCase().includes(term))
+      ).slice(0, 30); // Max 30 items for zero DOM lag
+    }
+
+    // Default: Show first 20 products
+    return all.slice(0, 20);
+  });
+
+  // Helper to quickly search from keyboard
+  public onPoSearchChange(val: string): void {
+    this.poProductSearch.set(val || '');
+  }
+
 
   public addDraftItem(product: any): void {
     const existing = this.poDraftItems().find(i => i.productId === String(product.id));
