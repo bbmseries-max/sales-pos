@@ -2,14 +2,25 @@
   
   <!-- Header & Actions -->
   <div class="flex justify-between items-center pb-4 border-b border-slate-800 shrink-0">
-   <button 
-    type="button"
-    routerLink="/inventory" 
-    routerLinkActive="!bg-indigo-600 !text-white !border-indigo-500 shadow-md ring-2 ring-indigo-500/30"
-    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
-    <span class="text-base">📦</span>
-    <span>Αποθήκη & Stock</span>
-  </button>
+    <div class="flex items-center gap-3">
+      <!-- Back to POS -->
+      <button 
+        type="button"
+        routerLink="/pos" 
+        class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-slate-500 active:scale-95 transition-all shadow-sm cursor-pointer">
+        <span class="text-base font-black">←</span>
+        <span>Ταμείο</span>
+      </button>
+
+      <!-- Back to Inventory -->
+      <button 
+        type="button"
+        routerLink="/inventory" 
+        class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-slate-500 active:scale-95 transition-all shadow-sm cursor-pointer">
+        <span class="text-base">📦</span>
+        <span>Αποθήκη</span>
+      </button>
+    </div>
     
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-xl">
@@ -27,15 +38,13 @@
     >
       <span>+ ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ ΠΡΟΜΗΘΕΥΤΗ</span>
     </button>
-    
-  <router-outlet></router-outlet>
   </div>
 
-<!-- Orders Table View -->
+  <!-- Orders Table View -->
   <div class="flex-1 bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-xl">
     <div class="flex-1 overflow-y-auto min-h-0">
       <table class="w-full text-left border-collapse text-xs font-mono">
-        <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+        <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px] z-10">
           <tr>
             <th class="p-4">Κωδικός PO</th>
             <th class="p-4">Προμηθευτής</th>
@@ -79,7 +88,7 @@
               <td class="p-4 text-right">
                 @if (po.status !== 'RECEIVED') {
                   <button 
-                    type="button"
+                    type="button" 
                     (click)="openReceiveDelivery(po)"
                     class="h-8 px-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black rounded-lg transition active:scale-95 cursor-pointer shadow-md"
                   >
@@ -97,202 +106,198 @@
   </div>
 
   <!-- MODAL 1: NEW PURCHASE ORDER -->
-@if (showNewPOModal()) {
-  <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-3xl p-6 space-y-4 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
-      
-      <!-- Modal Header -->
-      <div class="flex justify-between items-center pb-2 border-b border-slate-800">
-        <h3 class="text-sm font-black text-indigo-400 uppercase tracking-wider">Νέα Παραγγελία Προμηθευτή</h3>
-        <button (click)="showNewPOModal.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-lg cursor-pointer">✕</button>
-      </div>
-
-      <!-- Supplier Dropdown & Notes -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  @if (showNewPOModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-3xl p-6 space-y-4 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
         
-       <!-- Supplier Dropdown & Quick Add -->
-<!-- Supplier Selector Section -->
-<div class="space-y-1 relative z-30">
-  <div class="flex justify-between items-center">
-    <label class="text-[11px] font-bold text-slate-300 uppercase">Επιλογή Προμηθευτή</label>
-    <button 
-      type="button"
-      (click)="isAddingNewSupplier.set(!isAddingNewSupplier()); isSupplierDropdownOpen.set(false)"
-      class="text-[10px] font-mono text-indigo-400 hover:text-indigo-300 cursor-pointer"
-    >
-      {{ isAddingNewSupplier() ? '✕ Ακύρωση Νέου' : '+ Νέος Προμηθευτής' }}
-    </button>
-  </div>
-
-  @if (!isAddingNewSupplier()) {
-    <!-- Custom Trigger Button -->
-    <div class="relative">
-      <button 
-        type="button"
-        (click)="toggleSupplierDropdown()"
-        class="w-full h-12 bg-slate-950 hover:bg-slate-900 border-2 border-slate-700 hover:border-indigo-500 rounded-xl px-3.5 flex items-center justify-between text-xs font-mono text-slate-100 transition cursor-pointer shadow-inner"
-      >
-        <span class="truncate font-bold text-slate-100">{{ getSelectedSupplierName() }}</span>
-        <span class="text-slate-400 ml-2 text-xs transition-transform duration-200" [class.rotate-180]="isSupplierDropdownOpen()">▼</span>
-      </button>
-
-      <!-- Custom High-Visibility Floating Dropdown List -->
-      @if (isSupplierDropdownOpen()) {
-        <div class="absolute left-0 right-0 top-14 bg-slate-900 border-2 border-indigo-500/80 rounded-2xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-800 p-1.5 animate-in fade-in zoom-in-95">
-          @if (orderService.suppliers().length === 0) {
-            <div class="p-3 text-center text-xs text-slate-400 font-mono">
-              Δεν βρέθηκαν προμηθευτές.
-            </div>
-          }
-          @for (sup of orderService.suppliers(); track sup.id) {
-            <button 
-              type="button"
-              (click)="selectSupplier(sup)"
-              class="w-full p-2.5 rounded-xl text-left hover:bg-indigo-950/60 hover:text-indigo-200 transition flex items-center justify-between cursor-pointer group"
-              [class.bg-indigo-950]="selectedSupplierId() === sup.id"
-            >
-              <div>
-                <span class="text-xs font-bold text-slate-100 group-hover:text-indigo-300 block">{{ sup.name }}</span>
-                <span class="text-[10px] font-mono text-slate-400">ΑΦΜ: {{ sup.afm }} • Τηλ: {{ sup.phone || '—' }}</span>
-              </div>
-              @if (selectedSupplierId() === sup.id) {
-                <span class="text-emerald-400 font-bold text-xs">✔</span>
-              }
-            </button>
-          }
+        <!-- Modal Header -->
+        <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+          <h3 class="text-sm font-black text-indigo-400 uppercase tracking-wider">Νέα Παραγγελία Προμηθευτή</h3>
+          <button (click)="showNewPOModal.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-lg cursor-pointer">✕</button>
         </div>
-      }
-    </div>
-  } @else {
-    <!-- Quick Add Form -->
-    <div class="p-3 bg-slate-950 border border-indigo-500/50 rounded-xl space-y-2">
-      <input 
-        type="text" 
-        placeholder="Επωνυμία Προμηθευτή (π.χ. ΚΡΙ ΚΡΙ Α.Ε.)..." 
-        [(ngModel)]="newSupplierName"
-        class="w-full h-9 bg-slate-900 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-400"
-      />
-      <div class="grid grid-cols-2 gap-2">
-        <input 
-          type="text" 
-          placeholder="Α.Φ.Μ." 
-          [(ngModel)]="newSupplierAfm"
-          class="h-9 bg-slate-900 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-100 font-mono"
-        />
-        <button 
-          type="button"
-          (click)="saveQuickSupplier()"
-          [disabled]="!newSupplierName().trim()"
-          class="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-lg disabled:opacity-40 cursor-pointer"
-        >
-          Αποθήκευση
-        </button>
+
+        <!-- Supplier Dropdown & Notes -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          <!-- Supplier Selector Section -->
+          <div class="space-y-1 relative z-30">
+            <div class="flex justify-between items-center">
+              <label class="text-[11px] font-bold text-slate-300 uppercase">Επιλογή Προμηθευτή</label>
+              <button 
+                type="button" 
+                (click)="isAddingNewSupplier.set(!isAddingNewSupplier()); isSupplierDropdownOpen.set(false)"
+                class="text-[10px] font-mono text-indigo-400 hover:text-indigo-300 cursor-pointer"
+              >
+                {{ isAddingNewSupplier() ? '✕ Ακύρωση Νέου' : '+ Νέος Προμηθευτής' }}
+              </button>
+            </div>
+
+            @if (!isAddingNewSupplier()) {
+              <div class="relative">
+                <button 
+                  type="button" 
+                  (click)="toggleSupplierDropdown()"
+                  class="w-full h-12 bg-slate-950 hover:bg-slate-900 border-2 border-slate-700 hover:border-indigo-500 rounded-xl px-3.5 flex items-center justify-between text-xs font-mono text-slate-100 transition cursor-pointer shadow-inner"
+                >
+                  <span class="truncate font-bold text-slate-100">{{ getSelectedSupplierName() }}</span>
+                  <span class="text-slate-400 ml-2 text-xs transition-transform duration-200" [class.rotate-180]="isSupplierDropdownOpen()">▼</span>
+                </button>
+
+                @if (isSupplierDropdownOpen()) {
+                  <div class="absolute left-0 right-0 top-14 bg-slate-900 border-2 border-indigo-500/80 rounded-2xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-800 p-1.5 animate-in fade-in zoom-in-95">
+                    @if (orderService.suppliers().length === 0) {
+                      <div class="p-3 text-center text-xs text-slate-400 font-mono">
+                        Δεν βρέθηκαν προμηθευτές.
+                      </div>
+                    }
+                    @for (sup of orderService.suppliers(); track sup.id) {
+                      <button 
+                        type="button" 
+                        (click)="selectSupplier(sup)"
+                        class="w-full p-2.5 rounded-xl text-left hover:bg-indigo-950/60 hover:text-indigo-200 transition flex items-center justify-between cursor-pointer group"
+                        [class.bg-indigo-950]="selectedSupplierId() === sup.id"
+                      >
+                        <div>
+                          <span class="text-xs font-bold text-slate-100 group-hover:text-indigo-300 block">{{ sup.name }}</span>
+                          <span class="text-[10px] font-mono text-slate-400">ΑΦΜ: {{ sup.afm }} • Τηλ: {{ sup.phone || '—' }}</span>
+                        </div>
+                        @if (selectedSupplierId() === sup.id) {
+                          <span class="text-emerald-400 font-bold text-xs">✔</span>
+                        }
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="p-3 bg-slate-950 border border-indigo-500/50 rounded-xl space-y-2">
+                <input 
+                  type="text" 
+                  placeholder="Επωνυμία Προμηθευτή (π.χ. ΚΡΙ ΚΡΙ Α.Ε.)..." 
+                  [(ngModel)]="newSupplierName"
+                  class="w-full h-9 bg-slate-900 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-400"
+                />
+                <div class="grid grid-cols-2 gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Α.Φ.Μ." 
+                    [(ngModel)]="newSupplierAfm"
+                    class="h-9 bg-slate-900 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-100 font-mono"
+                  />
+                  <button 
+                    type="button" 
+                    (click)="saveQuickSupplier()"
+                    [disabled]="!newSupplierName().trim()"
+                    class="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-lg disabled:opacity-40 cursor-pointer"
+                  >
+                    Αποθήκευση
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Notes -->
+          <div class="space-y-1">
+            <label class="text-[11px] font-bold text-slate-300 uppercase block">Σημειώσεις / Οδηγίες Παράδοσης</label>
+            <input 
+              type="text" 
+              placeholder="π.χ. Παράδοση πρωί Πέμπτης, προσοχή στα ψυγεία..." 
+              [(ngModel)]="newPoNotes"
+              class="w-full h-12 bg-slate-950 border-2 border-slate-700 focus:border-indigo-500 rounded-xl px-3 text-xs font-mono text-slate-100 focus:outline-none transition shadow-inner"
+            />
+          </div>
+
+        </div>
+
+        <!-- Catalog Quick Add Section -->
+        <div class="space-y-1.5 pt-1">
+          <div class="flex justify-between items-center">
+            <label class="text-[11px] font-bold text-slate-300 uppercase">Προσθήκη Προϊόντων από Κατάλογο</label>
+            <span class="text-[10px] font-mono text-slate-500">Κάντε κλικ για προσθήκη στη λίστα παραγγελίας</span>
+          </div>
+          <div class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2.5 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
+            @for (p of catalogService.products(); track p.id) {
+              <button 
+                type="button" 
+                (click)="addDraftItem(p)"
+                class="px-3 py-1.5 bg-slate-900 hover:bg-indigo-950/80 hover:border-indigo-500/80 active:scale-95 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <span class="text-indigo-400 font-bold">+</span>
+                <span>{{ p.name }}</span>
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Draft PO Items Table -->
+        <div class="flex-1 overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950 min-h-[140px] shadow-inner">
+          <table class="w-full text-left text-xs font-mono">
+            <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400">
+              <tr>
+                <th class="p-3">Προϊόν</th>
+                <th class="p-3 w-28 text-center">Ποσότητα</th>
+                <th class="p-3 w-32 text-center">Τιμή Κόστους (€)</th>
+                <th class="p-3 text-right w-16">Διαγραφή</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              @if (poDraftItems().length === 0) {
+                <tr>
+                  <td colspan="4" class="p-6 text-center text-slate-500">
+                    Δεν έχετε προσθέσει προϊόντα στην παραγγελία ακόμα.
+                  </td>
+                </tr>
+              }
+              @for (item of poDraftItems(); track item.productId) {
+                <tr class="hover:bg-slate-900/40 transition">
+                  <td class="p-3 text-slate-200 font-bold">{{ item.name }}</td>
+                  <td class="p-3 text-center">
+                    <input 
+                      type="number" 
+                      [(ngModel)]="item.orderedQty" 
+                      class="w-20 h-8 bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded px-2 text-center text-slate-100 font-bold" 
+                    />
+                  </td>
+                  <td class="p-3 text-center">
+                    <input 
+                      type="number" 
+                      step="0.05" 
+                      [(ngModel)]="item.unitCost" 
+                      class="w-24 h-8 bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded px-2 text-center text-slate-100 font-bold" 
+                    />
+                  </td>
+                  <td class="p-3 text-right">
+                    <button (click)="removeDraftItem(item.productId)" class="text-red-400 hover:text-red-300 font-bold px-2 py-1 cursor-pointer">
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Action Footer -->
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button 
+            (click)="showNewPOModal.set(false)" 
+            class="h-11 px-5 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold rounded-xl cursor-pointer transition"
+          >
+            Ακύρωση
+          </button>
+          <button 
+            (click)="savePO()" 
+            [disabled]="poDraftItems().length === 0" 
+            class="h-11 px-6 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white font-black text-xs rounded-xl shadow-lg transition cursor-pointer"
+          >
+            ΑΠΟΘΗΚΕΥΣΗ ΠΑΡΑΓΓΕΛΙΑΣ
+          </button>
+        </div>
+
       </div>
     </div>
   }
-</div>
-
-        <!-- Notes -->
-        <div class="space-y-1">
-          <label class="text-[11px] font-bold text-slate-300 uppercase block">Σημειώσεις / Οδηγίες Παράδοσης</label>
-          <input 
-            type="text" 
-            placeholder="π.χ. Παράδοση πρωί Πέμπτης, προσοχή στα ψυγεία..."
-            [(ngModel)]="newPoNotes"
-            class="w-full h-12 bg-slate-950 border-2 border-slate-700 focus:border-indigo-500 rounded-xl px-3 text-xs font-mono text-slate-100 focus:outline-none transition shadow-inner"
-          />
-        </div>
-
-      </div>
-
-      <!-- Catalog Quick Add Section -->
-      <div class="space-y-1.5 pt-1">
-        <div class="flex justify-between items-center">
-          <label class="text-[11px] font-bold text-slate-300 uppercase">Προσθήκη Προϊόντων από Κατάλογο</label>
-          <span class="text-[10px] font-mono text-slate-500">Κάντε κλικ για προσθήκη στη λίστα παραγγελίας</span>
-        </div>
-        <div class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2.5 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
-          @for (p of catalogService.products(); track p.id) {
-            <button 
-              type="button"
-              (click)="addDraftItem(p)"
-              class="px-3 py-1.5 bg-slate-900 hover:bg-indigo-950/80 hover:border-indigo-500/80 active:scale-95 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-            >
-              <span class="text-indigo-400 font-bold">+</span>
-              <span>{{ p.name }}</span>
-            </button>
-          }
-        </div>
-      </div>
-
-      <!-- Draft PO Items Table -->
-      <div class="flex-1 overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950 min-h-[140px] shadow-inner">
-        <table class="w-full text-left text-xs font-mono">
-          <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400">
-            <tr>
-              <th class="p-3">Προϊόν</th>
-              <th class="p-3 w-28 text-center">Ποσότητα</th>
-              <th class="p-3 w-32 text-center">Τιμή Κόστους (€)</th>
-              <th class="p-3 text-right w-16">Διαγραφή</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-800/60">
-            @if (poDraftItems().length === 0) {
-              <tr>
-                <td colspan="4" class="p-6 text-center text-slate-500">
-                  Δεν έχετε προσθέσει προϊόντα στην παραγγελία ακόμα.
-                </td>
-              </tr>
-            }
-            @for (item of poDraftItems(); track item.productId) {
-              <tr class="hover:bg-slate-900/40 transition">
-                <td class="p-3 text-slate-200 font-bold">{{ item.name }}</td>
-                <td class="p-3 text-center">
-                  <input 
-                    type="number" 
-                    [(ngModel)]="item.orderedQty" 
-                    class="w-20 h-8 bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded px-2 text-center text-slate-100 font-bold" 
-                  />
-                </td>
-                <td class="p-3 text-center">
-                  <input 
-                    type="number" 
-                    step="0.05" 
-                    [(ngModel)]="item.unitCost" 
-                    class="w-24 h-8 bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded px-2 text-center text-slate-100 font-bold" 
-                  />
-                </td>
-                <td class="p-3 text-right">
-                  <button (click)="removeDraftItem(item.productId)" class="text-red-400 hover:text-red-300 font-bold px-2 py-1 cursor-pointer">
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Action Footer -->
-      <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
-        <button 
-          (click)="showNewPOModal.set(false)" 
-          class="h-11 px-5 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold rounded-xl cursor-pointer transition"
-        >
-          Ακύρωση
-        </button>
-        <button 
-          (click)="savePO()" 
-          [disabled]="poDraftItems().length === 0" 
-          class="h-11 px-6 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white font-black text-xs rounded-xl shadow-lg transition cursor-pointer"
-        >
-          ΑΠΟΘΗΚΕΥΣΗ ΠΑΡΑΓΓΕΛΙΑΣ
-        </button>
-      </div>
-
-    </div>
-  </div>
-}
 
   <!-- MODAL 2: RECEIVE DELIVERY / GOODS RECEIPT -->
   @if (showReceiveModal()) {
@@ -303,7 +308,7 @@
             <h3 class="text-sm font-black text-emerald-400 uppercase">Παραλαβή Εμπορευμάτων &amp; Απογραφή</h3>
             <p class="text-[11px] font-mono text-slate-400">{{ activePO()?.supplierName }} ({{ activePO()?.id }})</p>
           </div>
-          <button (click)="showReceiveModal.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-lg">✕</button>
+          <button (click)="showReceiveModal.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-lg cursor-pointer">✕</button>
         </div>
 
         <!-- Invoice / Delivery Note Input -->
@@ -312,20 +317,20 @@
             <label class="text-[11px] font-bold text-slate-400 uppercase block mb-1">Αρ. Δελτίου Αποστολής / Τιμολογίου</label>
             <input 
               type="text" 
-              placeholder="π.χ. ΔΑ-98412"
-              [(ngModel)]="deliveryInvoiceNo"
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500"
+              placeholder="π.χ. ΔΑ-98412" 
+              [(ngModel)]="deliveryInvoiceNo" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" 
             />
           </div>
           <div>
             <label class="text-[11px] font-bold text-slate-400 uppercase block mb-1">Σκανάρισμα Παραλαβής</label>
             <input 
               type="text" 
-              placeholder="Σκανάρετε barcode είδους..."
-              [ngModel]="scanReceivingBarcode()"
-              (ngModelChange)="scanReceivingBarcode.set($event)"
-              (keydown.enter)="onScanDeliverItem()"
-              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500"
+              placeholder="Σκανάρετε barcode είδους..." 
+              [ngModel]="scanReceivingBarcode()" 
+              (ngModelChange)="scanReceivingBarcode.set($event)" 
+              (keydown.enter)="onScanDeliverItem()" 
+              class="w-full h-11 bg-slate-950 border border-slate-700 rounded-xl px-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" 
             />
           </div>
         </div>
@@ -333,7 +338,7 @@
         <!-- Verification Table -->
         <div class="flex-1 overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950 min-h-48">
           <table class="w-full text-left text-xs font-mono">
-            <thead class="bg-slate-900 text-slate-400">
+            <thead class="bg-slate-900 text-slate-400 sticky top-0">
               <tr>
                 <th class="p-2.5">Είδος</th>
                 <th class="p-2.5 text-center">Παραγγελθέντα</th>
@@ -351,22 +356,22 @@
                     <input 
                       type="number" 
                       [(ngModel)]="item.receivedQty" 
-                      class="w-20 h-8 bg-slate-900 border border-emerald-500/60 rounded px-2 text-center text-emerald-400 font-bold"
+                      class="w-20 h-8 bg-slate-900 border border-emerald-500/60 rounded px-2 text-center text-emerald-400 font-bold" 
                     />
                   </td>
                   <td class="p-2.5">
                     <input 
                       type="number" 
-                      step="0.05"
+                      step="0.05" 
                       [(ngModel)]="item.unitCost" 
-                      class="w-24 h-8 bg-slate-900 border border-slate-700 rounded px-2 text-center text-slate-100 font-bold"
+                      class="w-24 h-8 bg-slate-900 border border-slate-700 rounded px-2 text-center text-slate-100 font-bold" 
                     />
                   </td>
                   <td class="p-2.5">
                     <input 
                       type="date" 
                       [(ngModel)]="item.expiryDate" 
-                      class="h-8 bg-slate-900 border border-slate-700 rounded px-2 text-slate-200 text-[11px]"
+                      class="h-8 bg-slate-900 border border-slate-700 rounded px-2 text-slate-200 text-[11px]" 
                     />
                   </td>
                 </tr>
@@ -376,7 +381,7 @@
         </div>
 
         <div class="flex justify-end gap-3 pt-2 border-t border-slate-800">
-          <button (click)="showReceiveModal.set(false)" class="h-11 px-5 bg-slate-800 text-slate-300 text-xs font-bold rounded-xl">Ακύρωση</button>
+          <button (click)="showReceiveModal.set(false)" class="h-11 px-5 bg-slate-800 text-slate-300 text-xs font-bold rounded-xl cursor-pointer">Ακύρωση</button>
           <button 
             (click)="confirmGoodsReceipt()" 
             class="h-11 px-6 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs rounded-xl shadow-lg transition active:scale-95 cursor-pointer"

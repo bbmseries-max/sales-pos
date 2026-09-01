@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLinkActive, RouterLink, RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { SupplierOrderService } from '../../core/services/supplier-order.service';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/market.models';
@@ -9,7 +9,7 @@ import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/ma
 @Component({
   selector: 'app-goods-receipt',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterOutlet, RouterLinkActive, RouterLink ],
+  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive],
   templateUrl: './goods-receipt.component.html'
 })
 export class GoodsReceiptComponent implements OnInit {
@@ -19,7 +19,6 @@ export class GoodsReceiptComponent implements OnInit {
   public showNewPOModal = signal<boolean>(false);
   public showReceiveModal = signal<boolean>(false);
   public activePO = signal<PurchaseOrder | null>(null);
-  private router = inject(Router);
 
   // New PO Form Signals
   public selectedSupplierId = signal<string>('');
@@ -48,23 +47,23 @@ export class GoodsReceiptComponent implements OnInit {
   }
 
   public toggleSupplierDropdown(): void {
-  this.isSupplierDropdownOpen.update(v => !v);
-}
-
-public selectSupplier(sup: Supplier): void {
-  this.selectedSupplierId.set(sup.id);
-  this.isSupplierDropdownOpen.set(false);
-}
-
-public getSelectedSupplierName(): string {
-  const selected = this.orderService.suppliers().find(s => s.id === this.selectedSupplierId());
-  if (selected) {
-    return `${selected.name} (ΑΦΜ: ${selected.afm})`;
+    this.isSupplierDropdownOpen.update(v => !v);
   }
-  return this.orderService.suppliers().length > 0
-    ? `${this.orderService.suppliers()[0].name} (ΑΦΜ: ${this.orderService.suppliers()[0].afm})`
-    : '— Επιλέξτε Προμηθευτή —';
-}
+
+  public selectSupplier(sup: Supplier): void {
+    this.selectedSupplierId.set(sup.id);
+    this.isSupplierDropdownOpen.set(false);
+  }
+
+  public getSelectedSupplierName(): string {
+    const selected = this.orderService.suppliers().find(s => s.id === this.selectedSupplierId());
+    if (selected) {
+      return `${selected.name} (ΑΦΜ: ${selected.afm})`;
+    }
+    return this.orderService.suppliers().length > 0
+      ? `${this.orderService.suppliers()[0].name} (ΑΦΜ: ${this.orderService.suppliers()[0].afm})`
+      : '— Επιλέξτε Προμηθευτή —';
+  }
 
   public addDraftItem(product: any): void {
     const existing = this.poDraftItems().find(i => i.productId === String(product.id));
@@ -111,10 +110,10 @@ public getSelectedSupplierName(): string {
   public openReceiveDelivery(po: PurchaseOrder): void {
     this.activePO.set(po);
     this.deliveryInvoiceNo.set(po.invoiceNumber || '');
-    // Clone items with defaults
+    // Clone items with default received quantity matching ordered quantity for speed
     const cloned: PurchaseOrderItem[] = po.items.map((i: PurchaseOrderItem) => ({
       ...i,
-      receivedQty: i.receivedQty || i.orderedQty // default to ordered qty for fast check
+      receivedQty: i.receivedQty || i.orderedQty
     }));
     this.receivingItems.set(cloned);
     this.showReceiveModal.set(true);
@@ -143,39 +142,40 @@ public getSelectedSupplierName(): string {
     );
 
     this.showReceiveModal.set(false);
+    await this.catalogService.loadInitialCatalog();
   }
 
   public async openNewPO(): Promise<void> {
-  this.poDraftItems.set([]);
-  this.newPoNotes.set('');
-  this.isAddingNewSupplier.set(false);
+    this.poDraftItems.set([]);
+    this.newPoNotes.set('');
+    this.isAddingNewSupplier.set(false);
 
-  if (this.orderService.suppliers().length === 0) {
-    await this.orderService.loadAll();
+    if (this.orderService.suppliers().length === 0) {
+      await this.orderService.loadAll();
+    }
+
+    if (this.orderService.suppliers().length > 0) {
+      this.selectedSupplierId.set(this.orderService.suppliers()[0].id);
+    }
+
+    this.showNewPOModal.set(true);
   }
 
-  if (this.orderService.suppliers().length > 0) {
-    this.selectedSupplierId.set(this.orderService.suppliers()[0].id);
+  public async saveQuickSupplier(): Promise<void> {
+    const name = this.newSupplierName().trim();
+    const afm = this.newSupplierAfm().trim();
+    if (!name) return;
+
+    const created = await this.orderService.addCustomSupplier({
+      name,
+      afm: afm || '—',
+      phone: this.newSupplierPhone().trim()
+    });
+
+    this.selectedSupplierId.set(created.id);
+    this.isAddingNewSupplier.set(false);
+    this.newSupplierName.set('');
+    this.newSupplierAfm.set('');
+    this.newSupplierPhone.set('');
   }
-
-  this.showNewPOModal.set(true);
-}
-
-public async saveQuickSupplier(): Promise<void> {
-  const name = this.newSupplierName().trim();
-  const afm = this.newSupplierAfm().trim();
-  if (!name) return;
-
-  const created = await this.orderService.addCustomSupplier({
-    name,
-    afm: afm || '—',
-    phone: this.newSupplierPhone().trim()
-  });
-
-  this.selectedSupplierId.set(created.id);
-  this.isAddingNewSupplier.set(false);
-  this.newSupplierName.set('');
-  this.newSupplierAfm.set('');
-  this.newSupplierPhone.set('');
-}
 }
