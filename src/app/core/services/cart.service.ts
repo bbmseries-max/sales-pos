@@ -211,104 +211,113 @@ public setCartDiscount(percent: number): void {
   // --- CHECKOUT & TRANSACTION FINALIZATION ---
 
 public async checkout(
-    paymentMethod: 'Cash' | 'Card' | 'Debit' | 'Split' = 'Cash',
-    cashierName = 'Cashier 01',
-    cashTendered?: number,
-    changeDue?: number
-  ): Promise<TransactionRecord> {
-    const currentItems = this.items();
-    if (currentItems.length === 0) {
-      throw new Error('Cart is empty');
-    }
+  paymentMethod: 'Cash' | 'Card' | 'Debit' | 'Split' = 'Cash',
+  cashierName = 'Cashier 01',
+  cashTendered?: number,
+  changeDue?: number
+): Promise<TransactionRecord> {
+  const currentItems = this.items();
+  if (!currentItems || currentItems.length === 0) {
+    throw new Error('Το καλάθι είναι άδειο');
+  }
 
-    const grandTotal = this.grandTotal();
-    const taxAmount = this.totalTaxAmount();
-    const subtotal = this.netSubtotal();
+  const grandTotal = this.grandTotal();
+  const taxAmount = this.totalTaxAmount();
+  const subtotal = this.netSubtotal();
 
-    // 1. Prepare initial record object
-    const record: TransactionRecord = {
-      id: 'TX-' + Date.now().toString(36).toUpperCase(),
-      timestamp: new Date().toISOString(),
-      items: [...currentItems],
-      subtotal: Number(subtotal.toFixed(2)),
-      taxAmount: Number(taxAmount.toFixed(2)),
-      grandTotal: Number(grandTotal.toFixed(2)),
-      paymentMethod,
-      cashier: cashierName,
-      cashierName,
-      cashTendered: cashTendered ?? grandTotal,
-      changeDue: changeDue ?? 0,
-      vatBreakdown: this.taxBreakdown()
-    };
+  // 1. Prepare initial record
+  const record: TransactionRecord = {
+    id: 'TX-' + Date.now().toString(36).toUpperCase(),
+    timestamp: new Date().toISOString(),
+    items: [...currentItems],
+    subtotal: Number(subtotal.toFixed(2)),
+    taxAmount: Number(taxAmount.toFixed(2)),
+    grandTotal: Number(grandTotal.toFixed(2)),
+    paymentMethod,
+    cashier: cashierName,
+    cashierName,
+    cashTendered: cashTendered ?? grandTotal,
+    changeDue: changeDue ?? 0,
+    vatBreakdown: this.taxBreakdown(),
+    _syncStatus: 'dirty'
+  };
 
-    // 2. Transmit to AADE myDATA (Generates MARK, UID, and QR Code URL)
+  // 2. Safe myDATA attempt (Only runs if online, strictly non-blocking)
+  if (navigator.onLine && this.myDataService?.transmitReceipt) {
     try {
-      const activeShop = this.tenantConfig.activeShop();
-      const myDataRes = await this.myDataService.transmitReceipt(record, {
-        name: activeShop.name,
-        afm: activeShop.afm || '123456789',
-        doy: activeShop.doy || 'DOY',
-        address: activeShop.address || ''
-      });
+      const activeShop = this.tenantConfig?.activeShop?.() || {};
+      const myDataRes = await Promise.race([
+        this.myDataService.transmitReceipt(record, {
+          name: activeShop.name || 'MARANTH MARKET',
+          afm: activeShop.afm || '123456789',
+          doy: activeShop.doy || 'DOY',
+          address: activeShop.address || ''
+        }),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('myDATA timeout')), 2500))
+      ]);
 
-      if (myDataRes.success) {
+      if (myDataRes?.success) {
         record.mydataMark = myDataRes.mark;
         record.mydataUid = myDataRes.uid;
         record.mydataQrUrl = myDataRes.qrUrl;
+        record._syncStatus = 'synced';
       }
     } catch (err) {
-      console.warn('[CHECKOUT] AADE sync fallback:', err);
+      console.warn('[CHECKOUT] AADE myDATA offline fallback - queued locally:', err);
     }
-
-    // 3. Atomic Transaction: Save TX (with myDATA fields) & Deduct Product Stock from Dexie
-    await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
-      console.log('[CHECKOUT] 🚀 Starting checkout transaction for items:', currentItems);
-      await marketDb.transactions.add(record);
-
-      for (const item of currentItems) {
-        const prod = item.product;
-        const targetBarcode = String(prod.barcode || '').trim();
-        const qtySold = Number(item.quantity) || 0;
-
-        console.log(`[CHECKOUT] Processing item: ${prod.name}, Barcode: ${targetBarcode}, Qty: ${qtySold}`);
-
-        // Direct lookup by barcode
-        const dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
-
-        if (dbProd) {
-          const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
-          const newQty = Number(Math.max(0, currentQty - qtySold).toFixed(3));
-
-          console.log(`[CHECKOUT] Found in DB! Current: ${currentQty} -> New: ${newQty}`);
-
-          const keyToUpdate = dbProd.id !== undefined ? dbProd.id : dbProd.barcode;
-          await marketDb.products.update(keyToUpdate, {
-            stockQuantity: newQty,
-            stock: newQty,
-            updatedAt: new Date().toISOString(),
-            _syncStatus: 'dirty'
-          });
-
-          console.log(`[CHECKOUT] ✅ Updated stock in Dexie for key ${keyToUpdate}`);
-        } else {
-          console.error(`[CHECKOUT] ❌ Product with barcode ${targetBarcode} NOT found in Dexie!`);
-        }
-      }
-    });
-
-    // 4. Record sale once to active shift (outside loop & transaction)
-    await this.shiftService.recordSaleToShift(grandTotal, paymentMethod, false);
-
-    // 5. Refresh active catalog in UI
-    console.log('[CHECKOUT] Refreshing UI catalog...');
-    await this.catalogService.loadInitialCatalog();
-
-    // 6. Store last receipt & reset cart
-    this.lastProcessedReceipt.set(record);
-    this.clear();
-
-    return record;
   }
+
+  // 3. Local Atomic Transaction: Save TX & Deduct Product Stock in Dexie
+  await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
+    await marketDb.transactions.add(record);
+
+    for (const item of currentItems) {
+      const prod = item.product || (item as any);
+      const targetBarcode = String(prod.barcode || '').trim();
+      const targetId = prod.id;
+      const qtySold = Number(item.quantity) || 0;
+
+      let dbProd = null;
+      if (targetId !== undefined && targetId !== null) {
+        dbProd = await marketDb.products.get(targetId);
+      }
+      if (!dbProd && targetBarcode) {
+        dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
+      }
+
+      if (dbProd) {
+        const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
+        const newQty = Number(Math.max(0, currentQty - qtySold).toFixed(3));
+        const keyToUpdate = dbProd.id !== undefined ? dbProd.id : dbProd.barcode;
+
+        await marketDb.products.update(keyToUpdate, {
+          stockQuantity: newQty,
+          stock: newQty,
+          updatedAt: new Date().toISOString(),
+          _syncStatus: 'dirty'
+        });
+      }
+    }
+  });
+
+  // 4. Record to active shift (wrapped so a shift failure never cancels the sale)
+  try {
+    if (this.shiftService?.recordSaleToShift) {
+      await this.shiftService.recordSaleToShift(grandTotal, paymentMethod, false);
+    }
+  } catch (shiftErr) {
+    console.warn('[CHECKOUT] Shift recording warning:', shiftErr);
+  }
+
+  // 5. Store last receipt & clean cart state
+  this.lastProcessedReceipt?.set?.(record);
+  this.clear();
+
+  // 6. Asynchronously refresh catalog without blocking the UI
+  this.catalogService?.loadInitialCatalog?.().catch(e => console.warn('[Catalog Refresh]', e));
+
+  return record;
+}
 
   public addProduct(product: Product, quantity?: number, forceRefund?: boolean): void {
     this.addItem(product, quantity, forceRefund);

@@ -714,102 +714,130 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-  public async completeSale(): Promise<void> {
-    const uiMethod = this.paymentMethod();
-    const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
-    const activeCust = this.loyaltyService.activeCustomer();
-    const redeemed = this.pointsToRedeem();
-    const cashierName = this.shiftService.currentCashier()?.name || 'Cashier 01';
+ public async completeSale(): Promise<void> {
+  const uiMethod = this.paymentMethod();
+  const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
+  const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
+  const redeemed = this.pointsToRedeem ? this.pointsToRedeem() : 0;
+  const cashierName = this.shiftService?.currentCashier?.()?.name || 'Cashier 01';
 
-    try {
-      const tx = await this.cart.checkout(
-        mappedMethod,
-        cashierName,
-        this.cashTendered(),
-        this.changeDue()
-      );
+  try {
+    // 1. Primary checkout in Dexie
+    const tx = await this.cart.checkout(
+      mappedMethod,
+      cashierName,
+      this.cashTendered ? this.cashTendered() : 0,
+      this.changeDue ? this.changeDue() : 0
+    );
 
-      if (activeCust) {
-        tx.customerId = activeCust.id;
-        tx.customerPhone = activeCust.phone;
-        tx.customerName = activeCust.name;
-        tx.pointsRedeemed = redeemed;
-        tx.discountApplied = this.pointsDiscountAmount();
+    // 2. Dismiss modal immediately
+    this.pointsToRedeem?.set?.(0);
+    this.showPaymentModal.set(false);
+
+    // 3. Loyalty post-processing (safe)
+    if (activeCust && this.loyaltyService?.processPostSale) {
+      try {
         const { pointsEarned } = await this.loyaltyService.processPostSale(activeCust, tx.grandTotal, redeemed);
         tx.pointsEarned = pointsEarned;
+      } catch (loyaltyErr) {
+        console.warn('[Loyalty]', loyaltyErr);
       }
-
-      // Record sale to shift
-      await this.shiftService.recordSaleToShift(tx.grandTotal, mappedMethod);
-      this.pointsToRedeem.set(0);
-      this.showPaymentModal.set(false);
-
-      await this.handleFiscalPostProcessing(tx);
-      this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
-    } catch (err: any) {
-      this.flashFeedback('⛔ Error: ' + err.message, 'error');
-    } finally {
-      this.focusBarcodeInput();
     }
+
+    // 4. Thermal receipt print (background non-blocking)
+    this.handleFiscalPostProcessing(tx).catch(err => console.warn('[Print Slip]', err));
+
+    this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
+  } catch (err: any) {
+    console.error('[Sale Error]', err);
+    this.flashFeedback('⛔ Σφάλμα: ' + (err?.message || 'Αποτυχία ολοκλήρωσης'), 'error');
+  } finally {
+    this.focusBarcodeInput?.();
   }
+}
+
+// Helper: Fiscal / Hardware wrapper that never crashes the POS UI
+private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
+  try {
+    await this.handleFiscalPostProcessing(tx);
+  } catch (fiscalErr) {
+    console.warn('[Fiscal / Hardware Bypass] Could not connect to fiscal bridge or printer:', fiscalErr);
+    // In Greek offline retail, signature is queued for cloud synchronization
+  }
+}
 
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
-    const activeShop = this.tenantConfig.activeShop();
-    const companyProfile: MarketCompanyProfile = {
-      storeName: activeShop.name || 'MARANTH MARKET',
-      address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
-      afm: activeShop.afm || this.myDataService.credentials?.()?.issuerAfm || '123456789',
-      doy: activeShop.doy || 'XALANDRIOU',
-      phone: activeShop.phone || '210-6800000'
-    };
+  // Safe company profile resolution with nullish coalescing
+  const activeShop = this.tenantConfig.activeShop?.() || {};
+  const companyProfile: MarketCompanyProfile = {
+    storeName: activeShop.name || 'MARANTH MARKET',
+    address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
+    afm: activeShop.afm || this.myDataService?.credentials?.()?.issuerAfm || '123456789',
+    doy: activeShop.doy || 'XALANDRIOU',
+    phone: activeShop.phone || '210-6800000'
+  };
 
-    // 1. myDATA Fiscal Transmission
-    try {
-      if (this.myDataService?.transmitReceipt) {
-        const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
-        if (myDataRes?.success && myDataRes?.mark) {
-          tx.mydataMark = myDataRes.mark;
-          tx.mydataUid = myDataRes.uid;
-          tx.mydataQrUrl = myDataRes.qrUrl;
-          await marketDb.transactions.put(tx);
-        }
+  // 1. myDATA Fiscal Transmission (Safe Offline Boundary)
+  try {
+    if (this.myDataService?.transmitReceipt && navigator.onLine) {
+      const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
+      if (myDataRes?.success && myDataRes?.mark) {
+        tx.mydataMark = myDataRes.mark;
+        tx.mydataUid = myDataRes.uid;
+        tx.mydataQrUrl = myDataRes.qrUrl;
+        await marketDb.transactions.put(tx);
       }
-    } catch (fiscalErr) {
-      console.warn('[Fiscal/myDATA] Transmission skipped:', fiscalErr);
+    } else {
+      // Mark transaction for background offline sync
+      tx._syncStatus = 'dirty';
+      await marketDb.transactions.put(tx);
     }
-
-    // 2. Dispatch Customer Receipt via HTML 58mm printer dialogue
-    try {
-      const storeTitle = this.printerService.transliterateGreek(companyProfile.storeName || 'MARANTH SUPERMARKET');
-      const itemsHtml = tx.items.map(item => `
-        <div class="row">
-          <span>${this.printerService.transliterateGreek(item.product.name).substring(0, 16)}</span>
-          <span>${item.quantity}x ${(item.quantity * item.product.price).toFixed(2)}&euro;</span>
-        </div>
-      `).join('');
-
-      const slip = `
-        <div class="center bold large">${storeTitle}</div>
-        <div class="center small">APODEIXI LIANIKIS POLISIS</div>
-        <div class="divider"></div>
-        <div class="small">HM/NIA: ${new Date(tx.timestamp).toLocaleString('el-GR')}</div>
-        <div class="small">PARAST.: ${tx.id.substring(0, 8)}</div>
-        <div class="divider"></div>
-        ${itemsHtml}
-        <div class="divider"></div>
-        <div class="row bold large"><span>SYNOLO:</span><span>${tx.grandTotal.toFixed(2)} &euro;</span></div>
-        <div class="row"><span>TROPOS:</span><span>${tx.paymentMethod.toUpperCase()}</span></div>
-        ${tx.cashTendered ? `<div class="row"><span>METRHTA:</span><span>${tx.cashTendered.toFixed(2)} &euro;</span></div>` : ''}
-        ${tx.changeDue ? `<div class="row"><span>RESTA:</span><span>${tx.changeDue.toFixed(2)} &euro;</span></div>` : ''}
-        <div class="divider"></div>
-        <div class="center small">EYXARISTOYME GIA THN PROTIMHSH!</div>
-      `;
-
-      this.printerService.printHtmlThermalSlip(slip);
-    } catch (printErr) {
-      console.warn('[Printer] Receipt print skipped:', printErr);
-    }
+  } catch (fiscalErr) {
+    console.warn('[Fiscal/myDATA] Transmission skipped or offline, queued locally:', fiscalErr);
   }
+
+  // 2. Dispatch Customer Receipt via HTML 58mm printer dialogue
+  try {
+    const storeTitle = this.printerService.transliterateGreek(companyProfile.storeName || 'MARANTH SUPERMARKET');
+    
+    // Null-safe item mapping (handles both nested item.product and flat cart items)
+    const itemsHtml = (tx.items || []).map(item => {
+      const pName = item.product?.name || (item as any).name || 'PROION';
+      const pPrice = Number(item.product?.price ?? (item as any).price ?? 0);
+      const pQty = Number(item.quantity || 1);
+      const safeName = this.printerService.transliterateGreek(pName).substring(0, 16);
+      const lineTotal = (pQty * pPrice).toFixed(2);
+
+      return `
+        <div class="row">
+          <span>${safeName}</span>
+          <span>${pQty}x ${lineTotal}&euro;</span>
+        </div>
+      `;
+    }).join('');
+
+    const slip = `
+      <div class="center bold large">${storeTitle}</div>
+      <div class="center small">APODEIXI LIANIKIS POLISIS</div>
+      <div class="divider"></div>
+      <div class="small">HM/NIA: ${new Date(tx.timestamp || Date.now()).toLocaleString('el-GR')}</div>
+      <div class="small">PARAST.: ${(tx.id || '').substring(0, 8)}</div>
+      <div class="divider"></div>
+      ${itemsHtml}
+      <div class="divider"></div>
+      <div class="row bold large"><span>SYNOLO:</span><span>${(tx.grandTotal || 0).toFixed(2)} &euro;</span></div>
+      <div class="row"><span>TROPOS:</span><span>${(tx.paymentMethod || 'METRHTA').toUpperCase()}</span></div>
+      ${tx.cashTendered ? `<div class="row"><span>METRHTA:</span><span>${Number(tx.cashTendered).toFixed(2)} &euro;</span></div>` : ''}
+      ${tx.changeDue ? `<div class="row"><span>RESTA:</span><span>${Number(tx.changeDue).toFixed(2)} &euro;</span></div>` : ''}
+      <div class="divider"></div>
+      <div class="center small">EYXARISTOYME GIA THN PROTIMHSH!</div>
+    `;
+
+    this.printerService.printHtmlThermalSlip(slip);
+  } catch (printErr) {
+    console.warn('[Printer] Receipt print bypassed:', printErr);
+  }
+}
 
   public openPriceCheck(): void {
     this.priceCheckInput.set('');

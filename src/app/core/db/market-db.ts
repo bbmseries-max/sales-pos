@@ -66,3 +66,4 @@ export const marketDb = new MarketDatabase();
 if (typeof window !== 'undefined') {
   (window as any).marketDb = marketDb;
 }
+
