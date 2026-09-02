@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Firestore, writeBatch, doc } from '@angular/fire/firestore';
+import { Firestore, writeBatch, doc, 
+  collection, query, where, getDocs, orderBy, limit
+ } from '@angular/fire/firestore';
 import { marketDb } from '../db/market-db';
 import { Product, normalizeDateToInput } from '../models';
 import { TenantConfigService } from './tenant-config.service';
@@ -32,6 +34,110 @@ export class SyncService {
   public async sync(): Promise<void> {
     await this.syncAll();
   }
+
+/**
+ * Key used to store the last sync timestamp in localStorage
+ */
+private get syncTimestampKey(): string {
+  const storeId = this.tenantConfig.activeShop()?.code || 'mar-market';
+  return `last_product_sync_${storeId}`;
+}
+
+/**
+ * PULL CATALOG: Fetches updated products from Firestore and updates local Dexie DB
+ */
+public async pullProductsFromHub(forceFullSync = false): Promise<number> {
+  if (!navigator.onLine) {
+    console.info('[SyncService] Device is offline. Skipping catalog pull.');
+    return 0;
+  }
+
+  const currentStoreId = this.tenantConfig.activeShop()?.code || 'mar-market';
+  const productsColRef = collection(this.firestore, `tenants/${currentStoreId}/products`);
+  
+  // 1. Get the last sync timestamp
+  let lastSyncTime = localStorage.getItem(this.syncTimestampKey);
+  if (forceFullSync || !lastSyncTime) {
+    lastSyncTime = '1970-01-01T00:00:00.000Z'; // Pull everything if first run
+  }
+
+  console.log(`[SyncService] Checking for catalog changes since: ${lastSyncTime}`);
+
+  try {
+    // 2. Query Firestore for only updated records
+    const q = query(
+      productsColRef,
+      where('updatedAt', '>', lastSyncTime),
+      orderBy('updatedAt', 'asc'),
+      limit(500)
+    );
+
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      console.log('[SyncService] Local catalog is up to date.');
+      return 0;
+    }
+
+    console.log(`[SyncService] Fetched ${snapshot.docs.length} updated products from Cloud.`);
+
+    // 3. Collect local dirty product barcodes to prevent overwriting unpushed local edits
+    const dirtyLocalProducts = await marketDb.products
+      .where('_syncStatus')
+      .equals('dirty')
+      .toArray();
+    const dirtyBarcodes = new Set(dirtyLocalProducts.map(p => String(p.barcode)));
+
+    const productsToUpdate: Product[] = [];
+    let latestTimestampInBatch = lastSyncTime;
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as Product;
+      const barcode = String(data.barcode || docSnap.id);
+
+      // Conflict prevention: Skip if the cashier currently has pending local edits on this item
+      if (dirtyBarcodes.has(barcode)) {
+        console.warn(`[SyncService] Skipping remote update for ${barcode} due to pending local changes.`);
+        continue;
+      }
+
+      // Mark locally as clean/synced
+      productsToUpdate.push({
+        ...data,
+        barcode: barcode,
+        _syncStatus: 'synced'
+      });
+
+      if (data.updatedAt && data.updatedAt > latestTimestampInBatch) {
+        latestTimestampInBatch = data.updatedAt;
+      }
+    }
+
+    // 4. Batch update local Dexie database
+    if (productsToUpdate.length > 0) {
+      await marketDb.products.bulkPut(productsToUpdate);
+    }
+
+    // 5. Update last successful sync timestamp
+    localStorage.setItem(this.syncTimestampKey, latestTimestampInBatch);
+    console.log(`[SyncService] Updated ${productsToUpdate.length} items in local Dexie.`);
+
+    return productsToUpdate.length;
+  } catch (err) {
+    console.error('[SyncService] Failed to pull catalog from Hub:', err);
+    throw err;
+  }
+}
+
+/**
+ * Hard sync trigger: bypasses timestamp delta and pulls all products from Firestore
+ */
+public async forcePullCatalog(): Promise<number> {
+  // Clear the local sync timestamp so it queries everything from the start
+  localStorage.removeItem(this.syncTimestampKey);
+  
+  // Run pullProductsFromHub with force flag = true
+  return await this.pullProductsFromHub(true);
+}
 
   constructor() {
     this.initNetworkListeners();
@@ -105,30 +211,35 @@ export class SyncService {
   /**
    * Master sync runner: synchronizes both dirty sales and product catalog changes
    */
-  public async syncAll(): Promise<{ txSynced: number; prodsSynced: number }> {
-    if (this.syncLock || !navigator.onLine) {
-      return { txSynced: 0, prodsSynced: 0 };
-    }
-
-    this.syncLock = true;
-    this.isSyncing.set(true);
-
-    let txSynced = 0;
-    let prodsSynced = 0;
-
-    try {
-      txSynced = await this.pushTransactionsToHub();
-      prodsSynced = await this.pushProductsDeltaToHub();
-    } catch (err) {
-      console.error('[SyncService] Sync cycle failure:', err);
-    } finally {
-      this.syncLock = false;
-      this.isSyncing.set(false);
-      await this.refreshPendingCount();
-    }
-
-    return { txSynced, prodsSynced };
+  public async syncAll(): Promise<{ txSynced: number; prodsSynced: number; prodsPulled: number }> {
+  if (this.syncLock || !navigator.onLine) {
+    return { txSynced: 0, prodsSynced: 0, prodsPulled: 0 };
   }
+
+  this.syncLock = true;
+  this.isSyncing.set(true);
+
+  let txSynced = 0;
+  let prodsSynced = 0;
+  let prodsPulled = 0;
+
+  try {
+    // Phase 1: Push local state to cloud first
+    txSynced = await this.pushTransactionsToHub();
+    prodsSynced = await this.pushProductsDeltaToHub();
+
+    // Phase 2: Pull latest remote catalog updates
+    prodsPulled = await this.pullProductsFromHub();
+  } catch (err) {
+    console.error('[SyncService] Sync cycle failure:', err);
+  } finally {
+    this.syncLock = false;
+    this.isSyncing.set(false);
+    await this.refreshPendingCount();
+  }
+
+  return { txSynced, prodsSynced, prodsPulled };
+}
 
   /**
    * 1. PUSH TRANSACTIONS: Transmits myDATA fiscal MARK and saves to Firestore

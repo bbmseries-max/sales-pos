@@ -221,6 +221,16 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
+  public async handleForceCatalogPull(): Promise<void> {
+  try {
+    const total = await this.syncService.forcePullCatalog();
+    alert(`Ο κατάλογος ενημερώθηκε επιτυχώς! Λήφθηκαν ${total} προϊόντα.`);
+  } catch (error) {
+    alert('Σφάλμα κατά την πλήρη λήψη του καταλόγου.');
+    console.error(error);
+  }
+}
+
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
