@@ -124,6 +124,8 @@ public async submitPinWithFloat(): Promise<void> {
 }
 
   // Core Services
+  public cashMovementAmount = signal<number>(0);
+  public cashMovementReason = signal<string>('Προσθήκη Μαγιάς / Εισαγωγή');
   public catalogService = inject(MarketCatalogService);
   public cart = inject(CartService);
   public isNewStoreModalOpen = signal<boolean>(false);
@@ -142,6 +144,23 @@ public async submitPinWithFloat(): Promise<void> {
   public get currentCashier() {
     return this.shiftService.currentCashier();
   }
+
+  public async executeCashIn(): Promise<void> {
+  const amount = this.cashMovementAmount();
+  const reason = this.cashMovementReason();
+
+  if (amount <= 0) {
+    this.flashFeedback('Εισάγετε έγκυρο ποσό', 'error');
+    return;
+  }
+
+  // Calls CashierShiftService to update cashInTotal in Dexie DB
+  await this.shiftService.recordCashMovement('IN', amount, reason);
+  
+  this.flashFeedback(`✔ Προστέθηκαν €${amount.toFixed(2)} στο ταμείο`, 'success');
+  this.showCashDrawerModal.set(false);
+  this.cashMovementAmount.set(0);
+}
 
   public showEmployeeModal = signal<boolean>(false);
   public isSavingEmployee = signal<boolean>(false);
