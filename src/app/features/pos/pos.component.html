@@ -1124,6 +1124,83 @@
 @if (isNewStoreModalOpen()) {
   <app-new-store-modal (close)="isNewStoreModalOpen.set(false)" />
 }
+
+@if (showNewShiftModal()) {
+  <div class="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 select-none">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center">
+      
+      <!-- Icon & Header -->
+      <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto mb-3 text-3xl border border-emerald-500/20 shadow-inner">
+        💵
+      </div>
+      <h2 class="text-xl font-black text-white tracking-tight">Έναρξη Νέας Βάρδιας</h2>
+      <p class="text-xs text-slate-400 mt-1">Η προηγούμενη βάρδια έκλεισε επιτυχώς. Ορίστε αρχικό ταμείο για τη νέα βάρδια.</p>
+
+      <!-- Cashier Quick Select -->
+      <div class="my-4 text-left">
+        <label class="text-xs font-semibold text-slate-300 block mb-2">Επιλογή Ταμία:</label>
+        <div class="flex flex-wrap gap-2">
+          @for (c of shiftService.allCashiers(); track c.id) {
+            <button
+              type="button"
+              (click)="nextShiftCashierPin.set(c.pin); nextShiftError.set('')"
+              [class.bg-sky-600]="nextShiftCashierPin() === c.pin"
+              [class.text-white]="nextShiftCashierPin() === c.pin"
+              [class.bg-slate-800]="nextShiftCashierPin() !== c.pin"
+              [class.text-slate-300]="nextShiftCashierPin() !== c.pin"
+              class="px-3 py-1.5 rounded-xl text-xs font-bold transition border border-slate-700/60 hover:border-sky-500">
+              {{ c.name }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Opening Float Input -->
+      <div class="my-4 text-left">
+        <label class="text-xs font-semibold text-slate-300 block mb-1">
+          Αρχικό Ταμείο / Μαγιά (€):
+        </label>
+        <div class="relative">
+          <input 
+            type="number" 
+            step="5"
+            [value]="nextShiftFloat()" 
+            (input)="nextShiftFloat.set(+$any($event.target).value)"
+            class="w-full h-12 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-4 text-xl font-mono font-bold text-emerald-400 focus:outline-none transition shadow-inner"
+            placeholder="100.00"
+          />
+          <span class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">€</span>
+        </div>
+      </div>
+
+      <!-- Error Feedback -->
+      @if (nextShiftError()) {
+        <div class="text-xs text-rose-400 font-semibold mb-3">
+          {{ nextShiftError() }}
+        </div>
+      }
+
+      <!-- Actions -->
+      <div class="flex items-center gap-3 mt-6">
+        <button 
+          type="button" 
+          (click)="showNewShiftModal.set(false); shiftService.lockScreen()"
+          class="flex-1 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition">
+          Κλείδωμα (PIN)
+        </button>
+
+        <button 
+          type="button" 
+          (click)="confirmStartNewShift()"
+          class="flex-1 h-12 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer">
+          Άνοιγμα Βάρδιας →
+        </button>
+      </div>
+
+    </div>
+  </div>
+}
+
 @if (shiftService.isLocked()) {
   <div class="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center">

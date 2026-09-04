@@ -78,6 +78,11 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
 export class PosComponent implements OnInit, AfterViewInit {
   @ViewChild('barcodeInput') barcodeInputRef!: ElementRef<HTMLInputElement>;
 
+  public showNewShiftModal = signal<boolean>(false);
+  public nextShiftCashierPin = signal<string>('');
+  public nextShiftFloat = signal<number>(100);
+  public nextShiftError = signal<string>(''); 
+
   public pinInput = signal<string>('');
   public pinError = signal<string>('');
   public openingFloatInput = signal<number>(100);
@@ -716,21 +721,29 @@ public switchCashier(): void {
 
   // Handover Modal: End Shift (Z-Report)
   public async handleShiftClose(countedCash: number): Promise<void> {
-    try {
-      const active = this.shiftService.currentShift();
-      if (active) {
-        // 1. Dispatch 58mm Z-Report to physical printer
-        this.printerService.printShiftReportHtml(active, 'Z');
-      }
-
-      // 2. Close shift in database
-      const closedShift = await this.shiftService.closeShift(countedCash);
-      this.showShiftHandoverModal.set(false);
-      this.flashFeedback('✔ Η βάρδια έκλεισε. Διαφορά: €' + (closedShift.discrepancy || 0).toFixed(2), 'success');
-    } catch (err: any) {
-      this.flashFeedback('⛔ Σφάλμα: ' + err.message, 'error');
+  try {
+    const active = this.shiftService.currentShift();
+    if (active) {
+      // 1. Dispatch 58mm Z-Report to physical printer
+      this.printerService.printShiftReportHtml(active, 'Z');
     }
+
+    // 2. Close shift in database
+    const closedShift = await this.shiftService.closeShift(countedCash);
+    this.showShiftHandoverModal.set(false);
+
+    // 3. Keep screen UNLOCKED and open the Start Shift Modal
+    this.shiftService.isLocked.set(false);
+    this.nextShiftCashierPin.set('');
+    this.nextShiftFloat.set(100);
+    this.nextShiftError.set('');
+    this.showNewShiftModal.set(true);
+
+    this.flashFeedback('✔ Η βάρδια έκλεισε. Διαφορά: €' + (closedShift.discrepancy || 0).toFixed(2), 'success');
+  } catch (err: any) {
+    this.flashFeedback('⛔ Σφάλμα: ' + err.message, 'error');
   }
+}
 
   // Handover Modal: Intermediate Audit (X-Report)
   public async printXReportSlip(): Promise<void> {
@@ -985,11 +998,39 @@ private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
   }
 
   // Top/Header Z-Report / Shift Close action
-  public async onCloseZReport(countedCash: number = 0): Promise<void> {
-    const active = this.shiftService.currentShift();
-    if (active) {
-      this.printerService.printShiftReportHtml(active, 'Z');
-      await this.shiftService.closeShift(countedCash);
-    }
+ public async onCloseZReport(countedCash: number = 0): Promise<void> {
+  const active = this.shiftService.currentShift();
+  if (active) {
+    this.printerService.printShiftReportHtml(active, 'Z');
+    await this.shiftService.closeShift(countedCash);
+    
+    // Prevent lock screen from popping up; show New Shift modal
+    this.shiftService.isLocked.set(false);
+    this.nextShiftCashierPin.set('');
+    this.nextShiftFloat.set(100);
+    this.nextShiftError.set('');
+    this.showNewShiftModal.set(true);
   }
+}
+
+// Confirm handler for the New Shift Modal
+public async confirmStartNewShift(): Promise<void> {
+  const pin = this.nextShiftCashierPin().trim();
+  const floatAmt = Number(this.nextShiftFloat()) || 0;
+
+  if (!pin) {
+    this.nextShiftError.set('Επιλέξτε ταμία ή συμπληρώστε PIN.');
+    return;
+  }
+
+  const res = await this.shiftService.loginWithPin(pin, floatAmt);
+  if (res.success) {
+    this.showNewShiftModal.set(false);
+    this.nextShiftCashierPin.set('');
+    this.flashFeedback(`✔ Η βάρδια άνοιξε με μαγιά €${floatAmt.toFixed(2)}`, 'success');
+    this.focusBarcodeInput();
+  } else {
+    this.nextShiftError.set(res.message);
+  }
+}
 }
