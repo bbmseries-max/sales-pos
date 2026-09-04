@@ -1200,33 +1200,3 @@
     </div>
   </div>
 }
-
-@if (shiftService.isLocked()) {
-  <div class="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center">
-      
-      <h2 class="text-xl font-black text-white">Άνοιγμα Βάρδιας / Είσοδος</h2>
-      
-      <div class="my-4 text-left">
-        <label class="text-xs text-slate-400 font-semibold block mb-1">
-          Αρχικό Μαγιά Ταμείου (€):
-        </label>
-        <input 
-          type="number" 
-          [value]="openingFloatInput()" 
-          (input)="openingFloatInput.set(+$any($event.target).value)"
-          class="w-full h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 text-emerald-400 font-mono font-bold text-lg focus:outline-none focus:border-sky-500"
-          placeholder="100.00"
-        />
-      </div>
-
-      <button 
-        type="button" 
-        (click)="submitPinWithFloat()"
-        class="w-full h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl transition">
-        Έναρξη Βάρδιας &amp; Είσοδος
-      </button>
-
-    </div>
-  </div>
-}
