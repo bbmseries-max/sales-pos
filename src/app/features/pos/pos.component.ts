@@ -80,6 +80,7 @@ export class PosComponent implements OnInit, AfterViewInit {
 
   public pinInput = signal<string>('');
   public pinError = signal<string>('');
+  public openingFloatInput = signal<number>(100);
 
   public appendPin(digit: string): void {
     if (this.pinInput().length < 6) {
@@ -106,6 +107,21 @@ export class PosComponent implements OnInit, AfterViewInit {
       this.pinInput.set('');
     }
   }
+
+  public async submitPinWithFloat(): Promise<void> {
+  const pin = this.pinInput();
+  const floatAmt = this.openingFloatInput();
+
+  if (!pin) return;
+
+  const res = await this.shiftService.loginWithPin(pin, floatAmt);
+  if (res.success) {
+    this.clearPin();
+    this.flashFeedback(res.message, 'success');
+  } else {
+    this.pinError.set(res.message);
+  }
+}
 
   // Core Services
   public catalogService = inject(MarketCatalogService);

@@ -1125,66 +1125,30 @@
   <app-new-store-modal (close)="isNewStoreModalOpen.set(false)" />
 }
 @if (shiftService.isLocked()) {
-  <div class="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 select-none">
-    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center">
+  <div class="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center">
       
-      <!-- Header -->
-      <div class="w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto mb-3 text-2xl shadow-inner border border-sky-500/20">
-        🔒
-      </div>
-      <h2 class="text-xl font-black text-white tracking-tight">Κλειδωμένο Ταμείο</h2>
-      <p class="text-xs text-slate-400 mt-1">Πληκτρολογήστε το PIN ταμία για είσοδο</p>
-
-      <!-- PIN Display -->
-      <div class="my-6">
-        <div class="h-12 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center tracking-[0.6em] text-2xl font-mono font-bold text-sky-400">
-          @if (pinInput()) {
-            <span>{{ '•'.repeat(pinInput().length) }}</span>
-          } @else {
-            <span class="text-slate-600 text-sm tracking-normal">Εισάγετε PIN</span>
-          }
-        </div>
-        @if (pinError()) {
-          <div class="text-xs text-rose-400 font-semibold mt-2 animate-bounce">
-            {{ pinError() }}
-          </div>
-        }
+      <h2 class="text-xl font-black text-white">Άνοιγμα Βάρδιας / Είσοδος</h2>
+      
+      <div class="my-4 text-left">
+        <label class="text-xs text-slate-400 font-semibold block mb-1">
+          Αρχικό Μαγιά Ταμείου (€):
+        </label>
+        <input 
+          type="number" 
+          [value]="openingFloatInput()" 
+          (input)="openingFloatInput.set(+$any($event.target).value)"
+          class="w-full h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 text-emerald-400 font-mono font-bold text-lg focus:outline-none focus:border-sky-500"
+          placeholder="100.00"
+        />
       </div>
 
-      <!-- Numeric Keypad (3x4) -->
-      <div class="grid grid-cols-3 gap-2.5 mb-5 font-mono">
-        @for (key of ['1','2','3','4','5','6','7','8','9']; track key) {
-          <button 
-            type="button" 
-            (click)="appendPin(key)"
-            class="h-14 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-white text-xl font-bold transition active:scale-95 border border-slate-700/50 shadow-sm flex items-center justify-center cursor-pointer">
-            {{ key }}
-          </button>
-        }
-        <button 
-          type="button" 
-          (click)="clearPin()"
-          class="h-14 rounded-2xl bg-slate-800/50 hover:bg-rose-950/40 hover:text-rose-400 text-slate-400 text-sm font-bold transition active:scale-95 border border-slate-700/50 flex items-center justify-center cursor-pointer">
-          C
-        </button>
-        <button 
-          type="button" 
-          (click)="appendPin('0')"
-          class="h-14 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-white text-xl font-bold transition active:scale-95 border border-slate-700/50 shadow-sm flex items-center justify-center cursor-pointer">
-          0
-        </button>
-        <button 
-          type="button" 
-          (click)="submitPin()"
-          class="h-14 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-base font-black transition active:scale-95 shadow-lg shadow-emerald-500/20 flex items-center justify-center cursor-pointer">
-          OK
-        </button>
-      </div>
-
-      <!-- Default Pin Hint for Testing -->
-      <div class="text-[10px] text-slate-400 font-mono">
-        Προεπιλεγμένο PIN Διαχειριστή: <span class="text-sky-400 font-bold">1234</span>
-      </div>
+      <button 
+        type="button" 
+        (click)="submitPinWithFloat()"
+        class="w-full h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl transition">
+        Έναρξη Βάρδιας &amp; Είσοδος
+      </button>
 
     </div>
   </div>
