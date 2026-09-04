@@ -108,7 +108,7 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-  public async submitPinWithFloat(): Promise<void> {
+public async submitPinWithFloat(): Promise<void> {
   const pin = this.pinInput();
   const floatAmt = this.openingFloatInput();
 
