@@ -1,5 +1,5 @@
 import type { CartItem } from './cart.model';
-
+import { StoreHardwareSettings } from './store-tenant.model';
 export type { Product, Category } from './product.model';
 export type { CartItem, HeldTicket } from './cart.model';
 export type { Customer } from './customer.model';
@@ -27,11 +27,13 @@ export interface MarketCompanyProfile {
   postalCode?: string;
   city?: string;
   email?: string;
+  hardwareSettings?: StoreHardwareSettings;
 }
 
 export interface TransactionRecord {
   id: string;
   timestamp: string;
+  storeId?: string;
   items: CartItem[];
   subtotal: number;
   taxAmount: number;

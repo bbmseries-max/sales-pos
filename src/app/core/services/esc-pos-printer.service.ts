@@ -1,8 +1,11 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { ZReportSummary } from './shift.service';
+import { TenantConfigService } from './tenant-config.service';
 import { TransactionRecord, CashierShift, CashLog, MarketCompanyProfile, SpoilageLog } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class EscPosPrinterService {
+  public tenantConfig = inject(TenantConfigService);
   public isConnected = signal<boolean>(false);
   private port: any = null;
   private device: any = null;
@@ -54,9 +57,8 @@ export class EscPosPrinterService {
   /**
    * Safe binary dispatcher for thermal printers (Web Serial / WebUSB / Dev Log)
    */
- public async dispatchPrint(data: Uint8Array): Promise<boolean> {
+  public async dispatchPrint(data: Uint8Array): Promise<boolean> {
     try {
-      // 1. Web Serial Port if already connected and open
       if (this.port && this.port.writable) {
         const writer = this.port.writable.getWriter();
         await writer.write(data);
@@ -64,13 +66,11 @@ export class EscPosPrinterService {
         return true;
       }
 
-      // 2. WebUSB Device if already connected and open
       if (this.device && this.device.opened) {
         await this.device.transferOut(1, data);
         return true;
       }
 
-      // 3. Fallback: Log simulation buffer without crashing
       console.info(`[EscPosPrinter] Thermal print payload ready (${data.length} bytes).`);
       return true;
     } catch (err) {
@@ -80,7 +80,6 @@ export class EscPosPrinterService {
   }
 
   public async printViaSerial(data: Uint8Array): Promise<boolean> {
-    // Only attempt serial write if a port is already active; do not block with unconfigured popups
     if (this.port && this.port.writable) {
       try {
         const writer = this.port.writable.getWriter();
@@ -322,10 +321,84 @@ export class EscPosPrinterService {
   }
 
   /**
-   * Final End-of-Day Closing Shift Audit (Deltio Z)
+   * Final End-of-Day Closing Shift Audit (Deltio Z) from CashierShift
    */
   public buildEscPosZReport(shift: CashierShift, profile?: Partial<MarketCompanyProfile>): Uint8Array {
     return this.generateShiftAuditReport(shift, 'Z', profile);
+  }
+
+  /**
+   * Final End-of-Day Closing Shift Audit (Deltio Z) from Dexie ZReportSummary
+   */
+  public buildEscPosZReportFromSummary(z: ZReportSummary, profile?: Partial<MarketCompanyProfile>): Uint8Array {
+    const bytes: number[] = [];
+    const push = (...b: number[]) => bytes.push(...b);
+    const pushLine = (text: string) => {
+      const clean = this.transliterateGreek(text);
+      for (let i = 0; i < clean.length; i++) {
+        bytes.push(clean.charCodeAt(i));
+      }
+      bytes.push(0x0A);
+    };
+
+    const lineWidth = 32;
+    const pad = (left: string, right: string) => {
+      const spaces = Math.max(1, lineWidth - left.length - right.length);
+      return left + ' '.repeat(spaces) + right;
+    };
+
+    push(0x1B, 0x40);
+    push(0x1B, 0x61, 0x01);
+    push(0x1B, 0x45, 0x01);
+    pushLine(profile?.storeName || 'MARANTH SUPERMARKET');
+    push(0x1B, 0x45, 0x00);
+    pushLine('DELTIO "Z" - ORISTIKO KLEISIMO');
+    pushLine('ELEGCHOS TAMEIOY & FPA');
+    pushLine('='.repeat(lineWidth));
+    push(0x1B, 0x61, 0x00);
+
+    pushLine(`TAMIAS: ${z.cashierName || 'TAMIAS 01'}`);
+    pushLine(`HM/NIA: ${new Date(z.reportDate).toLocaleDateString('el-GR')}`);
+    pushLine(`ORA:    ${new Date(z.reportDate).toLocaleTimeString('el-GR')}`);
+    pushLine(`APODEIXEIS: ${z.receiptCount}`);
+    pushLine('-'.repeat(lineWidth));
+
+    push(0x1B, 0x45, 0x01);
+    pushLine(pad('SYNOLIKOS TZIRAS:', `EUR ${z.totalSales.toFixed(2)}`));
+    push(0x1B, 0x45, 0x00);
+    pushLine(pad('METRHTA:', `EUR ${z.cashSales.toFixed(2)}`));
+    pushLine(pad('KARTES (POS):', `EUR ${z.cardSales.toFixed(2)}`));
+    pushLine('-'.repeat(lineWidth));
+
+    push(0x1B, 0x45, 0x01);
+    pushLine('ANALYSI FPA');
+    push(0x1B, 0x45, 0x00);
+    for (const [rate, val] of Object.entries(z.vatTotals || {})) {
+      if (val.net > 0 || val.vat > 0) {
+        pushLine(pad(`FPA ${rate}% (KATH: ${val.net.toFixed(2)}):`, `EUR ${val.vat.toFixed(2)}`));
+      }
+    }
+    pushLine('-'.repeat(lineWidth));
+
+    pushLine(pad('ARHIKO TAMEIO (FLOAT):', `EUR ${z.openingCash.toFixed(2)}`));
+    push(0x1B, 0x45, 0x01);
+    pushLine(pad('ANAMENOMENA METRHTA:', `EUR ${z.expectedDrawerCash.toFixed(2)}`));
+    push(0x1B, 0x45, 0x00);
+
+    if (z.actualDrawerCash !== undefined) {
+      pushLine(pad('KATAMETRHSH:', `EUR ${z.actualDrawerCash.toFixed(2)}`));
+      const diff = z.difference ?? 0;
+      const diffLabel = diff >= 0 ? `+EUR ${diff.toFixed(2)} (PLEONASMA)` : `-EUR ${Math.abs(diff).toFixed(2)} (ELLEIMMA)`;
+      pushLine(pad('DIAFORA:', diffLabel));
+    }
+
+    pushLine('\n\n');
+    push(0x1B, 0x61, 0x01);
+    pushLine('YPOGRAFI TAMEIA        YPOGRAFI YPEYTHYNOY');
+    pushLine('\n....................    ....................\n');
+
+    push(0x1D, 0x56, 0x41, 0x10);
+    return new Uint8Array(bytes);
   }
 
   /**
@@ -395,15 +468,12 @@ export class EscPosPrinterService {
     pushLine('\n\n');
     push(0x1B, 0x61, 0x01);
     pushLine('YPOGRAFI TAMEIA        YPOGRAFI YPEYTHYNOY');
-    pushLine('\n....................   ....................\n');
+    pushLine('\n....................    ....................\n');
 
     push(0x1D, 0x56, 0x41, 0x10);
     return new Uint8Array(bytes);
   }
 
-/**
-   * Fixed-Alignment Thermal / Label Slip Dispatcher
-   */
   /**
    * Fixed-Alignment Thermal / Label Slip Dispatcher
    */
@@ -444,9 +514,8 @@ export class EscPosPrinterService {
               -webkit-print-color-adjust: exact;
             }
             .slip-wrapper {
-              /* Pinned strictly to the left with zero outer margin drift */
               width: 100%;
-              max-width: 58mm; /* standard 58mm roll printable area */
+              max-width: 58mm;
               margin: 0 !important;
               padding: 0 1mm 0 0 !important;
               text-align: left;
@@ -473,12 +542,10 @@ export class EscPosPrinterService {
               white-space: nowrap;
             }
             .small { font-size: 9px; }
-            
-            /* Physical Paper-Feed Buffer to push paper past the blade */
             .cutter-feed-gap {
               display: block !important;
               width: 100% !important;
-              height: 38mm !important; /* Increased feed clearance */
+              height: 38mm !important;
               min-height: 38mm !important;
               margin-top: 8px !important;
               page-break-inside: avoid !important;
@@ -488,8 +555,6 @@ export class EscPosPrinterService {
         <body>
           <div class="slip-wrapper">
             ${htmlBody}
-            
-            <!-- Guaranteed physical feed -->
             <div class="cutter-feed-gap">&nbsp;</div>
           </div>
           <script>
@@ -547,5 +612,65 @@ export class EscPosPrinterService {
     `;
 
     this.printHtmlThermalSlip(slip);
+  }
+
+  /**
+   * Browser / HTML Thermal Slip for ZReportSummary (Includes VAT Breakdown)
+   */
+  public printZReportHtml(z: ZReportSummary, profile?: Partial<MarketCompanyProfile>): void {
+    const storeTitle = this.transliterateGreek(profile?.storeName || 'MARANTH SUPERMARKET');
+    const cashier = this.transliterateGreek(z.cashierName || 'TAMIAS 01');
+
+    const vatRows = Object.entries(z.vatTotals || {})
+      .filter(([_, v]) => v.net > 0 || v.vat > 0)
+      .map(([rate, v]) => `
+        <div class="row small">
+          <span>FPA ${rate}% (KATH: &euro;${v.net.toFixed(2)})</span>
+          <span>&euro;${v.vat.toFixed(2)}</span>
+        </div>
+      `).join('');
+
+    const slip = `
+      <div class="center bold large">${storeTitle}</div>
+      <div class="center bold">DELTIO "Z" - ORISTIKO KLEISIMO</div>
+      <div class="divider"></div>
+      <div class="small">TAMIAS: ${cashier}</div>
+      <div class="small">HM/NIA: ${new Date(z.reportDate).toLocaleDateString('el-GR')}</div>
+      <div class="small">ORA:    ${new Date(z.reportDate).toLocaleTimeString('el-GR')}</div>
+      <div class="small">APODEIXEIS: ${z.receiptCount}</div>
+      <div class="divider"></div>
+      <div class="row bold large"><span>TZIRAS:</span><span>${z.totalSales.toFixed(2)} &euro;</span></div>
+      <div class="row"><span>METRHTA:</span><span>${z.cashSales.toFixed(2)} &euro;</span></div>
+      <div class="row"><span>KARTES (POS):</span><span>${z.cardSales.toFixed(2)} &euro;</span></div>
+      <div class="divider"></div>
+      <div class="bold small">ANALYSI FPA</div>
+      ${vatRows || '<div class="small">DEN YPARHOUN POLISEIS</div>'}
+      <div class="divider"></div>
+      <div class="row"><span>FLOAT ENARXIS:</span><span>${z.openingCash.toFixed(2)} &euro;</span></div>
+      <div class="row bold"><span>ANAMENOMENO:</span><span>${z.expectedDrawerCash.toFixed(2)} &euro;</span></div>
+      ${z.actualDrawerCash !== undefined ? `
+        <div class="row"><span>KATAMETRHMENO:</span><span>${z.actualDrawerCash.toFixed(2)} &euro;</span></div>
+        <div class="row bold"><span>DIAFORA:</span><span>${((z.difference || 0) >= 0 ? '+' : '') + (z.difference || 0).toFixed(2)} &euro;</span></div>
+      ` : ''}
+      <div class="divider"></div>
+      <div class="center small">TELOS IMERAS - VARIDIA EKLEISE</div>
+    `;
+
+    this.printHtmlThermalSlip(slip);
+  }
+
+  /**
+   * Universal Z-Report Dispatcher (HTML thermal popup or Raw ESC/POS binary)
+   */
+  public async printZReport(z: ZReportSummary): Promise<void> {
+    const shop = (this.tenantConfig.activeShop() as MarketCompanyProfile) || ({} as MarketCompanyProfile);
+    const driver = shop.hardwareSettings?.printerDriver || 'browser';
+
+    if (driver === 'browser') {
+      this.printZReportHtml(z, shop);
+    } else {
+      const bytes = this.buildEscPosZReportFromSummary(z, shop);
+      await this.dispatchPrint(bytes);
+    }
   }
 }

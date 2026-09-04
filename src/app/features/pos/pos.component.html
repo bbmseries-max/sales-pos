@@ -106,7 +106,7 @@
   <div>
     <h4 class="text-sm font-semibold text-slate-100">Αναγκαστική Λήψη Καταλόγου</h4>
     <p class="text-xs text-slate-400">
-      Επανεκκίνηση και πλήρης λήψη όλων των προϊόντων από το Firestore Hub
+    FB Hub
     </p>
   </div>
 
@@ -187,13 +187,30 @@
       </span>
     </div>
 
-    <button 
-      type="button" 
-      (click)="switchCashier()" 
-      title="Αλλαγή Ταμία / Αποσύνδεση"
-      class="ml-1 p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer">
-      🔒
-    </button>
+  @if (!shiftService.currentCashier()) {
+  <div class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 p-8 rounded-2xl max-w-sm w-full shadow-2xl text-center">
+      <div class="w-12 h-12 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto mb-4 text-xl">
+        🔒
+      </div>
+      <h2 class="text-xl font-bold text-white mb-1">Κλειδωμένο Ταμείο</h2>
+      <p class="text-xs text-slate-400 mb-6">Επιλέξτε ταμία ή πληκτρολογήστε PIN για συνέχεια</p>
+
+      <!-- Cashier Selection or PIN Pad -->
+      <div class="space-y-3">
+        @for (cashier of shiftService.allCashiers(); track cashier.id) {
+          <button
+            type="button"
+            (click)="shiftService.loginWithPin(cashier.pin)"
+            class="w-full py-3 px-4 bg-slate-800 hover:bg-sky-600 text-white font-semibold rounded-xl transition flex items-center justify-between">
+            <span>{{ cashier.name }}</span>
+            <span class="text-xs text-slate-400">Είσοδος →</span>
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
   </div>
 } @else {
   <div class="flex items-center gap-2 bg-amber-950/50 border border-amber-800/80 px-3 py-1.5 rounded-xl text-amber-300 text-xs font-bold font-mono">
@@ -720,18 +737,21 @@
             Ακύρωση
           </button>
           
-          <button 
-            type="button" 
-            (click)="paymentMethod() === 'CARD' ? processCardPayment() : completeSale()" 
-            [disabled]="isCardProcessing()"
-            class="flex-1 h-14 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-base shadow-xl cursor-pointer transition flex items-center justify-center gap-2"
-          >
-            @if (isCardProcessing()) {
-              <span>Σύνδεση με POS...</span>
-            } @else {
-              <span>ΕΚΤΥΠΩΣΗ &amp; ΟΛΟΚΛΗΡΩΣΗ</span>
-            }
-          </button>
+      <button 
+  type="button" 
+  (click)="paymentMethod() === 'CARD' ? processCardPayment() : completeSale()" 
+  [disabled]="isCardProcessing() || (paymentMethod() === 'CASH' && cashTendered() < cart.grandTotal())"
+  class="flex-1 h-14 font-black rounded-xl text-base shadow-xl transition flex items-center justify-center gap-2
+         bg-emerald-500 text-slate-950 hover:bg-emerald-400 active:scale-[0.98] cursor-pointer
+         disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:bg-slate-700"
+>
+  @if (isCardProcessing()) {
+    <span class="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+    <span>Σύνδεση με POS...</span>
+  } @else {
+    <span>ΕΚΤΥΠΩΣΗ &amp; ΟΛΟΚΛΗΡΩΣΗ</span>
+  }
+</button>
         </div>
 
       </div>
@@ -1120,4 +1140,69 @@
 }
 @if (isNewStoreModalOpen()) {
   <app-new-store-modal (close)="isNewStoreModalOpen.set(false)" />
+}
+@if (shiftService.isLocked()) {
+  <div class="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 select-none">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center">
+      
+      <!-- Header -->
+      <div class="w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto mb-3 text-2xl shadow-inner border border-sky-500/20">
+        🔒
+      </div>
+      <h2 class="text-xl font-black text-white tracking-tight">Κλειδωμένο Ταμείο</h2>
+      <p class="text-xs text-slate-400 mt-1">Πληκτρολογήστε το PIN ταμία για είσοδο</p>
+
+      <!-- PIN Display -->
+      <div class="my-6">
+        <div class="h-12 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center tracking-[0.6em] text-2xl font-mono font-bold text-sky-400">
+          @if (pinInput()) {
+            <span>{{ '•'.repeat(pinInput().length) }}</span>
+          } @else {
+            <span class="text-slate-600 text-sm tracking-normal">Εισάγετε PIN</span>
+          }
+        </div>
+        @if (pinError()) {
+          <div class="text-xs text-rose-400 font-semibold mt-2 animate-bounce">
+            {{ pinError() }}
+          </div>
+        }
+      </div>
+
+      <!-- Numeric Keypad (3x4) -->
+      <div class="grid grid-cols-3 gap-2.5 mb-5 font-mono">
+        @for (key of ['1','2','3','4','5','6','7','8','9']; track key) {
+          <button 
+            type="button" 
+            (click)="appendPin(key)"
+            class="h-14 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-white text-xl font-bold transition active:scale-95 border border-slate-700/50 shadow-sm flex items-center justify-center cursor-pointer">
+            {{ key }}
+          </button>
+        }
+        <button 
+          type="button" 
+          (click)="clearPin()"
+          class="h-14 rounded-2xl bg-slate-800/50 hover:bg-rose-950/40 hover:text-rose-400 text-slate-400 text-sm font-bold transition active:scale-95 border border-slate-700/50 flex items-center justify-center cursor-pointer">
+          C
+        </button>
+        <button 
+          type="button" 
+          (click)="appendPin('0')"
+          class="h-14 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-white text-xl font-bold transition active:scale-95 border border-slate-700/50 shadow-sm flex items-center justify-center cursor-pointer">
+          0
+        </button>
+        <button 
+          type="button" 
+          (click)="submitPin()"
+          class="h-14 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-base font-black transition active:scale-95 shadow-lg shadow-emerald-500/20 flex items-center justify-center cursor-pointer">
+          OK
+        </button>
+      </div>
+
+      <!-- Default Pin Hint for Testing -->
+      <div class="text-[10px] text-slate-400 font-mono">
+        Προεπιλεγμένο PIN Διαχειριστή: <span class="text-sky-400 font-bold">1234</span>
+      </div>
+
+    </div>
+  </div>
 }

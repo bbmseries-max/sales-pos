@@ -14,7 +14,7 @@ export interface ShiftPaymentSummary {
   totalSales: number;
   transactionCount: number;
 }
-
+export type ShiftReportType = 'X-REPORT' | 'Z-REPORT';
 export type CashierRole = 'CASHIER' | 'MANAGER' | 'ADMIN';
 
 export interface Cashier {

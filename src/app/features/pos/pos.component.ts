@@ -9,6 +9,7 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
+import QRCode from 'qrcode';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -40,6 +41,7 @@ import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.ser
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { marketDb } from '../../core/db/market-db';
+import { ReceiptPrinterService } from '../../core/services/receipt-printer.service';
 
 import { 
   Product, 
@@ -76,6 +78,35 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
 export class PosComponent implements OnInit, AfterViewInit {
   @ViewChild('barcodeInput') barcodeInputRef!: ElementRef<HTMLInputElement>;
 
+  public pinInput = signal<string>('');
+  public pinError = signal<string>('');
+
+  public appendPin(digit: string): void {
+    if (this.pinInput().length < 6) {
+      this.pinInput.update(p => p + digit);
+      this.pinError.set('');
+    }
+  }
+
+  public clearPin(): void {
+    this.pinInput.set('');
+    this.pinError.set('');
+  }
+
+  public async submitPin(): Promise<void> {
+    const pin = this.pinInput();
+    if (!pin) return;
+
+    const res = await this.shiftService.loginWithPin(pin);
+    if (res.success) {
+      this.clearPin();
+      this.flashFeedback(res.message, 'success');
+    } else {
+      this.pinError.set(res.message);
+      this.pinInput.set('');
+    }
+  }
+
   // Core Services
   public catalogService = inject(MarketCatalogService);
   public cart = inject(CartService);
@@ -84,6 +115,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public scaleService = inject(ScaleBarcodeService);
   public printerService = inject(EscPosPrinterService);
   public myDataService = inject(MyDataService);
+  private receiptPrinter = inject(ReceiptPrinterService);
   public loyaltyService = inject(CustomerLoyaltyService);
   public shiftService = inject(CashierShiftService);
   public tenantConfig = inject(TenantConfigService);
@@ -121,7 +153,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public priceCheckInput = signal<string>('');
   public priceCheckResult = signal<Product | null>(null);
   public customerSearchResults = signal<Customer[]>([]);
-  public pinError = signal<string>('');
+  //public pinError = signal<string>('');
   public activeWeightedProduct = signal<Product | null>(null);
   public inputWeightKg = signal<number>(1.0);
   public countedClosingCash = signal<number>(0);
@@ -214,12 +246,14 @@ export class PosComponent implements OnInit, AfterViewInit {
   });
 
   // 3. Add switch cashier handler
-  public switchCashier(): void {
-    const confirmSwitch = confirm('Θέλετε να αποσυνδεθείτε / αλλάξετε ταμία;');
-    if (confirmSwitch) {
-      this.shiftService.currentCashier.set(null);
-    }
+public switchCashier(): void {
+  const confirmSwitch = confirm('Θέλετε να κλειδώσετε το ταμείο ή να αλλάξετε ταμία;');
+  if (confirmSwitch) {
+    this.shiftService.currentCashier.set(null);
+    this.shiftService.currentShift.set(null);
+    this.shiftService.lockScreen(); // Sets isLocked = true
   }
+}
 
   public async handleForceCatalogPull(): Promise<void> {
   try {
@@ -741,7 +775,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   const cashierName = this.shiftService?.currentCashier?.()?.name || 'Cashier 01';
 
   try {
-    // 1. Primary checkout in Dexie
+    // 1. Primary checkout in Dexie (generates tx with items, totals, timestamps)
     const tx = await this.cart.checkout(
       mappedMethod,
       cashierName,
@@ -749,7 +783,7 @@ export class PosComponent implements OnInit, AfterViewInit {
       this.changeDue ? this.changeDue() : 0
     );
 
-    // 2. Dismiss modal immediately
+    // 2. Dismiss modal immediately so cashier can scan next customer
     this.pointsToRedeem?.set?.(0);
     this.showPaymentModal.set(false);
 
@@ -763,8 +797,14 @@ export class PosComponent implements OnInit, AfterViewInit {
       }
     }
 
-    // 4. Thermal receipt print (background non-blocking)
-    this.handleFiscalPostProcessing(tx).catch(err => console.warn('[Print Slip]', err));
+    // 4. Thermal receipt print & myDATA processing (background non-blocking)
+    this.handleFiscalPostProcessing(tx)
+      .then(async (processedTx: any) => {
+        // Print with the official MARK/UID/QR if returned, or the base tx if offline
+        const recordToPrint = processedTx || tx;
+        await this.receiptPrinter.printReceipt(recordToPrint);
+      })
+      .catch(err => console.warn('[Print Slip]', err));
 
     this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
   } catch (err: any) {
