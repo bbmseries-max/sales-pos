@@ -442,6 +442,26 @@
             </div>
           </div>
 
+          <!-- Weighted Product Toggle -->
+  <div class="flex items-center justify-between p-3.5 mt-3 rounded-xl border border-slate-200 bg-slate-50">
+    <div class="space-y-0.5">
+      <label for="modal-is-weighted" class="text-xs font-bold text-slate-800 uppercase tracking-wide cursor-pointer">
+        Ζυγιζόμενο Είδος (Πώληση με Κιλό)
+      </label>
+      <p class="text-[11px] text-slate-500">
+        Όταν σκαναριστεί στο ταμείο, θα ανοίγει αυτόματα παράθυρο εισαγωγής βάρους.
+      </p>
+    </div>
+
+    <input
+      id="modal-is-weighted"
+      type="checkbox"
+      [checked]="item.isWeighted ?? false"
+      (change)="onWeightedToggle($any($event.target).checked)"
+      class="w-5 h-5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+    />
+  </div>
+
         </div>
 
         <!-- Modal Footer Actions -->

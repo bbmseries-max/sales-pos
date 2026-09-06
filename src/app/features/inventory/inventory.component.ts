@@ -232,6 +232,16 @@ export class InventoryComponent implements OnInit {
     });
   }
 
+  public onWeightedToggle(isWeighted: boolean): void {
+  const current = this.editingProduct();
+  if (!current) return;
+
+  this.editingProduct.set({
+    ...current,
+    isWeighted: isWeighted
+  });
+}
+
   public onCategoryChange(newCatId: string): void {
     const current = this.editingProduct();
     if (!current) return;
@@ -264,6 +274,7 @@ export class InventoryComponent implements OnInit {
 
     const updated: Product = {
       ...item,
+      isWeighted: Boolean(item.isWeighted),
       storeId: item.storeId || activeCode,
       updatedAt: new Date().toISOString(),
       _syncStatus: 'dirty'
