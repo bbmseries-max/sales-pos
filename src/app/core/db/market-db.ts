@@ -46,7 +46,7 @@ export class MarketDatabase extends Dexie {
     this.version(1).stores({
       products: 'id, barcode, sku, categoryId, name, isPinned, isActive, storeId, _syncStatus',
       categories: 'id, name, tenantId',
-      transactions: 'id, timestamp, paymentMethod, customerPhone, storeId, mydataMark',
+      transactions: 'id, timestamp, paymentMethod, customerPhone, storeId, mydataMark, _syncStatus',
       spoilageLogs: 'id, productId, timestamp, storeId',
       cashLogs: 'id, type, timestamp, storeId',
       customers: 'id, phone, name, afm',
