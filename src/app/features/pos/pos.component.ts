@@ -9,7 +9,7 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
-import QRCode from 'qrcode';
+import { StorageQuotaService } from '../../core/services/storage-quota.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -82,6 +82,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public nextShiftCashierPin = signal<string>('');
   public nextShiftFloat = signal<number>(100);
   public nextShiftError = signal<string>(''); 
+  private storageQuotaService = inject(StorageQuotaService);
 
   public pinInput = signal<string>('');
   public pinError = signal<string>('');
@@ -309,6 +310,7 @@ public switchCashier(): void {
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
     await this.refreshPinnedProducts();
+    await this.storageQuotaService.initPersistence();
   }
 
   public async refreshPinnedProducts(): Promise<void> {
