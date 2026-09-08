@@ -3,6 +3,7 @@ import { Injectable, signal } from '@angular/core';
 export interface ShopInfo {
   code: string;
   name: string;
+  adminPin?: string; // Unique login PIN per shop
   address?: string;
   afm?: string;
   doy?: string;
@@ -14,9 +15,36 @@ export interface ShopInfo {
 }
 
 const DEFAULT_SHOPS: ShopInfo[] = [
-  { code: 'mar-market', name: 'Maranth Market (Central)', address: 'Leof. Pentelis 45, Vrilissia', afm: '123456789', doy: 'XALANDRIOU', phone: '210-6800000', currency: 'EUR' },
-  { code: 'ftest', name: 'Epta Enteka', address: 'Plateia Agias Paraskevis 12', afm: '998877665', doy: 'AGIAS PARASKEVIS', phone: '210-6001122', currency: 'EUR' },
-  { code: 'parnasos', name: 'Maranth Parnassos', address: 'Arahova Main Rd', afm: '887766554', doy: 'LIVADEIAS', phone: '22670-31000', currency: 'EUR' }
+  {
+    code: 'mar-market',
+    name: 'Maranth Market (Central)',
+    adminPin: '2222',
+    address: 'Leof. Pentelis 45, Vrilissia',
+    afm: '123456789',
+    doy: 'XALANDRIOU',
+    phone: '210-6800000',
+    currency: 'EUR'
+  },
+  {
+    code: 'ftest',
+    name: 'Epta Enteka',
+    adminPin: '1111',
+    address: 'Plateia Agias Paraskevis 12',
+    afm: '998877665',
+    doy: 'AGIAS PARASKEVIS',
+    phone: '210-6001122',
+    currency: 'EUR'
+  },
+  {
+    code: 'parnasos',
+    name: 'Maranth Parnassos',
+    adminPin: '3333',
+    address: 'Arahova Main Rd',
+    afm: '887766554',
+    doy: 'LIVADEIAS',
+    phone: '22670-31000',
+    currency: 'EUR'
+  }
 ];
 
 export function sanitizeStoreCode(raw: string): string {
@@ -52,7 +80,16 @@ export class TenantConfigService {
       try {
         const parsed = JSON.parse(savedShops);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          currentShops = parsed;
+          // Merge defaults with saved so adminPins are preserved even if localStorage is older
+          currentShops = DEFAULT_SHOPS.map(def => {
+            const found = parsed.find((p: ShopInfo) => p.code === def.code);
+            return found ? { ...def, ...found, adminPin: found.adminPin || def.adminPin } : def;
+          });
+
+          // Add any custom shops created dynamically
+          const customShops = parsed.filter((p: ShopInfo) => !DEFAULT_SHOPS.some(def => def.code === p.code));
+          currentShops = [...currentShops, ...customShops];
+
           this.registeredShops.set(currentShops);
         }
       } catch (err) {
@@ -70,7 +107,6 @@ export class TenantConfigService {
           const active = match || parsed;
           this.activeShop.set(active);
 
-          // Guarantee active shop exists in registered list
           if (!match) {
             this.registerShop(active, false);
           }
@@ -83,6 +119,32 @@ export class TenantConfigService {
 
     // Fallback default
     this.activeShop.set(currentShops[0] || DEFAULT_SHOPS[0]);
+  }
+
+  /**
+   * Resolves store by unique admin PIN.
+   * If the user is logging into a different shop than currently active,
+   * switches the active store and reloads to re-bind the Dexie instance.
+   */
+  public resolveAndSwitchByPin(pin: string): { success: boolean; shop?: ShopInfo; isSuperAdmin?: boolean } {
+    const cleanPin = pin.trim();
+
+    // Check Master PIN first
+    if (cleanPin === '8820') {
+      this.unlockSuperAdmin(cleanPin);
+      return { success: true, shop: this.activeShop(), isSuperAdmin: true };
+    }
+
+    // Check store-specific PINs
+    const matched = this.registeredShops().find(s => s.adminPin === cleanPin);
+    if (matched) {
+      if (this.activeShop().code !== matched.code) {
+        this.switchShop(matched.code);
+      }
+      return { success: true, shop: matched, isSuperAdmin: false };
+    }
+
+    return { success: false };
   }
 
   public registerShop(shop: ShopInfo, syncStorage = true): void {
@@ -107,8 +169,8 @@ export class TenantConfigService {
 
   public updateActiveShopDetails(details: Partial<ShopInfo>): void {
     const current = this.activeShop();
-    const updated: ShopInfo = { 
-      ...current, 
+    const updated: ShopInfo = {
+      ...current,
       ...details,
       code: details.code ? sanitizeStoreCode(details.code) : current.code,
       updatedAt: new Date().toISOString()
@@ -128,10 +190,11 @@ export class TenantConfigService {
       return;
     }
 
+    this.activeShop.set(match);
     localStorage.setItem('active_shop', JSON.stringify(match));
     localStorage.setItem('active_shop_code', match.code);
 
-    // Hard reload cleanly re-mounts Dexie database singleton with new store DB
+    // Reload triggers clean Dexie connection to MaranthPOS_<cleanCode>
     window.location.reload();
   }
 

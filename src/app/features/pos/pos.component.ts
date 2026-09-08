@@ -707,14 +707,28 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   public async handlePinSubmit(pin: string): Promise<void> {
-    const success = await this.shiftService.unlockWithPin(pin);
-    if (!success) {
-      this.pinError.set('Λανθασμένο PIN!');
-    } else {
-      this.pinError.set('');
-      this.focusBarcodeInput();
-    }
+  const cleanPin = pin.trim();
+
+  // 1. Check if the PIN identifies a specific shop (or Super-Admin 8820)
+  const storeAuth = this.tenantConfig.resolveAndSwitchByPin(cleanPin);
+
+  if (storeAuth.success) {
+    this.pinError.set('');
+    // If switchShop() triggered a reload because the tenant changed, the page reboots.
+    // If the active shop was already matching, continue unlocking:
+    this.focusBarcodeInput();
+    return;
   }
+
+  // 2. Fall back to local cashier / shift PIN check for the active shop
+  const success = await this.shiftService.unlockWithPin(cleanPin);
+  if (!success) {
+    this.pinError.set('Λανθασμένο PIN!');
+  } else {
+    this.pinError.set('');
+    this.focusBarcodeInput();
+  }
+}
 
   public async handleShiftClose(countedCash: number): Promise<void> {
     try {

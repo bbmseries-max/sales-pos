@@ -3,6 +3,7 @@ export interface StoreTenant {
   id?: string;
   name: string;
   afm: string;
+  adminPin?: string;
   doy: string;
   address: string;
   phone?: string;
