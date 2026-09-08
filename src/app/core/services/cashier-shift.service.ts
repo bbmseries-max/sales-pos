@@ -29,7 +29,8 @@ export class CashierShiftService {
   public allCashiers = signal<Cashier[]>([]);
 
   public activeShift = signal<CashierShift | null>(null);
-  public async initialize(): Promise<void> {
+  
+public async initialize(): Promise<void> {
     await this.loadAllCashiers();
 
     const openShifts = await marketDb.shifts
@@ -48,14 +49,13 @@ export class CashierShiftService {
         validShift.sales = { cash: 0, card: 0, split: 0, totalSales: 0, transactionCount: 0 };
       }
       this.currentShift.set(validShift);
-      const cashier = this.allCashiers().find(c => c.id === validShift.cashierId) || null;
-      this.currentCashier.set(cashier);
-      this.isLocked.set(false);
     } else {
       this.currentShift.set(null);
-      this.currentCashier.set(null);
-      this.isLocked.set(true);
     }
+
+    // Always enforce the lock screen on initial startup/refresh
+    this.currentCashier.set(null);
+    this.isLocked.set(true);
   }
 
   private checkInitialLock(): boolean {

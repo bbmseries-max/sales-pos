@@ -79,6 +79,8 @@ export class ShiftService {
     }
   }
 
+  
+
   /**
    * Generates aggregated Z-Report figures for current shift
    */
