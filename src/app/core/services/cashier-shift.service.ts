@@ -21,11 +21,11 @@ export interface ShiftReportSnapshot {
 
 @Injectable({ providedIn: 'root' })
 export class CashierShiftService {
+  public isLocked = signal<boolean>(this.checkInitialLock());
   public tenantConfig = inject(TenantConfigService);
 
   public currentCashier = signal<Cashier | null>(null);
   public currentShift = signal<CashierShift | null>(null);
-  public isLocked = signal<boolean>(true);
   public allCashiers = signal<Cashier[]>([]);
 
   public activeShift = signal<CashierShift | null>(null);
@@ -56,6 +56,11 @@ export class CashierShiftService {
       this.currentCashier.set(null);
       this.isLocked.set(true);
     }
+  }
+
+  private checkInitialLock(): boolean {
+    const locked = sessionStorage.getItem('pos_is_locked');
+    return locked !== 'false'; // Defaults to locked on cold start / refresh
   }
 
   public setCountedCash(amount: number): void {
@@ -178,16 +183,16 @@ export class CashierShiftService {
     this.isLocked.set(true);
   }
 
-  public lockTerminal(): void {
-    this.currentCashier.set(null);
-    this.isLocked.set(true);
-    sessionStorage.setItem('pos_is_locked', 'true');
-    sessionStorage.removeItem('active_cashier_id');
-  }
+public lockTerminal(): void {
+  this.currentCashier.set(null);
+  this.isLocked.set(true);
+  sessionStorage.setItem('pos_is_locked', 'true');
+  sessionStorage.removeItem('active_cashier_id');
+}
 
-  public logout(): void {
-    this.lockTerminal();
-  }
+public logout(): void {
+  this.lockTerminal();
+}
 
   public async createCashier(cashier: Omit<Cashier, 'id'>): Promise<{ success: boolean; message?: string; cashier?: Cashier }> {
     const cleanPin = cashier.pin.trim();
@@ -363,4 +368,6 @@ export class CashierShiftService {
     await marketDb.cashiers.update(cashierId, { isActive: false });
     await this.loadAllCashiers();
   }
+
+
 }
