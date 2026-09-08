@@ -1092,12 +1092,36 @@
     (close)="showCustomerModal.set(false)"
   />
 
+@if (shiftService.isLocked() || !shiftService.currentCashier()) {
+  <!-- Lock Screen Modal / Overlay -->
   <app-pos-lock-screen 
     [isLocked]="shiftService.isLocked()"
     [cashiers]="shiftService.allCashiers()"
     [errorMessage]="pinError()"
     (pinSubmit)="handlePinSubmit($event)"
   />
+} @else {
+  <!-- Protected POS Sales Workspace -->
+  <main class="pos-workspace">
+    <!-- Header with active shop & cashier badge -->
+    <header class="pos-header">
+      <div class="store-badge">
+        Κατάστημα: <strong>{{ tenantConfig.activeShop().name }}</strong>
+      </div>
+      <div class="cashier-badge">
+        Ταμίας: <strong>{{ shiftService.currentCashier()?.name }}</strong>
+        <button type="button" class="btn-lock" (click)="shiftService.lockTerminal()">
+          Κλείδωμα / Έξοδος
+        </button>
+      </div>
+    </header>
+
+    <!-- Barcode input, cart, keypad, checkout -->
+    <section class="pos-content">
+      <!-- Your existing register UI -->
+    </section>
+  </main>
+}
 
   <app-pos-shift-handover-modal 
     [isOpen]="showShiftHandoverModal()"

@@ -178,6 +178,17 @@ export class CashierShiftService {
     this.isLocked.set(true);
   }
 
+  public lockTerminal(): void {
+    this.currentCashier.set(null);
+    this.isLocked.set(true);
+    sessionStorage.setItem('pos_is_locked', 'true');
+    sessionStorage.removeItem('active_cashier_id');
+  }
+
+  public logout(): void {
+    this.lockTerminal();
+  }
+
   public async createCashier(cashier: Omit<Cashier, 'id'>): Promise<{ success: boolean; message?: string; cashier?: Cashier }> {
     const cleanPin = cashier.pin.trim();
     const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
