@@ -109,4 +109,113 @@ export class EscPosPrinterService {
       data: base64Data
     });
   }
+
+  /**
+   * Sanitizes Greek characters for standard ESC/POS 7-bit/8-bit code pages (ISO-8859-7 / CP737 / ASCII transliteration)
+   */
+  public sanitizeGreek(str: string): string {
+    if (!str) return '';
+    const map: Record<string, string> = {
+      'Ά': 'Α', 'Έ': 'Ε', 'Ή': 'Η', 'Ί': 'Ι', 'Ό': 'Ο', 'Ύ': 'Υ', 'Ώ': 'Ω',
+      'Ϊ': 'Ι', 'Ϋ': 'Υ', 'ΐ': 'ι', 'ΰ': 'υ',
+      'ά': 'α', 'έ': 'ε', 'ή': 'η', 'ί': 'ι', 'ό': 'ο', 'ύ': 'υ', 'ώ': 'ω'
+    };
+    return str.replace(/[ΆΈΉΊΌΎΏΪΫΐΰάέήίόύώ]/g, (m) => map[m] || m);
+  }
+
+  /**
+   * Serial / Web Serial printing fallback (dispatches via local bridge if available or falls back to Web Serial)
+   */
+  public async printViaSerial(data: Uint8Array | number[]): Promise<boolean> {
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    try {
+     // 1. Try local Go bridge on 127.0.0.1:18080 if running
+      const res = await fetch('http://127.0.0.1:18080/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: bytes as any
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        return true;
+      }
+
+      // 2. Try browser Web Serial API if supported
+      if ('serial' in navigator) {
+        const serial = (navigator as any).serial;
+        const ports = await serial.getPorts();
+        if (ports.length > 0) {
+          const port = ports[0];
+          await port.open({ baudRate: 9600 });
+          const writer = port.writable.getWriter();
+          await writer.write(bytes);
+          writer.releaseLock();
+          await port.close();
+          return true;
+        }
+      }
+
+      console.warn('[EscPosPrinter] No local bridge or active serial port found.');
+      return false;
+    } catch (err) {
+      console.error('[EscPosPrinter] printViaSerial failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Builds an ESC/POS byte sequence for inventory spoilage slips
+   */
+  public buildEscPosSpoilageSlip(log: any): Uint8Array {
+    const ESC = 0x1B;
+    const GS = 0x1D;
+    const LF = 0x0A;
+    const bytes: number[] = [];
+
+    const pushStr = (text: string) => {
+      const sanitized = this.sanitizeGreek(text);
+      for (let i = 0; i < sanitized.length; i++) {
+        bytes.push(sanitized.charCodeAt(i) & 0xFF);
+      }
+    };
+
+    // Initialize printer
+    bytes.push(ESC, 0x40);
+
+    // Center alignment
+    bytes.push(ESC, 0x61, 0x01);
+    // Double height/width header
+    bytes.push(GS, 0x21, 0x11);
+    pushStr('ΔΕΛΤΙΟ ΑΠΩΛΕΙΩΝ / ΦΘΟΡΩΝ');
+    bytes.push(LF, LF);
+
+    // Normal text & Left align
+    bytes.push(GS, 0x21, 0x00);
+    bytes.push(ESC, 0x61, 0x00);
+
+    const dateStr = log?.timestamp ? new Date(log.timestamp).toLocaleString('el-GR') : new Date().toLocaleString('el-GR');
+    pushStr(`Ημερομηνία : ${dateStr}`);
+    bytes.push(LF);
+    pushStr(`Προϊόν      : ${log?.productName || log?.name || '-'}`);
+    bytes.push(LF);
+    pushStr(`Ποσότητα    : ${log?.quantity ?? '-'} ${log?.unit || 'τεμ'}`);
+    bytes.push(LF);
+    pushStr(`Αιτία       : ${log?.reason || 'Φθορά / Λήξη'}`);
+    bytes.push(LF);
+    pushStr(`Χρήστης     : ${log?.userName || log?.cashier || '-'}`);
+    bytes.push(LF, LF);
+
+    // Divider line
+    pushStr('--------------------------------');
+    bytes.push(LF, LF);
+
+    // Signature line
+    pushStr('Υπογραφή: ......................');
+    bytes.push(LF, LF, LF);
+
+    // Cut paper
+    bytes.push(GS, 0x56, 0x41, 0x03);
+
+    return new Uint8Array(bytes);
+  }
 }
