@@ -244,32 +244,33 @@ public async forcePullCatalog(): Promise<number> {
   /**
    * 1. PUSH TRANSACTIONS: Transmits myDATA fiscal MARK and saves to Firestore
    */
-  public async pushTransactionsToHub(): Promise<number> {
-    const dirtyTransactions = await marketDb.transactions
-      .where('_syncStatus')
-      .equals('dirty')
-      .sortBy('timestamp');
+ public async pushTransactionsToHub(): Promise<number> {
+  const dirtyTransactions = await marketDb.transactions
+    .where('_syncStatus')
+    .equals('dirty')
+    .sortBy('timestamp');
 
-    if (dirtyTransactions.length === 0) return 0;
+  if (dirtyTransactions.length === 0) return 0;
 
-    const currentStoreId = this.tenantConfig.activeShop()?.code || 'mar-market';
-    const activeShop = this.tenantConfig.activeShop?.() || {};
-    const companyProfile = {
-      storeName: activeShop.name || 'MARANTH MARKET',
-      afm: activeShop.afm || '123456789',
-      doy: activeShop.doy || 'DOY',
-      address: activeShop.address || ''
-    };
+  const currentStoreId = this.tenantConfig.activeShop()?.code || 'mar-market';
+  const activeShop = this.tenantConfig.activeShop?.() || {};
+  const companyProfile = {
+    storeName: activeShop.name || 'MARANTH MARKET',
+    afm: activeShop.afm || '123456789',
+    doy: activeShop.doy || 'DOY',
+    address: activeShop.address || ''
+  };
 
-    let synced = 0;
+  let synced = 0;
 
-    for (const tx of dirtyTransactions) {
-      try {
-        // Step A: AADE myDATA transmission if not already stamped
-        if (!tx.mydataMark && this.myDataService?.transmitReceipt) {
+  for (const tx of dirtyTransactions) {
+    try {
+      // Step A: AADE myDATA transmission (isolated so failures do not block cloud backup)
+      if (!tx.mydataMark && this.myDataService?.transmitReceipt) {
+        try {
           const myDataRes = await Promise.race([
             this.myDataService.transmitReceipt(tx, companyProfile),
-            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('myDATA timeout')), 5000))
+            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('myDATA timeout')), 4000))
           ]);
 
           if (myDataRes?.success && myDataRes?.mark) {
@@ -277,30 +278,50 @@ public async forcePullCatalog(): Promise<number> {
             tx.mydataUid = myDataRes.uid;
             tx.mydataQrUrl = myDataRes.qrUrl;
           }
+        } catch (mydataErr) {
+          console.warn(`[SyncService] myDATA transmission bypassed for ${tx.id}:`, mydataErr);
+          // Do NOT throw or break here! Continue to Firestore backup.
         }
+      }
 
-        // Step B: Push to Firebase Firestore
-        const { _syncStatus, ...payload } = tx;
-        const sanitized = this.cleanUndefinedFields(payload);
-        const txDocRef = doc(this.firestore, `tenants/${currentStoreId}/transactions/${tx.id}`);
-        
-        const batch = writeBatch(this.firestore);
-        batch.set(txDocRef, { ...sanitized, storeId: currentStoreId }, { merge: true });
-        await batch.commit();
+      // Step B: Push to Firebase Firestore (deep sanitized)
+      const { _syncStatus, ...payload } = tx;
+      const sanitized = this.deepSanitize(payload);
+      const txDocRef = doc(this.firestore, `tenants/${currentStoreId}/transactions/${tx.id}`);
+      
+      const batch = writeBatch(this.firestore);
+      batch.set(txDocRef, { ...sanitized, storeId: currentStoreId }, { merge: true });
+      await batch.commit();
 
-        // Step C: Mark locally as synced
-        tx._syncStatus = 'synced';
-        await marketDb.transactions.put(tx);
-        synced++;
-      } catch (itemErr) {
-        console.warn(`[SyncService] Transaction ${tx.id} sync paused:`, itemErr);
-        // Break out to preserve chronological processing order on network failure
-        break;
+      // Step C: Mark locally as synced
+      tx._syncStatus = 'synced';
+      await marketDb.transactions.put(tx);
+      synced++;
+      console.log(`[SyncService] Transaction ${tx.id} synced to Cloud & marked synced in Dexie.`);
+    } catch (itemErr) {
+      console.error(`[SyncService] Transaction ${tx.id} cloud push failed:`, itemErr);
+      break; // Preserve chronological order on genuine Firestore/network failure
+    }
+  }
+
+  return synced;
+}
+
+private deepSanitize(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(v => this.deepSanitize(v)).filter(v => v !== undefined);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined) {
+        clean[k] = this.deepSanitize(v);
       }
     }
-
-    return synced;
+    return clean;
   }
+  return obj;
+}
 
   /**
    * 2. PUSH PRODUCTS: Batched Firestore sync for stock updates and catalog edits

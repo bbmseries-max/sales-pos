@@ -35,7 +35,7 @@ import { MarketCatalogService, ExternalProductMatch } from '../../core/services/
 import { CartService } from '../../core/services/cart.service';
 import { SyncService } from '../../core/services/sync.service';
 import { ScaleBarcodeService } from '../../core/services/scale-barcode.service';
-import { EscPosPrinterService } from '../../core/services/esc-pos-printer.service';
+import { EscPosPrinterService, ReceiptPrintData } from '../../core/services/esc-pos-printer.service';
 import { MyDataService } from '../../core/services/mydata.service';
 import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.service';
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
@@ -114,20 +114,20 @@ export class PosComponent implements OnInit, AfterViewInit {
     }
   }
 
-public async submitPinWithFloat(): Promise<void> {
-  const pin = this.pinInput();
-  const floatAmt = this.openingFloatInput();
+  public async submitPinWithFloat(): Promise<void> {
+    const pin = this.pinInput();
+    const floatAmt = this.openingFloatInput();
 
-  if (!pin) return;
+    if (!pin) return;
 
-  const res = await this.shiftService.loginWithPin(pin, floatAmt);
-  if (res.success) {
-    this.clearPin();
-    this.flashFeedback(res.message, 'success');
-  } else {
-    this.pinError.set(res.message);
+    const res = await this.shiftService.loginWithPin(pin, floatAmt);
+    if (res.success) {
+      this.clearPin();
+      this.flashFeedback(res.message, 'success');
+    } else {
+      this.pinError.set(res.message);
+    }
   }
-}
 
   // Core Services
   public cashMovementAmount = signal<number>(0);
@@ -152,21 +152,19 @@ public async submitPinWithFloat(): Promise<void> {
   }
 
   public async executeCashIn(): Promise<void> {
-  const amount = this.cashMovementAmount();
-  const reason = this.cashMovementReason();
+    const amount = this.cashMovementAmount();
+    const reason = this.cashMovementReason();
 
-  if (amount <= 0) {
-    this.flashFeedback('Εισάγετε έγκυρο ποσό', 'error');
-    return;
+    if (amount <= 0) {
+      this.flashFeedback('Εισάγετε έγκυρο ποσό', 'error');
+      return;
+    }
+
+    await this.shiftService.recordCashMovement('IN', amount, reason);
+    this.flashFeedback(`✔ Προστέθηκαν €${amount.toFixed(2)} στο ταμείο`, 'success');
+    this.showCashDrawerModal.set(false);
+    this.cashMovementAmount.set(0);
   }
-
-  // Calls CashierShiftService to update cashInTotal in Dexie DB
-  await this.shiftService.recordCashMovement('IN', amount, reason);
-  
-  this.flashFeedback(`✔ Προστέθηκαν €${amount.toFixed(2)} στο ταμείο`, 'success');
-  this.showCashDrawerModal.set(false);
-  this.cashMovementAmount.set(0);
-}
 
   public showEmployeeModal = signal<boolean>(false);
   public isSavingEmployee = signal<boolean>(false);
@@ -194,7 +192,6 @@ public async submitPinWithFloat(): Promise<void> {
   public priceCheckInput = signal<string>('');
   public priceCheckResult = signal<Product | null>(null);
   public customerSearchResults = signal<Customer[]>([]);
-  //public pinError = signal<string>('');
   public activeWeightedProduct = signal<Product | null>(null);
   public inputWeightKg = signal<number>(1.0);
   public countedClosingCash = signal<number>(0);
@@ -231,7 +228,6 @@ public async submitPinWithFloat(): Promise<void> {
   private lastScannedTimestamp = 0;
 
   public isUnlockModalOpen = signal<boolean>(false);
-
   private secretClickCount = 0;
   private secretClickTimer: any = null;
 
@@ -286,25 +282,24 @@ public async submitPinWithFloat(): Promise<void> {
     return tendered >= payable ? Number((tendered - payable).toFixed(2)) : 0;
   });
 
-  // 3. Add switch cashier handler
-public switchCashier(): void {
-  const confirmSwitch = confirm('Θέλετε να κλειδώσετε το ταμείο ή να αλλάξετε ταμία;');
-  if (confirmSwitch) {
-    this.shiftService.currentCashier.set(null);
-    this.shiftService.currentShift.set(null);
-    this.shiftService.lockScreen(); // Sets isLocked = true
+  public switchCashier(): void {
+    const confirmSwitch = confirm('Θέλετε να κλειδώσετε το ταμείο ή να αλλάξετε ταμία;');
+    if (confirmSwitch) {
+      this.shiftService.currentCashier.set(null);
+      this.shiftService.currentShift.set(null);
+      this.shiftService.lockScreen();
+    }
   }
-}
 
   public async handleForceCatalogPull(): Promise<void> {
-  try {
-    const total = await this.syncService.forcePullCatalog();
-    alert(`Ο κατάλογος ενημερώθηκε επιτυχώς! Λήφθηκαν ${total} προϊόντα.`);
-  } catch (error) {
-    alert('Σφάλμα κατά την πλήρη λήψη του καταλόγου.');
-    console.error(error);
+    try {
+      const total = await this.syncService.forcePullCatalog();
+      alert(`Ο κατάλογος ενημερώθηκε επιτυχώς! Λήφθηκαν ${total} προϊόντα.`);
+    } catch (error) {
+      alert('Σφάλμα κατά την πλήρη λήψη του καταλόγου.');
+      console.error(error);
+    }
   }
-}
 
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
@@ -721,33 +716,28 @@ public switchCashier(): void {
     }
   }
 
-  // Handover Modal: End Shift (Z-Report)
   public async handleShiftClose(countedCash: number): Promise<void> {
-  try {
-    const active = this.shiftService.currentShift();
-    if (active) {
-      // 1. Dispatch 58mm Z-Report to physical printer
-      this.printerService.printShiftReportHtml(active, 'Z');
+    try {
+      const active = this.shiftService.currentShift();
+      if (active) {
+        this.printerService.printShiftReportHtml(active, 'Z');
+      }
+
+      const closedShift = await this.shiftService.closeShift(countedCash);
+      this.showShiftHandoverModal.set(false);
+
+      this.shiftService.isLocked.set(false);
+      this.nextShiftCashierPin.set('');
+      this.nextShiftFloat.set(100);
+      this.nextShiftError.set('');
+      this.showNewShiftModal.set(true);
+
+      this.flashFeedback('✔ Η βάρδια έκλεισε. Διαφορά: €' + (closedShift.discrepancy || 0).toFixed(2), 'success');
+    } catch (err: any) {
+      this.flashFeedback('⛔ Σφάλμα: ' + err.message, 'error');
     }
-
-    // 2. Close shift in database
-    const closedShift = await this.shiftService.closeShift(countedCash);
-    this.showShiftHandoverModal.set(false);
-
-    // 3. Keep screen UNLOCKED and open the Start Shift Modal
-    this.shiftService.isLocked.set(false);
-    this.nextShiftCashierPin.set('');
-    this.nextShiftFloat.set(100);
-    this.nextShiftError.set('');
-    this.showNewShiftModal.set(true);
-
-    this.flashFeedback('✔ Η βάρδια έκλεισε. Διαφορά: €' + (closedShift.discrepancy || 0).toFixed(2), 'success');
-  } catch (err: any) {
-    this.flashFeedback('⛔ Σφάλμα: ' + err.message, 'error');
   }
-}
 
-  // Handover Modal: Intermediate Audit (X-Report)
   public async printXReportSlip(): Promise<void> {
     const shift = this.shiftService.currentShift();
     if (!shift) return;
@@ -800,7 +790,6 @@ public switchCashier(): void {
       const cashierName = this.shiftService.currentCashier()?.name || 'Cashier 01';
       const tx = await this.cart.checkout('Card', cashierName, this.cardAmount(), 0);
       
-      // RECORD TO SHIFT FINANCIALS
       await this.shiftService.recordSaleToShift(tx.grandTotal, 'Card');
 
       this.isCardProcessing.set(false);
@@ -817,136 +806,124 @@ public switchCashier(): void {
     }
   }
 
- public async completeSale(): Promise<void> {
-  const uiMethod = this.paymentMethod();
-  const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
-  const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
-  const redeemed = this.pointsToRedeem ? this.pointsToRedeem() : 0;
-  const cashierName = this.shiftService?.currentCashier?.()?.name || 'Cashier 01';
+  public async completeSale(): Promise<void> {
+    const uiMethod = this.paymentMethod();
+    const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
+    const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
+    const redeemed = this.pointsToRedeem ? this.pointsToRedeem() : 0;
+    const cashierName = this.shiftService?.currentCashier?.()?.name || 'Cashier 01';
 
-  try {
-    // 1. Primary checkout in Dexie (generates tx with items, totals, timestamps)
-    const tx = await this.cart.checkout(
-      mappedMethod,
-      cashierName,
-      this.cashTendered ? this.cashTendered() : 0,
-      this.changeDue ? this.changeDue() : 0
-    );
+    try {
+      const tx = await this.cart.checkout(
+        mappedMethod,
+        cashierName,
+        this.cashTendered ? this.cashTendered() : 0,
+        this.changeDue ? this.changeDue() : 0
+      );
 
-    // 2. Dismiss modal immediately so cashier can scan next customer
-    this.pointsToRedeem?.set?.(0);
-    this.showPaymentModal.set(false);
+      this.pointsToRedeem?.set?.(0);
+      this.showPaymentModal.set(false);
 
-    // 3. Loyalty post-processing (safe)
-    if (activeCust && this.loyaltyService?.processPostSale) {
-      try {
-        const { pointsEarned } = await this.loyaltyService.processPostSale(activeCust, tx.grandTotal, redeemed);
-        tx.pointsEarned = pointsEarned;
-      } catch (loyaltyErr) {
-        console.warn('[Loyalty]', loyaltyErr);
+      if (activeCust && this.loyaltyService?.processPostSale) {
+        try {
+          const { pointsEarned } = await this.loyaltyService.processPostSale(activeCust, tx.grandTotal, redeemed);
+          tx.pointsEarned = pointsEarned;
+        } catch (loyaltyErr) {
+          console.warn('[Loyalty]', loyaltyErr);
+        }
       }
+
+      this.handleFiscalPostProcessing(tx)
+        .then(async (processedTx: any) => {
+          const recordToPrint = processedTx || tx;
+          await this.receiptPrinter.printReceipt(recordToPrint);
+        })
+        .catch(err => console.warn('[Print Slip]', err));
+
+      this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
+    } catch (err: any) {
+      console.error('[Sale Error]', err);
+      this.flashFeedback('⛔ Σφάλμα: ' + (err?.message || 'Αποτυχία ολοκλήρωσης'), 'error');
+    } finally {
+      this.focusBarcodeInput?.();
     }
-
-    // 4. Thermal receipt print & myDATA processing (background non-blocking)
-    this.handleFiscalPostProcessing(tx)
-      .then(async (processedTx: any) => {
-        // Print with the official MARK/UID/QR if returned, or the base tx if offline
-        const recordToPrint = processedTx || tx;
-        await this.receiptPrinter.printReceipt(recordToPrint);
-      })
-      .catch(err => console.warn('[Print Slip]', err));
-
-    this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
-  } catch (err: any) {
-    console.error('[Sale Error]', err);
-    this.flashFeedback('⛔ Σφάλμα: ' + (err?.message || 'Αποτυχία ολοκλήρωσης'), 'error');
-  } finally {
-    this.focusBarcodeInput?.();
   }
-}
 
-// Helper: Fiscal / Hardware wrapper that never crashes the POS UI
-private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
-  try {
-    await this.handleFiscalPostProcessing(tx);
-  } catch (fiscalErr) {
-    console.warn('[Fiscal / Hardware Bypass] Could not connect to fiscal bridge or printer:', fiscalErr);
-    // In Greek offline retail, signature is queued for cloud synchronization
+  private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
+    try {
+      await this.handleFiscalPostProcessing(tx);
+    } catch (fiscalErr) {
+      console.warn('[Fiscal / Hardware Bypass] Could not connect to fiscal bridge or printer:', fiscalErr);
+    }
   }
-}
 
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
-  // Safe company profile resolution with nullish coalescing
-  const activeShop = this.tenantConfig.activeShop?.() || {};
-  const companyProfile: MarketCompanyProfile = {
-    storeName: activeShop.name || 'MARANTH MARKET',
-    address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
-    afm: activeShop.afm || this.myDataService?.credentials?.()?.issuerAfm || '123456789',
-    doy: activeShop.doy || 'XALANDRIOU',
-    phone: activeShop.phone || '210-6800000'
-  };
+    const activeShop = this.tenantConfig.activeShop?.() || {};
+    const companyProfile: MarketCompanyProfile = {
+      storeName: activeShop.name || 'MARANTH MARKET',
+      address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
+      afm: activeShop.afm || this.myDataService?.credentials?.()?.issuerAfm || '123456789',
+      doy: activeShop.doy || 'XALANDRIOU',
+      phone: activeShop.phone || '210-6800000'
+    };
 
-  // 1. myDATA Fiscal Transmission (Safe Offline Boundary)
-  try {
-    if (this.myDataService?.transmitReceipt && navigator.onLine) {
-      const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
-      if (myDataRes?.success && myDataRes?.mark) {
-        tx.mydataMark = myDataRes.mark;
-        tx.mydataUid = myDataRes.uid;
-        tx.mydataQrUrl = myDataRes.qrUrl;
+    try {
+      if (this.myDataService?.transmitReceipt && navigator.onLine) {
+        const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
+        if (myDataRes?.success && myDataRes?.mark) {
+          tx.mydataMark = myDataRes.mark;
+          tx.mydataUid = myDataRes.uid;
+          tx.mydataQrUrl = myDataRes.qrUrl;
+          await marketDb.transactions.put(tx);
+        }
+      } else {
+        tx._syncStatus = 'dirty';
         await marketDb.transactions.put(tx);
       }
-    } else {
-      // Mark transaction for background offline sync
-      tx._syncStatus = 'dirty';
-      await marketDb.transactions.put(tx);
+    } catch (fiscalErr) {
+      console.warn('[Fiscal/myDATA] Transmission skipped or offline, queued locally:', fiscalErr);
     }
-  } catch (fiscalErr) {
-    console.warn('[Fiscal/myDATA] Transmission skipped or offline, queued locally:', fiscalErr);
-  }
 
-  // 2. Dispatch Customer Receipt via HTML 58mm printer dialogue
-  try {
-    const storeTitle = this.printerService.transliterateGreek(companyProfile.storeName || 'MARANTH SUPERMARKET');
-    
-    // Null-safe item mapping (handles both nested item.product and flat cart items)
-    const itemsHtml = (tx.items || []).map(item => {
-      const pName = item.product?.name || (item as any).name || 'PROION';
-      const pPrice = Number(item.product?.price ?? (item as any).price ?? 0);
-      const pQty = Number(item.quantity || 1);
-      const safeName = this.printerService.transliterateGreek(pName).substring(0, 16);
-      const lineTotal = (pQty * pPrice).toFixed(2);
+    try {
+      const storeTitle = this.printerService.transliterateGreek(companyProfile.storeName || 'MARANTH SUPERMARKET');
+      
+      const itemsHtml = (tx.items || []).map(item => {
+        const pName = item.product?.name || (item as any).name || 'PROION';
+        const pPrice = Number(item.product?.price ?? (item as any).price ?? 0);
+        const pQty = Number(item.quantity || 1);
+        const safeName = this.printerService.transliterateGreek(pName).substring(0, 16);
+        const lineTotal = (pQty * pPrice).toFixed(2);
 
-      return `
-        <div class="row">
-          <span>${safeName}</span>
-          <span>${pQty}x ${lineTotal}&euro;</span>
-        </div>
+        return `
+          <div class="row">
+            <span>${safeName}</span>
+            <span>${pQty}x ${lineTotal}&euro;</span>
+          </div>
+        `;
+      }).join('');
+
+      const slip = `
+        <div class="center bold large">${storeTitle}</div>
+        <div class="center small">APODEIXI LIANIKIS POLISIS</div>
+        <div class="divider"></div>
+        <div class="small">HM/NIA: ${new Date(tx.timestamp || Date.now()).toLocaleString('el-GR')}</div>
+        <div class="small">PARAST.: ${(tx.id || '').substring(0, 8)}</div>
+        <div class="divider"></div>
+        ${itemsHtml}
+        <div class="divider"></div>
+        <div class="row bold large"><span>SYNOLO:</span><span>${(tx.grandTotal || 0).toFixed(2)} &euro;</span></div>
+        <div class="row"><span>TROPOS:</span><span>${(tx.paymentMethod || 'METRHTA').toUpperCase()}</span></div>
+        ${tx.cashTendered ? `<div class="row"><span>METRHTA:</span><span>${Number(tx.cashTendered).toFixed(2)} &euro;</span></div>` : ''}
+        ${tx.changeDue ? `<div class="row"><span>RESTA:</span><span>${Number(tx.changeDue).toFixed(2)} &euro;</span></div>` : ''}
+        <div class="divider"></div>
+        <div class="center small">EYXARISTOYME GIA THN PROTIMHSH!</div>
       `;
-    }).join('');
 
-    const slip = `
-      <div class="center bold large">${storeTitle}</div>
-      <div class="center small">APODEIXI LIANIKIS POLISIS</div>
-      <div class="divider"></div>
-      <div class="small">HM/NIA: ${new Date(tx.timestamp || Date.now()).toLocaleString('el-GR')}</div>
-      <div class="small">PARAST.: ${(tx.id || '').substring(0, 8)}</div>
-      <div class="divider"></div>
-      ${itemsHtml}
-      <div class="divider"></div>
-      <div class="row bold large"><span>SYNOLO:</span><span>${(tx.grandTotal || 0).toFixed(2)} &euro;</span></div>
-      <div class="row"><span>TROPOS:</span><span>${(tx.paymentMethod || 'METRHTA').toUpperCase()}</span></div>
-      ${tx.cashTendered ? `<div class="row"><span>METRHTA:</span><span>${Number(tx.cashTendered).toFixed(2)} &euro;</span></div>` : ''}
-      ${tx.changeDue ? `<div class="row"><span>RESTA:</span><span>${Number(tx.changeDue).toFixed(2)} &euro;</span></div>` : ''}
-      <div class="divider"></div>
-      <div class="center small">EYXARISTOYME GIA THN PROTIMHSH!</div>
-    `;
-
-    this.printerService.printHtmlThermalSlip(slip);
-  } catch (printErr) {
-    console.warn('[Printer] Receipt print bypassed:', printErr);
+      this.printerService.printHtmlThermalSlip(slip);
+    } catch (printErr) {
+      console.warn('[Printer] Receipt print bypassed:', printErr);
+    }
   }
-}
 
   public openPriceCheck(): void {
     this.priceCheckInput.set('');
@@ -991,7 +968,6 @@ private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
     }
   }
 
-  // Top/Header X-Report action
   public onPrintXReport(): void {
     const active = this.shiftService.currentShift();
     if (active) {
@@ -999,40 +975,37 @@ private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
     }
   }
 
-  // Top/Header Z-Report / Shift Close action
- public async onCloseZReport(countedCash: number = 0): Promise<void> {
-  const active = this.shiftService.currentShift();
-  if (active) {
-    this.printerService.printShiftReportHtml(active, 'Z');
-    await this.shiftService.closeShift(countedCash);
-    
-    // Prevent lock screen from popping up; show New Shift modal
-    this.shiftService.isLocked.set(false);
-    this.nextShiftCashierPin.set('');
-    this.nextShiftFloat.set(100);
-    this.nextShiftError.set('');
-    this.showNewShiftModal.set(true);
-  }
-}
-
-// Confirm handler for the New Shift Modal
-public async confirmStartNewShift(): Promise<void> {
-  const pin = this.nextShiftCashierPin().trim();
-  const floatAmt = Number(this.nextShiftFloat()) || 0;
-
-  if (!pin) {
-    this.nextShiftError.set('Επιλέξτε ταμία ή συμπληρώστε PIN.');
-    return;
+  public async onCloseZReport(countedCash: number = 0): Promise<void> {
+    const active = this.shiftService.currentShift();
+    if (active) {
+      this.printerService.printShiftReportHtml(active, 'Z');
+      await this.shiftService.closeShift(countedCash);
+      
+      this.shiftService.isLocked.set(false);
+      this.nextShiftCashierPin.set('');
+      this.nextShiftFloat.set(100);
+      this.nextShiftError.set('');
+      this.showNewShiftModal.set(true);
+    }
   }
 
-  const res = await this.shiftService.loginWithPin(pin, floatAmt);
-  if (res.success) {
-    this.showNewShiftModal.set(false);
-    this.nextShiftCashierPin.set('');
-    this.flashFeedback(`✔ Η βάρδια άνοιξε με μαγιά €${floatAmt.toFixed(2)}`, 'success');
-    this.focusBarcodeInput();
-  } else {
-    this.nextShiftError.set(res.message);
+  public async confirmStartNewShift(): Promise<void> {
+    const pin = this.nextShiftCashierPin().trim();
+    const floatAmt = Number(this.nextShiftFloat()) || 0;
+
+    if (!pin) {
+      this.nextShiftError.set('Επιλέξτε ταμία ή συμπληρώστε PIN.');
+      return;
+    }
+
+    const res = await this.shiftService.loginWithPin(pin, floatAmt);
+    if (res.success) {
+      this.showNewShiftModal.set(false);
+      this.nextShiftCashierPin.set('');
+      this.flashFeedback(`✔ Η βάρδια άνοιξε με μαγιά €${floatAmt.toFixed(2)}`, 'success');
+      this.focusBarcodeInput();
+    } else {
+      this.nextShiftError.set(res.message);
+    }
   }
-}
 }

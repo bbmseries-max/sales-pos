@@ -29,57 +29,53 @@ export class CartService {
   // Computed Totals & Greek VAT Breakdown
   public grandTotal = computed(() => {
     const lineTotal = this.items().reduce((sum, item) => {
-    const originalLine = (item.product.price || 0) * item.quantity;
-    const itemDiscPct = item.discountPercent || 0;
-    const itemDiscVal = item.discountAmount || (originalLine * (itemDiscPct / 100));
-    const effectiveLine = Math.max(0, originalLine - itemDiscVal);
-    
-    return sum + (item.isRefund ? -effectiveLine : effectiveLine);
-  }, 0);
+      const originalLine = (item.product.price || 0) * item.quantity;
+      const itemDiscPct = item.discountPercent || 0;
+      const itemDiscVal = item.discountAmount || (originalLine * (itemDiscPct / 100));
+      const effectiveLine = Math.max(0, originalLine - itemDiscVal);
+      
+      return sum + (item.isRefund ? -effectiveLine : effectiveLine);
+    }, 0);
 
-  const cartDisc = lineTotal * (this.cartDiscountPercent() / 100);
-  return Math.max(0, Number((lineTotal - cartDisc).toFixed(2)));
-});
-
-  public netSubtotal = computed(() => {
-   const basketRatio = 1 - (this.cartDiscountPercent() / 100);
-
-  return this.items().reduce((sum, item) => {
-    const rate = item.product.vatRate || 24;
-    const divisor = 1 + rate / 100;
-    
-    const originalLine = (item.product.price || 0) * item.quantity;
-    const itemDiscPct = item.discountPercent || 0;
-    const itemDiscVal = item.discountAmount || (originalLine * (itemDiscPct / 100));
-    const effectiveLine = Math.max(0, originalLine - itemDiscVal) * basketRatio;
-    
-    const lineNet = effectiveLine / divisor;
-    return sum + (item.isRefund ? -lineNet : lineNet);
-  }, 0);
+    const cartDisc = lineTotal * (this.cartDiscountPercent() / 100);
+    return Math.max(0, Number((lineTotal - cartDisc).toFixed(2)));
   });
 
-  // Set discount on a specific item in the cart
-public setItemDiscount(productId: string | number, discountPercent: number): void {
-  this.items.update(curr =>
-    curr.map(item =>
-      String(item.product.id || item.product.barcode) === String(productId)
-        ? { ...item, discountPercent: Math.min(100, Math.max(0, discountPercent)) }
-        : item
-    )
-  );
-}
+  public netSubtotal = computed(() => {
+    const basketRatio = 1 - (this.cartDiscountPercent() / 100);
 
-// Set discount on the entire basket
-public setCartDiscount(percent: number): void {
-  this.cartDiscountPercent.set(Math.min(100, Math.max(0, percent)));
-}
+    return this.items().reduce((sum, item) => {
+      const rate = item.product.vatRate || 24;
+      const divisor = 1 + rate / 100;
+      
+      const originalLine = (item.product.price || 0) * item.quantity;
+      const itemDiscPct = item.discountPercent || 0;
+      const itemDiscVal = item.discountAmount || (originalLine * (itemDiscPct / 100));
+      const effectiveLine = Math.max(0, originalLine - itemDiscVal) * basketRatio;
+      
+      const lineNet = effectiveLine / divisor;
+      return sum + (item.isRefund ? -lineNet : lineNet);
+    }, 0);
+  });
 
-  public totalTaxAmount = computed(() => this.grandTotal() - this.netSubtotal());
+  public setItemDiscount(productId: string | number, discountPercent: number): void {
+    this.items.update(curr =>
+      curr.map(item =>
+        String(item.product.id || item.product.barcode) === String(productId)
+          ? { ...item, discountPercent: Math.min(100, Math.max(0, discountPercent)) }
+          : item
+      )
+    );
+  }
+
+  public setCartDiscount(percent: number): void {
+    this.cartDiscountPercent.set(Math.min(100, Math.max(0, percent)));
+  }
+
+  public totalTaxAmount = computed(() => Number((this.grandTotal() - this.netSubtotal()).toFixed(2)));
   public totalItemCount = computed(() => this.items().reduce((sum, i) => sum + (i.product.isWeighted ? 1 : i.quantity), 0));
 
   // --- CART MUTATIONS ---
-
-// In src/app/core/services/cart.service.ts:
 
   public addItem(product: Product, quantity?: number, forceRefund?: boolean): boolean {
     const isRef = forceRefund !== undefined ? forceRefund : this.isRefundMode();
@@ -87,7 +83,6 @@ public setCartDiscount(percent: number): void {
     const prodId = product.id || product.barcode;
     const availableStock = product.stockQuantity ?? 0;
 
-    // Reject non-refund sales if stock is 0 or less
     if (!isRef && availableStock <= 0) {
       return false;
     }
@@ -101,7 +96,6 @@ public setCartDiscount(percent: number): void {
         const step = quantity !== undefined ? quantity : (product.isWeighted ? 0.100 : 1);
         const proposedQty = parseFloat((copy[idx].quantity + step).toFixed(3));
 
-        // Block increment if proposed quantity exceeds stock
         if (!isRef && proposedQty > availableStock) {
           success = false;
           return curr;
@@ -111,7 +105,6 @@ public setCartDiscount(percent: number): void {
         return copy;
       }
 
-      // Block initial add if requested quantity exceeds stock
       if (!isRef && qty > availableStock) {
         success = false;
         return curr;
@@ -179,7 +172,6 @@ public setCartDiscount(percent: number): void {
     const clean = barcode.trim();
     if (!clean) return false;
 
-    // 1. Scale Barcode (Prefixes 20-29)
     const scaleParsed = this.scaleService.parse(clean);
     if (scaleParsed.isScaleBarcode) {
       const product = this.catalogService.products().find(p =>
@@ -198,7 +190,6 @@ public setCartDiscount(percent: number): void {
       }
     }
 
-    // 2. Standard EAN / SKU Barcode
     const product = this.catalogService.products().find(p => p.barcode === clean || p.id === clean || p.sku === clean);
     if (product) {
       this.addItem(product, 1);
@@ -210,114 +201,152 @@ public setCartDiscount(percent: number): void {
 
   // --- CHECKOUT & TRANSACTION FINALIZATION ---
 
-public async checkout(
-  paymentMethod: 'Cash' | 'Card' | 'Debit' | 'Split' = 'Cash',
-  cashierName = 'Cashier 01',
-  cashTendered?: number,
-  changeDue?: number
-): Promise<TransactionRecord> {
-  const currentItems = this.items();
-  if (!currentItems || currentItems.length === 0) {
-    throw new Error('Το καλάθι είναι άδειο');
-  }
+  public async checkout(
+    paymentMethod: 'Cash' | 'Card' | 'Debit' | 'Split' = 'Cash',
+    cashierName = 'Cashier 01',
+    cashTendered?: number,
+    changeDue?: number
+  ): Promise<TransactionRecord> {
+    const currentItems = this.items();
+    if (!currentItems || currentItems.length === 0) {
+      throw new Error('Το καλάθι είναι άδειο');
+    }
 
-  const grandTotal = this.grandTotal();
-  const taxAmount = this.totalTaxAmount();
-  const subtotal = this.netSubtotal();
+    const grandTotal = this.grandTotal();
+    const taxAmount = this.totalTaxAmount();
+    const subtotal = this.netSubtotal();
 
-  // 1. Prepare initial record
-  const record: TransactionRecord = {
-    id: 'TX-' + Date.now().toString(36).toUpperCase(),
-    timestamp: new Date().toISOString(),
-    items: [...currentItems],
-    subtotal: Number(subtotal.toFixed(2)),
-    taxAmount: Number(taxAmount.toFixed(2)),
-    grandTotal: Number(grandTotal.toFixed(2)),
-    paymentMethod,
-    cashier: cashierName,
-    cashierName,
-    cashTendered: cashTendered ?? grandTotal,
-    changeDue: changeDue ?? 0,
-    vatBreakdown: this.taxBreakdown(),
-    _syncStatus: 'dirty'
-  };
+    // 1. Prepare initial transaction record
+    const record: TransactionRecord = {
+      id: 'TX-' + Date.now().toString(36).toUpperCase(),
+      timestamp: new Date().toISOString(),
+      items: [...currentItems],
+      subtotal: Number(subtotal.toFixed(2)),
+      taxAmount: Number(taxAmount.toFixed(2)),
+      grandTotal: Number(grandTotal.toFixed(2)),
+      paymentMethod,
+      cashier: cashierName,
+      cashierName,
+      cashTendered: cashTendered ?? grandTotal,
+      changeDue: changeDue ?? 0,
+      vatBreakdown: this.taxBreakdown(),
+      _syncStatus: 'dirty'
+    };
 
-  // 2. Safe myDATA attempt (Only runs if online, strictly non-blocking)
-  if (navigator.onLine && this.myDataService?.transmitReceipt) {
+    // 2. Safe non-blocking myDATA attempt (if online)
+    if (navigator.onLine && this.myDataService?.transmitReceipt) {
+      try {
+        const activeShop = this.tenantConfig?.activeShop?.() || {};
+        const myDataRes = await Promise.race([
+          this.myDataService.transmitReceipt(record, {
+            name: activeShop.name || 'MARANTH MARKET',
+            afm: activeShop.afm || '123456789',
+            doy: activeShop.doy || 'DOY',
+            address: activeShop.address || ''
+          }),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('myDATA timeout')), 2500))
+        ]);
+
+        if (myDataRes?.success) {
+          record.mydataMark = myDataRes.mark;
+          record.mydataUid = myDataRes.uid;
+          record.mydataQrUrl = myDataRes.qrUrl;
+          record._syncStatus = 'synced';
+        }
+      } catch (err) {
+        console.warn('[CHECKOUT] AADE myDATA offline fallback - queued locally:', err);
+      }
+    }
+
+    // 3. Local Atomic Transaction: Save TX & Deduct Product Stock in Dexie
+    await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
+      await marketDb.transactions.add(record);
+
+      for (const item of currentItems) {
+        const prod = item.product || (item as any);
+        const targetBarcode = String(prod.barcode || '').trim();
+        const targetId = prod.id;
+        const qtySold = Number(item.quantity) || 0;
+
+        let dbProd = null;
+        if (targetId !== undefined && targetId !== null) {
+          dbProd = await marketDb.products.get(targetId);
+        }
+        if (!dbProd && targetBarcode) {
+          dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
+        }
+
+        if (dbProd) {
+          const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
+          const newQty = Number(Math.max(0, currentQty - qtySold).toFixed(3));
+          const keyToUpdate = dbProd.id !== undefined ? dbProd.id : dbProd.barcode;
+
+          await marketDb.products.update(keyToUpdate, {
+            stockQuantity: newQty,
+            stock: newQty,
+            updatedAt: new Date().toISOString(),
+            _syncStatus: 'dirty'
+          });
+        }
+      }
+    });
+
+    // 4. Trigger Hardware Bridge (Thermal Receipt & Drawer Kick)
+    this.dispatchHardwareActions(record, paymentMethod);
+
+    // 5. Record to active shift
     try {
-      const activeShop = this.tenantConfig?.activeShop?.() || {};
-      const myDataRes = await Promise.race([
-        this.myDataService.transmitReceipt(record, {
-          name: activeShop.name || 'MARANTH MARKET',
-          afm: activeShop.afm || '123456789',
-          doy: activeShop.doy || 'DOY',
-          address: activeShop.address || ''
-        }),
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('myDATA timeout')), 2500))
-      ]);
-
-      if (myDataRes?.success) {
-        record.mydataMark = myDataRes.mark;
-        record.mydataUid = myDataRes.uid;
-        record.mydataQrUrl = myDataRes.qrUrl;
-        record._syncStatus = 'synced';
+      if (this.shiftService?.recordSaleToShift) {
+        await this.shiftService.recordSaleToShift(grandTotal, paymentMethod, false);
       }
-    } catch (err) {
-      console.warn('[CHECKOUT] AADE myDATA offline fallback - queued locally:', err);
+    } catch (shiftErr) {
+      console.warn('[CHECKOUT] Shift recording warning:', shiftErr);
     }
+
+    // 6. Set receipt state and clear basket
+    this.lastProcessedReceipt.set(record);
+    this.clear();
+
+    // 7. Refresh in-memory catalog in background
+    this.catalogService?.loadInitialCatalog?.().catch(e => console.warn('[Catalog Refresh]', e));
+
+    return record;
   }
 
-  // 3. Local Atomic Transaction: Save TX & Deduct Product Stock in Dexie
-  await marketDb.transaction('rw', [marketDb.transactions, marketDb.products], async () => {
-    await marketDb.transactions.add(record);
+  private dispatchHardwareActions(record: TransactionRecord, paymentMethod: string): void {
+    if (!this.printerService) return;
 
-    for (const item of currentItems) {
-      const prod = item.product || (item as any);
-      const targetBarcode = String(prod.barcode || '').trim();
-      const targetId = prod.id;
-      const qtySold = Number(item.quantity) || 0;
+    const activeShop = this.tenantConfig?.activeShop?.() || {};
+    const shouldKickDrawer = paymentMethod === 'Cash' || paymentMethod === 'Split';
 
-      let dbProd = null;
-      if (targetId !== undefined && targetId !== null) {
-        dbProd = await marketDb.products.get(targetId);
-      }
-      if (!dbProd && targetBarcode) {
-        dbProd = await marketDb.products.where('barcode').equals(targetBarcode).first();
-      }
+    const receiptItems = record.items.map(item => {
+      const prod = (item as any).product || item;
+      return {
+        name: prod.name || 'Προϊόν',
+        qty: Number(item.quantity) || 1,
+        price: Number(prod.price ?? 0)
+      };
+    });
 
-      if (dbProd) {
-        const currentQty = Number(dbProd.stockQuantity ?? dbProd.stock ?? 0);
-        const newQty = Number(Math.max(0, currentQty - qtySold).toFixed(3));
-        const keyToUpdate = dbProd.id !== undefined ? dbProd.id : dbProd.barcode;
+    // Send receipt to bridge
+    this.printerService.printReceipt({
+      storeName: activeShop.name || 'MARANTH MARKET',
+      receiptNumber: record.id,
+      date: new Date(record.timestamp).toLocaleString('el-GR'),
+      items: receiptItems,
+      total: record.grandTotal
+    }).subscribe({
+      next: () => console.log(`[HARDWARE] Receipt ${record.id} printed successfully.`),
+      error: (err: any) => console.warn('[HARDWARE] Printer bridge call skipped/failed:', err)
+    });
 
-        await marketDb.products.update(keyToUpdate, {
-          stockQuantity: newQty,
-          stock: newQty,
-          updatedAt: new Date().toISOString(),
-          _syncStatus: 'dirty'
-        });
-      }
+    // Pulse drawer if paying Cash / Split
+    if (shouldKickDrawer && typeof this.printerService.openCashDrawer === 'function') {
+      this.printerService.openCashDrawer().subscribe({
+        error: (err: any) => console.warn('[HARDWARE] Drawer kick error:', err)
+      });
     }
-  });
-
-  // 4. Record to active shift (wrapped so a shift failure never cancels the sale)
-  try {
-    if (this.shiftService?.recordSaleToShift) {
-      await this.shiftService.recordSaleToShift(grandTotal, paymentMethod, false);
-    }
-  } catch (shiftErr) {
-    console.warn('[CHECKOUT] Shift recording warning:', shiftErr);
   }
-
-  // 5. Store last receipt & clean cart state
-  this.lastProcessedReceipt?.set?.(record);
-  this.clear();
-
-  // 6. Asynchronously refresh catalog without blocking the UI
-  this.catalogService?.loadInitialCatalog?.().catch(e => console.warn('[Catalog Refresh]', e));
-
-  return record;
-}
 
   public addProduct(product: Product, quantity?: number, forceRefund?: boolean): void {
     this.addItem(product, quantity, forceRefund);
@@ -375,9 +404,9 @@ public async checkout(
     };
 
     for (const item of this.items()) {
-     const rate = (item.product.vatRate !== undefined && item.product.vatRate !== null) 
-  ? Number(item.product.vatRate) 
-  : 24;
+      const rate = (item.product.vatRate !== undefined && item.product.vatRate !== null) 
+        ? Number(item.product.vatRate) 
+        : 24;
       const gross = (item.product.price || 0) * item.quantity;
       const multiplier = item.isRefund ? -1 : 1;
       const signedGross = gross * multiplier;
