@@ -151,33 +151,58 @@ public async initialize(): Promise<void> {
     return { success: true, message: `Καλωσήρθατε, ${cashier.name}` };
   }
 
-  public async unlockWithPin(pin: string): Promise<boolean> {
-  const cleanPin = pin.trim();
+public async unlockWithPin(pin: string): Promise<boolean> {
+    const cleanPin = pin.trim();
 
-  // 1. Check if this PIN belongs to a store tenant or super-admin
-  const storeAuth = this.tenantConfig.resolveAndSwitchByPin(cleanPin);
-  if (storeAuth.success) {
-    // If it had to switch shops, resolveAndSwitchByPin already triggered a reload.
-    // If the active shop was already matching:
-    await this.loadAllCashiers();
-    const adminCashier = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN');
-    if (adminCashier) {
-      this.currentCashier.set(adminCashier);
+    // 1. Super-Admin PIN (8820) Override
+    if (cleanPin === '8820') {
+      const superAdminCashier: Cashier = {
+        id: 'SUPER-ADMIN',
+        name: 'Super Admin',
+        pin: '8820',
+        role: 'ADMIN',
+        storeId: this.tenantConfig.activeShop()?.code || 'ftest',
+        isActive: true
+      };
+      this.setAuthenticatedCashier(superAdminCashier);
+      return true;
     }
-    return true;
+
+    // 2. Tenant Store Routing / Admin PIN
+    const storeAuth = this.tenantConfig.resolveAndSwitchByPin(cleanPin);
+    if (storeAuth.success) {
+      // If store changed, resolveAndSwitchByPin reloaded the page.
+      // If store was already active, authenticate as store admin:
+      await this.loadAllCashiers();
+      const admin = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN') || {
+        id: `ADMIN-${cleanPin}`,
+        name: `Διαχειριστής (${this.tenantConfig.activeShop().name})`,
+        pin: cleanPin,
+        role: 'ADMIN',
+        storeId: this.tenantConfig.activeShop().code,
+        isActive: true
+      };
+      this.setAuthenticatedCashier(admin as Cashier);
+      return true;
+    }
+
+    // 3. Regular Cashier PIN lookup in active Dexie database
+    await this.loadAllCashiers();
+    const matched = this.allCashiers().find(c => c.pin === cleanPin);
+    if (matched) {
+      this.setAuthenticatedCashier(matched);
+      return true;
+    }
+
+    return false;
   }
 
-  // 2. Standard cashier PIN lookup in the current active database
-  const cashiers = this.allCashiers();
-  const matched = cashiers.find(c => c.pin === cleanPin);
-
-  if (matched) {
-    this.currentCashier.set(matched);
-    return true;
+  private setAuthenticatedCashier(cashier: Cashier): void {
+    this.currentCashier.set(cashier);
+    this.isLocked.set(false);
+    sessionStorage.setItem('pos_is_locked', 'false');
+    sessionStorage.setItem('active_cashier_id', cashier.id);
   }
-
-  return false;
-}
 
   public lockScreen(): void {
     this.isLocked.set(true);
