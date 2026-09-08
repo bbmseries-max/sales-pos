@@ -71,27 +71,34 @@ export class CashierShiftService {
 
 
   public async loadAllCashiers(): Promise<void> {
-    let list = await marketDb.cashiers.toArray();
-    list = (list || []).filter(c => c.isActive !== false);
+  let list = await marketDb.cashiers.toArray();
+  list = (list || []).filter(c => c.isActive !== false);
 
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+  const activeStore = this.tenantConfig.activeShop();
+  const activeStoreCode = activeStore.code || 'mar-market';
 
-    if (list.length === 0) {
-      const activeStore = this.tenantConfig.activeShop();
-      const initialAdmin: Cashier = {
-        id: `CASH-ADMIN`,
-        name: `Διαχειριστής (${activeStore.name})`,
-        pin: '1234',
-        role: 'ADMIN',
-        storeId: activeStoreCode,
-        isActive: true
-      };
-      await marketDb.cashiers.add(initialAdmin);
-      list = [initialAdmin];
-    }
+  if (list.length === 0) {
+    // Dynamically assign the store-specific PIN
+    const storePin = (activeStore as any).adminPin || (
+      activeStoreCode === 'ftest' ? '1111' :
+      activeStoreCode === 'parnasos' ? '3333' : '2222'
+    );
 
-    this.allCashiers.set(list);
+    const initialAdmin: Cashier = {
+      id: `CASH-ADMIN-${activeStoreCode.toUpperCase()}`,
+      name: `Διαχειριστής (${activeStore.name})`,
+      pin: storePin,
+      role: 'ADMIN',
+      storeId: activeStoreCode,
+      isActive: true
+    };
+
+    await marketDb.cashiers.add(initialAdmin);
+    list = [initialAdmin];
   }
+
+  this.allCashiers.set(list);
+}
 
   public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
@@ -140,9 +147,32 @@ export class CashierShiftService {
   }
 
   public async unlockWithPin(pin: string): Promise<boolean> {
-    const res = await this.loginWithPin(pin);
-    return res.success;
+  const cleanPin = pin.trim();
+
+  // 1. Check if this PIN belongs to a store tenant or super-admin
+  const storeAuth = this.tenantConfig.resolveAndSwitchByPin(cleanPin);
+  if (storeAuth.success) {
+    // If it had to switch shops, resolveAndSwitchByPin already triggered a reload.
+    // If the active shop was already matching:
+    await this.loadAllCashiers();
+    const adminCashier = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN');
+    if (adminCashier) {
+      this.currentCashier.set(adminCashier);
+    }
+    return true;
   }
+
+  // 2. Standard cashier PIN lookup in the current active database
+  const cashiers = this.allCashiers();
+  const matched = cashiers.find(c => c.pin === cleanPin);
+
+  if (matched) {
+    this.currentCashier.set(matched);
+    return true;
+  }
+
+  return false;
+}
 
   public lockScreen(): void {
     this.isLocked.set(true);
