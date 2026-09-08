@@ -716,7 +716,9 @@ export class PosComponent implements OnInit, AfterViewInit {
     this.pinError.set('');
     // If switchShop() triggered a reload because the tenant changed, the page reboots.
     // If the active shop was already matching, continue unlocking:
-    this.focusBarcodeInput();
+    if (this.focusBarcodeInput) {
+      this.focusBarcodeInput();
+    }
     return;
   }
 
