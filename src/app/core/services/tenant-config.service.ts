@@ -58,12 +58,55 @@ export function sanitizeStoreCode(raw: string): string {
 
 @Injectable({ providedIn: 'root' })
 export class TenantConfigService {
+  public activeStore = signal<ShopInfo>(this.getInitialShop());
   public isSuperAdmin = signal<boolean>(false);
   public registeredShops = signal<ShopInfo[]>(DEFAULT_SHOPS);
-  public activeShop = signal<ShopInfo>(DEFAULT_SHOPS[0]);
+  public isPinAvailable(pin: string, excludeStoreCode?: string): boolean {
+    const cleanPin = pin.trim();
+    // Disallow reserved PINs or PINs shorter than 4 digits
+    if (cleanPin === '8820' || cleanPin.length < 4) {
+      return false;
+    }
+    const currentShops = this.registeredShops();
+    const conflict = currentShops.find(s => 
+      (s as any).adminPin === cleanPin && s.code !== excludeStoreCode
+    );
+
+    return !conflict;
+  }
 
   constructor() {
     this.loadFromStorage();
+  }
+
+  private getInitialShop(): ShopInfo {
+    const cached = localStorage.getItem('active_shop');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        console.error('[TenantConfig] Failed to parse active_shop from localStorage', e);
+      }
+    }
+    // Fall back to the default shop from your DEFAULT_SHOPS array
+    const defaultCode = localStorage.getItem('active_shop_code') || 'ftest';
+    const match = DEFAULT_SHOPS.find(s => s.code === defaultCode) || DEFAULT_SHOPS[0];
+    return match;
+  }
+
+  private getInitialShops(): ShopInfo[] {
+    const cached = localStorage.getItem('registered_shops');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('[TenantConfig] Failed to parse registered_shops from localStorage', e);
+      }
+    }
+    return [...DEFAULT_SHOPS];
   }
 
   private loadFromStorage(): void {
@@ -105,7 +148,7 @@ export class TenantConfigService {
         if (parsed?.code) {
           const match = currentShops.find(s => s.code === parsed.code);
           const active = match || parsed;
-          this.activeShop.set(active);
+          this.activeStore.set(active);
 
           if (!match) {
             this.registerShop(active, false);
@@ -118,39 +161,23 @@ export class TenantConfigService {
     }
 
     // Fallback default
-    this.activeShop.set(currentShops[0] || DEFAULT_SHOPS[0]);
+    this.activeStore.set(currentShops[0] || DEFAULT_SHOPS[0]);
   }
 
-  /**
-   * Resolves store by unique admin PIN.
-   * If the user is logging into a different shop than currently active,
-   * switches the active store and reloads to re-bind the Dexie instance.
-   */
-  public resolveAndSwitchByPin(pin: string): { success: boolean; shop?: ShopInfo; isSuperAdmin?: boolean } {
-    const cleanPin = pin.trim();
+  public registerShop(shop: ShopInfo, syncStorage = true): { success: boolean; message?: string } {
+    const cleanCode = sanitizeStoreCode(shop.code);
+    const pin = (shop as any).adminPin ? String((shop as any).adminPin).trim() : '';
 
-    // Check Master PIN first
-    if (cleanPin === '8820') {
-      this.unlockSuperAdmin(cleanPin);
-      return { success: true, shop: this.activeShop(), isSuperAdmin: true };
+    // Validate PIN uniqueness if a PIN was provided
+    if (pin && !this.isPinAvailable(pin, cleanCode)) {
+      const msg = `Το PIN "${pin}" χρησιμοποιείται ήδη από άλλο κατάστημα ή είναι δεσμευμένο!`;
+      console.error(`[TenantConfig] ${msg}`);
+      return { success: false, message: msg };
     }
 
-    // Check store-specific PINs
-    const matched = this.registeredShops().find(s => s.adminPin === cleanPin);
-    if (matched) {
-      if (this.activeShop().code !== matched.code) {
-        this.switchShop(matched.code);
-      }
-      return { success: true, shop: matched, isSuperAdmin: false };
-    }
-
-    return { success: false };
-  }
-
-  public registerShop(shop: ShopInfo, syncStorage = true): void {
     const cleanShop: ShopInfo = {
       ...shop,
-      code: sanitizeStoreCode(shop.code),
+      code: cleanCode,
       currency: shop.currency || 'EUR'
     };
 
@@ -161,25 +188,65 @@ export class TenantConfigService {
     if (syncStorage) {
       localStorage.setItem('registered_shops', JSON.stringify(updated));
     }
+
+    return { success: true };
   }
 
   public registerNewStore(shop: ShopInfo): void {
     this.registerShop(shop, true);
   }
 
-  public updateActiveShopDetails(details: Partial<ShopInfo>): void {
-    const current = this.activeShop();
+ public updateActiveShopDetails(details: Partial<ShopInfo>): { success: boolean; message?: string } {
+    const current = this.activeStore();
+    const targetCode = details.code ? sanitizeStoreCode(details.code) : current.code;
+    const pin = (details as any).adminPin ? String((details as any).adminPin).trim() : '';
+
+    if (pin && !this.isPinAvailable(pin, targetCode)) {
+      const msg = `Το PIN "${pin}" υπάρχει ήδη σε άλλο κατάστημα!`;
+      console.error(`[TenantConfig] ${msg}`);
+      return { success: false, message: msg };
+    }
+
     const updated: ShopInfo = {
       ...current,
       ...details,
-      code: details.code ? sanitizeStoreCode(details.code) : current.code,
+      code: targetCode,
       updatedAt: new Date().toISOString()
     };
 
-    this.activeShop.set(updated);
+    this.activeStore.set(updated);
     localStorage.setItem('active_shop', JSON.stringify(updated));
     localStorage.setItem('active_shop_code', updated.code);
-    this.registerShop(updated, true);
+    return this.registerShop(updated, true);
+  }
+
+  public resolveAndSwitchByPin(pin: string): { success: boolean; store?: ShopInfo } {
+    const cleanPin = pin.trim();
+
+    // 1. Super-Admin bypass
+    if (cleanPin === '8820') {
+      this.unlockSuperAdmin(cleanPin);
+      return { success: true };
+    }
+
+    // 2. Identify all shops claiming this PIN
+    const matches = this.registeredShops().filter(s => (s as any).adminPin === cleanPin);
+
+    if (matches.length > 1) {
+      console.error(`🚨 PIN COLLISION: PIN ${cleanPin} is assigned to multiple stores:`, matches.map(m => m.code));
+      alert('Σφάλμα διένεξης PIN: Περισσότερα από ένα καταστήματα έχουν το ίδιο PIN!');
+      return { success: false };
+    }
+
+    if (matches.length === 1) {
+      const targetStore = matches[0];
+      if (this.activeStore().code !== targetStore.code) {
+        this.switchShop(targetStore.code);
+      }
+      return { success: true, store: targetStore };
+    }
+
+    return { success: false };
   }
 
   public switchShop(storeCode: string): void {
@@ -190,7 +257,7 @@ export class TenantConfigService {
       return;
     }
 
-    this.activeShop.set(match);
+    this.activeStore.set(match);
     localStorage.setItem('active_shop', JSON.stringify(match));
     localStorage.setItem('active_shop_code', match.code);
 
@@ -209,7 +276,7 @@ export class TenantConfigService {
     this.registeredShops.set(updated);
     localStorage.setItem('registered_shops', JSON.stringify(updated));
 
-    if (this.activeShop().code === storeCode) {
+    if (this.activeStore().code === storeCode) {
       this.switchShop(updated[0].code);
     }
   }

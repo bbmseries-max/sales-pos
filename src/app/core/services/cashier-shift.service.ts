@@ -79,7 +79,7 @@ public async initialize(): Promise<void> {
   let list = await marketDb.cashiers.toArray();
   list = (list || []).filter(c => c.isActive !== false);
 
-  const activeStore = this.tenantConfig.activeShop();
+  const activeStore = this.tenantConfig.activeStore();
   const activeStoreCode = activeStore.code || 'mar-market';
 
   if (list.length === 0) {
@@ -107,7 +107,7 @@ public async initialize(): Promise<void> {
 
   public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
 
     if (cleanPin === '8820') {
       const admin = this.allCashiers().find(c => c.role === 'ADMIN') || this.allCashiers()[0];
@@ -161,7 +161,7 @@ public async unlockWithPin(pin: string): Promise<boolean> {
         name: 'Super Admin',
         pin: '8820',
         role: 'ADMIN',
-        storeId: this.tenantConfig.activeShop()?.code || 'ftest',
+        storeId: this.tenantConfig.activeStore()?.code || 'ftest',
         isActive: true
       };
       this.setAuthenticatedCashier(superAdminCashier);
@@ -176,10 +176,10 @@ public async unlockWithPin(pin: string): Promise<boolean> {
       await this.loadAllCashiers();
       const admin = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN') || {
         id: `ADMIN-${cleanPin}`,
-        name: `Διαχειριστής (${this.tenantConfig.activeShop().name})`,
+        name: `Διαχειριστής (${this.tenantConfig.activeStore().name})`,
         pin: cleanPin,
         role: 'ADMIN',
-        storeId: this.tenantConfig.activeShop().code,
+        storeId: this.tenantConfig.activeStore().code,
         isActive: true
       };
       this.setAuthenticatedCashier(admin as Cashier);
@@ -221,7 +221,7 @@ public logout(): void {
 
   public async createCashier(cashier: Omit<Cashier, 'id'>): Promise<{ success: boolean; message?: string; cashier?: Cashier }> {
     const cleanPin = cashier.pin.trim();
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
     const existing = await marketDb.cashiers.where('pin').equals(cleanPin).first();
 
     if (existing && existing.isActive !== false) {
@@ -354,7 +354,7 @@ public logout(): void {
     const shift = this.currentShift();
     if (!shift) return;
 
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
     const numAmount = Number(amount) || 0;
 
     const movement = {
