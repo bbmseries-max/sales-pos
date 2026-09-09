@@ -219,26 +219,44 @@ public logout(): void {
   this.lockTerminal();
 }
 
-  public async createCashier(cashier: Omit<Cashier, 'id'>): Promise<{ success: boolean; message?: string; cashier?: Cashier }> {
-    const cleanPin = cashier.pin.trim();
-    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
-    const existing = await marketDb.cashiers.where('pin').equals(cleanPin).first();
+public async createCashier(data: Omit<Cashier, 'id'>): Promise<{ success: boolean; message: string; cashier?: Cashier }> {
+    const cleanPin = data.pin.trim();
 
-    if (existing && existing.isActive !== false) {
-      return { success: false, message: `Το PIN "${cleanPin}" χρησιμοποιείται ήδη.` };
+    // 1. Block Super-Admin PIN
+    if (cleanPin === '8820') {
+      return { success: false, message: 'Το PIN 8820 είναι δεσμευμένο για τον Super Admin.' };
     }
 
+    // 2. Block all registered Store Tenant PINs (1111, 2222, 3333, etc.)
+    const reservedStorePins = this.tenantConfig.registeredShops()
+      .map(s => s.adminPin?.trim())
+      .filter(Boolean);
+
+    if (reservedStorePins.includes(cleanPin)) {
+      return { 
+        success: false, 
+        message: `Το PIN "${cleanPin}" είναι δεσμευμένο ως κωδικός καταστήματος!` 
+      };
+    }
+
+    // 3. Block duplicate PINs within the current store
+    await this.loadAllCashiers();
+    const duplicate = this.allCashiers().find(c => c.pin === cleanPin);
+    if (duplicate) {
+      return { success: false, message: `Το PIN "${cleanPin}" χρησιμοποιείται ήδη από τον χρήστη "${duplicate.name}".` };
+    }
+
+    // 4. Save if valid
     const newCashier: Cashier = {
-      ...cashier,
-      id: `CASH-${Date.now().toString(36).toUpperCase()}`,
-      pin: cleanPin,
-      storeId: activeStoreCode,
-      isActive: true
+      id: 'cashier_' + Date.now(),
+      ...data,
+      pin: cleanPin
     };
 
-    await marketDb.cashiers.add(newCashier);
+    await marketDb.cashiers.put(newCashier);
     await this.loadAllCashiers();
-    return { success: true, cashier: newCashier };
+
+    return { success: true, message: 'Ο χρήστης δημιουργήθηκε επιτυχώς.', cashier: newCashier };
   }
 
   /**

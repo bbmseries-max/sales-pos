@@ -309,7 +309,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   public async refreshPinnedProducts(): Promise<void> {
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
     const all = await marketDb.products.toArray();
 
     const storeProducts = all.filter(p => {
@@ -396,7 +396,7 @@ export class PosComponent implements OnInit, AfterViewInit {
       name: '',
       pin: '',
       role: 'CASHIER',
-      storeId: this.tenantConfig.activeShop().code || 'mar-market'
+      storeId: this.tenantConfig.activeStore().code || 'mar-market'
     };
     this.showEmployeeModal.set(true);
   }
@@ -405,12 +405,20 @@ export class PosComponent implements OnInit, AfterViewInit {
     if (this.isSavingEmployee()) return;
 
     const data = this.employeeForm;
+    const cleanPin = data.pin.trim();
     if (!data.name.trim()) {
       alert('Συμπληρώστε όνομα υπαλλήλου.');
       return;
     }
     if (!data.pin.trim() || data.pin.trim().length < 4) {
       alert('Το PIN πρέπει να είναι τουλάχιστον 4 ψηφία.');
+      return;
+    }
+    
+
+    const reservedPins = this.tenantConfig.registeredShops().map(s => s.adminPin);
+    if (cleanPin === '8820' || reservedPins.includes(cleanPin)) {
+      alert(`Το PIN "${cleanPin}" είναι δεσμευμένο για την εναλλαγή καταστημάτων.`);
       return;
     }
 
@@ -421,7 +429,7 @@ export class PosComponent implements OnInit, AfterViewInit {
         name: data.name.trim(),
         pin: data.pin.trim(),
         role: data.role,
-        storeId: data.storeId || this.tenantConfig.activeShop().code || 'mar-market',
+        storeId: data.storeId || this.tenantConfig.activeStore().code || 'mar-market',
         isActive: true
       });
 
@@ -434,7 +442,7 @@ export class PosComponent implements OnInit, AfterViewInit {
         name: '',
         pin: '',
         role: 'CASHIER',
-        storeId: this.tenantConfig.activeShop().code || 'mar-market'
+        storeId: this.tenantConfig.activeStore().code || 'mar-market'
       };
       this.showEmployeeModal.set(false);
       this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
@@ -671,7 +679,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   public async handleStoreSwitch(newStoreCode: string): Promise<void> {
-    const prev = this.tenantConfig.activeShop().code;
+    const prev = this.tenantConfig.activeStore().code;
     if (prev === newStoreCode) {
       this.showStoreModal.set(false);
       return;
@@ -863,7 +871,7 @@ public async handlePinSubmit(pin: string): Promise<void> {
   }
 
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
-    const activeShop = this.tenantConfig.activeShop?.() || {};
+    const activeShop = this.tenantConfig.activeStore?.() || {};
     const companyProfile: MarketCompanyProfile = {
       storeName: activeShop.name || 'MARANTH MARKET',
       address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',
