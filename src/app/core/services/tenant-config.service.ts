@@ -58,7 +58,7 @@ export function sanitizeStoreCode(raw: string): string {
 
 @Injectable({ providedIn: 'root' })
 export class TenantConfigService {
-  public activeStore = signal<ShopInfo>(this.getInitialShop());
+  public activeShop = signal<ShopInfo>(this.getInitialShop());
   public isSuperAdmin = signal<boolean>(false);
   public registeredShops = signal<ShopInfo[]>(DEFAULT_SHOPS);
   public isPinAvailable(pin: string, excludeStoreCode?: string): boolean {
@@ -148,7 +148,7 @@ export class TenantConfigService {
         if (parsed?.code) {
           const match = currentShops.find(s => s.code === parsed.code);
           const active = match || parsed;
-          this.activeStore.set(active);
+          this.activeShop.set(active);
 
           if (!match) {
             this.registerShop(active, false);
@@ -161,7 +161,7 @@ export class TenantConfigService {
     }
 
     // Fallback default
-    this.activeStore.set(currentShops[0] || DEFAULT_SHOPS[0]);
+    this.activeShop.set(currentShops[0] || DEFAULT_SHOPS[0]);
   }
 
   public registerShop(shop: ShopInfo, syncStorage = true): { success: boolean; message?: string } {
@@ -197,7 +197,7 @@ export class TenantConfigService {
   }
 
  public updateActiveShopDetails(details: Partial<ShopInfo>): { success: boolean; message?: string } {
-    const current = this.activeStore();
+    const current = this.activeShop();
     const targetCode = details.code ? sanitizeStoreCode(details.code) : current.code;
     const pin = (details as any).adminPin ? String((details as any).adminPin).trim() : '';
 
@@ -214,7 +214,7 @@ export class TenantConfigService {
       updatedAt: new Date().toISOString()
     };
 
-    this.activeStore.set(updated);
+    this.activeShop.set(updated);
     localStorage.setItem('active_shop', JSON.stringify(updated));
     localStorage.setItem('active_shop_code', updated.code);
     return this.registerShop(updated, true);
@@ -240,7 +240,7 @@ export class TenantConfigService {
 
     if (matches.length === 1) {
       const targetStore = matches[0];
-      if (this.activeStore().code !== targetStore.code) {
+      if (this.activeShop().code !== targetStore.code) {
         this.switchShop(targetStore.code);
       }
       return { success: true, store: targetStore };
@@ -257,7 +257,7 @@ export class TenantConfigService {
       return;
     }
 
-    this.activeStore.set(match);
+    this.activeShop.set(match);
     localStorage.setItem('active_shop', JSON.stringify(match));
     localStorage.setItem('active_shop_code', match.code);
 
@@ -276,7 +276,7 @@ export class TenantConfigService {
     this.registeredShops.set(updated);
     localStorage.setItem('registered_shops', JSON.stringify(updated));
 
-    if (this.activeStore().code === storeCode) {
+    if (this.activeShop().code === storeCode) {
       this.switchShop(updated[0].code);
     }
   }

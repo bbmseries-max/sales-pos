@@ -309,12 +309,12 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   public async refreshPinnedProducts(): Promise<void> {
-    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
+    const activeShopCode = this.tenantConfig.activeShop().code || 'mar-market';
     const all = await marketDb.products.toArray();
 
     const storeProducts = all.filter(p => {
       const itemStore = p.storeId || 'mar-market';
-      return itemStore === activeStoreCode && p.isActive !== false;
+      return itemStore === activeShopCode && p.isActive !== false;
     });
 
     const pinned = storeProducts.filter(p => p.isPinned === true || (p.isPinned as any) === 1 || (p.isPinned as any) === 'true');
@@ -396,7 +396,7 @@ export class PosComponent implements OnInit, AfterViewInit {
       name: '',
       pin: '',
       role: 'CASHIER',
-      storeId: this.tenantConfig.activeStore().code || 'mar-market'
+      storeId: this.tenantConfig.activeShop().code || 'mar-market'
     };
     this.showEmployeeModal.set(true);
   }
@@ -429,7 +429,7 @@ export class PosComponent implements OnInit, AfterViewInit {
         name: data.name.trim(),
         pin: data.pin.trim(),
         role: data.role,
-        storeId: data.storeId || this.tenantConfig.activeStore().code || 'mar-market',
+        storeId: data.storeId || this.tenantConfig.activeShop().code || 'mar-market',
         isActive: true
       });
 
@@ -442,7 +442,7 @@ export class PosComponent implements OnInit, AfterViewInit {
         name: '',
         pin: '',
         role: 'CASHIER',
-        storeId: this.tenantConfig.activeStore().code || 'mar-market'
+        storeId: this.tenantConfig.activeShop().code || 'mar-market'
       };
       this.showEmployeeModal.set(false);
       this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
@@ -679,7 +679,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   }
 
   public async handleStoreSwitch(newStoreCode: string): Promise<void> {
-    const prev = this.tenantConfig.activeStore().code;
+    const prev = this.tenantConfig.activeShop().code;
     if (prev === newStoreCode) {
       this.showStoreModal.set(false);
       return;
@@ -871,7 +871,7 @@ public async handlePinSubmit(pin: string): Promise<void> {
   }
 
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
-    const activeShop = this.tenantConfig.activeStore?.() || {};
+    const activeShop = this.tenantConfig.activeShop?.() || {};
     const companyProfile: MarketCompanyProfile = {
       storeName: activeShop.name || 'MARANTH MARKET',
       address: activeShop.address || 'Leof. Pentelis 45, Vrilissia',

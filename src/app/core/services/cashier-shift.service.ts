@@ -79,22 +79,22 @@ public async initialize(): Promise<void> {
   let list = await marketDb.cashiers.toArray();
   list = (list || []).filter(c => c.isActive !== false);
 
-  const activeStore = this.tenantConfig.activeStore();
-  const activeStoreCode = activeStore.code || 'mar-market';
+  const activeShop = this.tenantConfig.activeShop();
+  const activeShopCode = activeShop.code || 'mar-market';
 
   if (list.length === 0) {
     // Dynamically assign the store-specific PIN
-    const storePin = (activeStore as any).adminPin || (
-      activeStoreCode === 'ftest' ? '1111' :
-      activeStoreCode === 'parnasos' ? '3333' : '2222'
+    const storePin = (activeShop as any).adminPin || (
+      activeShopCode === 'ftest' ? '1111' :
+      activeShopCode === 'parnasos' ? '3333' : '2222'
     );
 
     const initialAdmin: Cashier = {
-      id: `CASH-ADMIN-${activeStoreCode.toUpperCase()}`,
-      name: `Διαχειριστής (${activeStore.name})`,
+      id: `CASH-ADMIN-${activeShopCode.toUpperCase()}`,
+      name: `Διαχειριστής (${activeShop.name})`,
       pin: storePin,
       role: 'ADMIN',
-      storeId: activeStoreCode,
+      storeId: activeShopCode,
       isActive: true
     };
 
@@ -107,7 +107,7 @@ public async initialize(): Promise<void> {
 
   public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
-    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
+    const activeShopCode = this.tenantConfig.activeShop().code || 'mar-market';
 
     if (cleanPin === '8820') {
       const admin = this.allCashiers().find(c => c.role === 'ADMIN') || this.allCashiers()[0];
@@ -133,7 +133,7 @@ public async initialize(): Promise<void> {
         id: `SHIFT-${Date.now().toString(36).toUpperCase()}`,
         cashierId: cashier.id,
         cashierName: cashier.name,
-        storeId: activeStoreCode,
+        storeId: activeShopCode,
         startTime: new Date().toISOString(),
         status: 'OPEN',
         openingFloat: Number(openingFloat) || 0,
@@ -161,7 +161,7 @@ public async unlockWithPin(pin: string): Promise<boolean> {
         name: 'Super Admin',
         pin: '8820',
         role: 'ADMIN',
-        storeId: this.tenantConfig.activeStore()?.code || 'ftest',
+        storeId: this.tenantConfig.activeShop()?.code || 'ftest',
         isActive: true
       };
       this.setAuthenticatedCashier(superAdminCashier);
@@ -176,10 +176,10 @@ public async unlockWithPin(pin: string): Promise<boolean> {
       await this.loadAllCashiers();
       const admin = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN') || {
         id: `ADMIN-${cleanPin}`,
-        name: `Διαχειριστής (${this.tenantConfig.activeStore().name})`,
+        name: `Διαχειριστής (${this.tenantConfig.activeShop().name})`,
         pin: cleanPin,
         role: 'ADMIN',
-        storeId: this.tenantConfig.activeStore().code,
+        storeId: this.tenantConfig.activeShop().code,
         isActive: true
       };
       this.setAuthenticatedCashier(admin as Cashier);
@@ -372,13 +372,13 @@ public async createCashier(data: Omit<Cashier, 'id'>): Promise<{ success: boolea
     const shift = this.currentShift();
     if (!shift) return;
 
-    const activeStoreCode = this.tenantConfig.activeStore().code || 'mar-market';
+    const activeShopCode = this.tenantConfig.activeShop().code || 'mar-market';
     const numAmount = Number(amount) || 0;
 
     const movement = {
       id: `MOV-${Date.now().toString(36).toUpperCase()}`,
       shiftId: shift.id,
-      storeId: activeStoreCode,
+      storeId: activeShopCode,
       type,
       amount: numAmount,
       reason: reason.trim() || 'Κίνηση Ταμείου',
