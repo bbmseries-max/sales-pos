@@ -27,40 +27,44 @@ export class CashierShiftService {
   public currentCashier = signal<Cashier | null>(null);
   public currentShift = signal<CashierShift | null>(null);
   public allCashiers = signal<Cashier[]>([]);
+  //public currentCashier = signal<Cashier | null>(this.getInitialCashier());
+
+  private checkInitialLock(): boolean {
+    // If explicitly set to 'false' in sessionStorage, stay unlocked
+    return sessionStorage.getItem('pos_is_locked') !== 'false';
+  }
+
+  private getInitialCashier(): Cashier | null {
+    const raw = sessionStorage.getItem('active_cashier_data');
+    if (raw) {
+      try {
+        return JSON.parse(raw) as Cashier;
+      } catch (e) {
+        console.error('[CashierShiftService] Failed parsing cached cashier', e);
+      }
+    }
+    return null;
+  }
 
   public activeShift = signal<CashierShift | null>(null);
   
-public async initialize(): Promise<void> {
-    await this.loadAllCashiers();
-
-    const openShifts = await marketDb.shifts
-      .where('status')
-      .equals('OPEN')
-      .toArray();
-
-    const validShift = (openShifts || []).filter(s => s && s.id).pop();
-
-    if (validShift) {
-      if (!validShift.startTime) {
-        validShift.startTime = new Date().toISOString();
-        await marketDb.shifts.put(validShift);
-      }
-      if (!validShift.sales) {
-        validShift.sales = { cash: 0, card: 0, split: 0, totalSales: 0, transactionCount: 0 };
-      }
-      this.currentShift.set(validShift);
-    } else {
-      this.currentShift.set(null);
+ public async initialize(): Promise<void> {
+    // If an active session already exists in memory or sessionStorage, keep it open!
+    if (this.currentCashier() && !this.isLocked()) {
+      return;
     }
 
-    // Always enforce the lock screen on initial startup/refresh
-    this.currentCashier.set(null);
-    this.isLocked.set(true);
-  }
+    // Attempt restoring from sessionStorage
+    const cashier = this.getInitialCashier();
+    if (cashier && !this.checkInitialLock()) {
+      this.currentCashier.set(cashier);
+      this.isLocked.set(false);
+      return;
+    }
 
-  private checkInitialLock(): boolean {
-    const locked = sessionStorage.getItem('pos_is_locked');
-    return locked !== 'false'; // Defaults to locked on cold start / refresh
+    // Default: lock down
+    this.isLocked.set(true);
+    this.currentCashier.set(null);
   }
 
   public setCountedCash(amount: number): void {
@@ -197,11 +201,11 @@ public async unlockWithPin(pin: string): Promise<boolean> {
     return false;
   }
 
-  private setAuthenticatedCashier(cashier: Cashier): void {
+  public setAuthenticatedCashier(cashier: Cashier): void {
     this.currentCashier.set(cashier);
     this.isLocked.set(false);
     sessionStorage.setItem('pos_is_locked', 'false');
-    sessionStorage.setItem('active_cashier_id', cashier.id);
+    sessionStorage.setItem('active_cashier_data', JSON.stringify(cashier));
   }
 
   public lockScreen(): void {
@@ -209,11 +213,11 @@ public async unlockWithPin(pin: string): Promise<boolean> {
   }
 
 public lockTerminal(): void {
-  this.currentCashier.set(null);
-  this.isLocked.set(true);
-  sessionStorage.setItem('pos_is_locked', 'true');
-  sessionStorage.removeItem('active_cashier_id');
-}
+    this.currentCashier.set(null);
+    this.isLocked.set(true);
+    sessionStorage.setItem('pos_is_locked', 'true');
+    sessionStorage.removeItem('active_cashier_data');
+  }
 
 public logout(): void {
   this.lockTerminal();
