@@ -137,12 +137,938 @@
     </div>
   </header>
 
-  <!-- POS Register Workspace: Occupies exactly 100% of the remaining screen height -->
-  <main class="flex-1 flex overflow-hidden">
-    <!-- Cart & Speed-Dial Grid -->
+</div>
+
+  <!-- ================= 2. MAIN CASHIER WORKSPACE ================= -->
+   <main class="flex-1 flex overflow-hidden">
+
+    <!-- FAST CASHIER FUNCTION BAR -->
+    <div class="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+      
+      <!-- 1. Έλεγχος Τιμής [F2] -->
+      <button 
+        type="button" 
+        (click)="openPriceCheck()"
+        class="h-14 px-4 rounded-2xl bg-gradient-to-r from-sky-950/80 to-slate-900 border-2 border-sky-700/50 hover:border-sky-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
+      >
+        <div class="flex items-center gap-3">
+          <span class="text-xl">🔍</span>
+          <div class="text-left">
+            <span class="text-xs font-black uppercase tracking-wider block text-slate-100">Έλεγχος Τιμής</span>
+            <span class="text-[10px] font-mono text-slate-400">Scan Check [F2]</span>
+          </div>
+        </div>
+      </button>
+
+      <!-- 2. Shelf Labels -->
+      <button 
+        type="button" 
+        (click)="navigateToLabels()"
+        class="h-14 px-4 rounded-2xl bg-gradient-to-r from-amber-950/80 to-slate-900 border-2 border-amber-700/50 hover:border-amber-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
+      >
+        <div class="flex items-center gap-3">
+          <span class="text-xl">🏷️</span>
+          <div class="text-left">
+            <span class="text-xs font-black uppercase tracking-wider block text-slate-100">Ετικέτες Ραφιού</span>
+            <span class="text-[10px] font-mono text-slate-400">Print Tags</span>
+          </div>
+        </div>
+      </button>
+
+      <!-- 3. Cash Drawer Movements -->
+<button 
+  type="button" 
+  (click)="showCashDrawerModal.set(true)"
+  class="h-14 px-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-slate-900 border-2 border-emerald-700/50 hover:border-emerald-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md">
+  <div class="flex items-center gap-3">
+    <span class="text-xl">💵</span>
+    <div class="text-left">
+      <span class="text-xs font-black uppercase tracking-wider block text-slate-100">Κινήσεις Ταμείου</span>
+      <span class="text-[10px] font-mono text-slate-400">Εισροές &amp; Εκροές</span>
+    </div>
+  </div>
+</button>
+
+      <!-- 4. Hold / Recall Ticket -->
+      <button 
+        type="button" 
+        (click)="toggleHoldTicket()"
+        class="h-14 px-4 rounded-2xl bg-gradient-to-r from-violet-950/80 to-slate-900 border-2 border-violet-700/50 hover:border-violet-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md"
+      >
+        <div class="flex items-center gap-3">
+          <span class="text-xl">📌</span>
+          <div class="text-left">
+            <span class="text-xs font-black uppercase tracking-wider block text-slate-100">
+              {{ cart.items().length > 0 ? 'Hold Ticket' : 'Recall Ticket' }}
+            </span>
+            <span class="text-[10px] font-mono text-slate-400">
+              {{ cart.heldTickets().length }} Σταθμευμένα
+            </span>
+          </div>
+        </div>
+      </button>
+    </div>
+
+    <!-- SPLIT WORKSPACE: BASKET (LEFT 5 COLS) + CATALOG/SEARCH (RIGHT 7 COLS) -->
+    <div class="flex-1 grid grid-cols-12 gap-4 overflow-hidden min-h-0">
+      
+      <!-- LEFT: ACTIVE CART & CHECKOUT -->
+      <section class="col-span-12 lg:col-span-5 h-full max-h-full flex flex-col justify-between bg-slate-900/70 border border-slate-800 rounded-3xl p-4 shadow-xl overflow-hidden min-h-0">
+        
+        <!-- Top Cart Bar -->
+        <div class="flex justify-between items-center pb-2.5 border-b border-slate-800 shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-black uppercase tracking-wider text-slate-200">🛒 Καλάθι Αγορών</span>
+            <span class="text-xs font-mono px-2 py-0.5 bg-slate-800 text-emerald-400 rounded-md font-bold">
+              {{ cart.items().length }}
+            </span>
+          </div>
+          <button 
+            type="button" 
+            (click)="cart.clearCart()" 
+            [disabled]="cart.items().length === 0"
+            class="text-xs font-mono text-slate-400 hover:text-rose-400 disabled:opacity-30 cursor-pointer transition"
+          >
+            Καθαρισμός
+          </button>
+        </div>
+
+        <!-- Loyalty Customer Banner -->
+        <div class="my-2 p-2.5 rounded-2xl border transition-all"
+             [class.bg-slate-950]="!loyaltyService.activeCustomer()"
+             [class.border-slate-800]="!loyaltyService.activeCustomer()"
+             [class.bg-amber-950/30]="loyaltyService.activeCustomer()"
+             [class.border-amber-500/50]="loyaltyService.activeCustomer()">
+          
+          @if (loyaltyService.activeCustomer(); as cust) {
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0">★</span>
+                <div class="min-w-0">
+                  <span class="text-xs font-black text-slate-100 block truncate">{{ cust.name }}</span>
+                  <span class="text-[10px] font-mono text-amber-400 font-bold">
+                    {{ cust.phone }} • {{ cust.loyaltyPoints }} Πόντοι (€{{ (cust.loyaltyPoints * loyaltyService.pointDiscountValue).toFixed(2) }})
+                  </span>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                (click)="loyaltyService.clearActiveCustomer()"
+                class="text-slate-500 hover:text-rose-400 text-xs font-bold px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          } @else {
+            <button 
+              type="button" 
+              (click)="openCustomerModal()"
+              class="w-full h-8 flex items-center justify-between text-xs font-mono font-bold text-slate-400 hover:text-amber-300 transition cursor-pointer"
+            >
+              <div class="flex items-center gap-2">
+                <span>👤</span>
+                <span>Αναζήτηση Πελάτη / Loyalty Phone</span>
+              </div>
+              <span class="text-amber-400 text-xs">+ Σύνδεση</span>
+            </button>
+          }
+        </div>
+
+        <!-- Cart Scrollable Item List -->
+        <div class="flex-1 overflow-y-auto my-2 space-y-2.5 pr-1 min-h-0 scrollbar-thin">
+          @for (item of cart.items(); track (item.product.id || item.product.barcode)) {
+            <div class="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition gap-3">
+              
+              <!-- Thumbnail & Title -->
+              <div class="flex items-center gap-3 min-w-0 flex-1">
+                <div class="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                  <img 
+                    [src]="catalogService.getProductImageUrl(item.product)" 
+                    (error)="onImageError($event)"
+                    alt="" 
+                    class="w-full h-full object-contain"
+                  />
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <span class="text-base font-extrabold text-white block truncate leading-snug">
+                    {{ item.product.name }}
+                  </span>
+
+                  <div class="flex flex-wrap items-center gap-2 mt-1">
+                    <span class="text-xs font-mono text-slate-400 font-semibold">
+                      @if (item.product.isWeighted) {
+                        <span>{{ item.quantity.toFixed(3) }} kg × €{{ (item.product.price || 0).toFixed(2) }}</span>
+                      } @else {
+                        <span>{{ item.quantity }} × €{{ (item.product.price || 0).toFixed(2) }}</span>
+                      }
+                    </span>
+
+                    <button 
+                      type="button" 
+                      (click)="openItemDiscountModal(item)"
+                      class="text-[10px] font-mono px-1.5 py-0.5 rounded border transition cursor-pointer"
+                      [class.bg-amber-950]="(item.discountPercent || 0) > 0"
+                      [class.text-amber-400]="(item.discountPercent || 0) > 0"
+                      [class.border-amber-700]="(item.discountPercent || 0) > 0"
+                      [class.bg-slate-800]="!(item.discountPercent || 0)"
+                      [class.text-slate-400]="!(item.discountPercent || 0)"
+                      [class.border-slate-700]="!(item.discountPercent || 0)"
+                    >
+                      {{ (item.discountPercent || 0) > 0 ? ('-' + item.discountPercent + '%') : '% Έκπτωση' }}
+                    </button>
+
+                    <!-- Expiration Alert Badge -->
+                    @if (item.product.expire) {
+                      @if (checkExpiryStatus(item.product.expire) === 'EXPIRED') {
+                        <span class="text-[10px] font-black font-mono bg-rose-950 text-rose-300 border border-rose-800 px-1.5 py-0.5 rounded">
+                          ⛔ ΛΗΞΑΝ ({{ item.product.expire }})
+                        </span>
+                      } @else if (checkExpiryStatus(item.product.expire) === 'WARNING') {
+                        <span class="text-[10px] font-bold font-mono bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.5 rounded">
+                          ⏰ Λήγει: {{ item.product.expire }}
+                        </span>
+                      }
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Quantity Stepper Controls -->
+              <div class="flex items-center bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shrink-0">
+                <button 
+                  type="button" 
+                  (click)="cart.decreaseQuantity(item.product.id || item.product.barcode)" 
+                  class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
+                >
+                  -
+                </button>
+                <span class="w-12 text-center text-xs font-mono font-black text-emerald-400">
+                  @if (item.product.isWeighted) {
+                    {{ item.quantity.toFixed(3) }}
+                  } @else {
+                    {{ item.quantity }}
+                  }
+                </span>
+                <button 
+                  type="button" 
+                  (click)="cart.increaseQuantity(item.product.id || item.product.barcode)" 
+                  class="w-9 h-9 flex items-center justify-center text-slate-200 hover:bg-slate-800 font-mono font-black text-base cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+
+              <!-- Line Total -->
+              <span class="w-20 text-right font-mono font-black text-base text-emerald-400 shrink-0">
+                €{{ ((item.product.price || 0) * item.quantity).toFixed(2) }}
+              </span>
+            </div>
+          } @empty {
+            <div class="h-full flex flex-col items-center justify-center text-slate-600 gap-2 py-8">
+              <span class="text-4xl">🛒</span>
+              <span class="text-xs font-mono uppercase tracking-widest">Το καλάθι είναι άδειο</span>
+              <span class="text-xs text-slate-500">Σκανάρετε barcode ή επιλέξτε προϊόντα</span>
+            </div>
+          }
+        </div>
+
+        <!-- Checkout Bottom Summary & Pay Button -->
+        <div class="pt-3 border-t border-slate-800 space-y-2.5 shrink-0 bg-slate-900/90">
+          <div class="space-y-0.5 text-xs font-mono">
+            <div class="flex justify-between text-slate-400 text-xs">
+              <span>Καθαρή Αξία:</span>
+              <span>€{{ (cart.grandTotal() - cart.totalTaxAmount()).toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between text-slate-400 text-xs">
+              <span>Φ.Π.Α.:</span>
+              <span>€{{ cart.totalTaxAmount().toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between text-base font-black text-slate-100 pt-1.5 border-t border-slate-800">
+              <span class="uppercase tracking-wide">ΣΥΝΟΛΟ:</span>
+              <span class="text-3xl font-mono text-emerald-400">€{{ cart.grandTotal().toFixed(2) }}</span>
+            </div>
+          </div>
+
+          <!-- DISCOUNT BUTTON -->
+          <button 
+            type="button" 
+            (click)="openCartDiscountModal()"
+            [disabled]="cart.items().length === 0"
+            class="w-full h-10 px-4 rounded-xl border-2 font-mono font-black text-xs transition-all flex items-center justify-between cursor-pointer disabled:opacity-40 disabled:pointer-events-none active:scale-[0.99] shadow-md"
+            [class.bg-gradient-to-r]="true"
+            [class.from-amber-950]="cart.cartDiscountPercent() > 0"
+            [class.to-slate-900]="cart.cartDiscountPercent() > 0"
+            [class.border-amber-500]="cart.cartDiscountPercent() > 0"
+            [class.text-amber-300]="cart.cartDiscountPercent() > 0"
+            [class.from-slate-950]="cart.cartDiscountPercent() === 0"
+            [class.to-slate-900]="cart.cartDiscountPercent() === 0"
+            [class.border-slate-700]="cart.cartDiscountPercent() === 0"
+            [class.text-slate-300]="cart.cartDiscountPercent() === 0"
+            [class.hover:border-amber-400]="true"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-base">🏷️</span>
+              <span class="uppercase tracking-wider">ΕΚΠΤΩΣΗ ΚΑΛΑΘΙΟΥ</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-700 text-amber-400 font-bold">
+              {{ cart.cartDiscountPercent() > 0 ? ('-' + cart.cartDiscountPercent() + '%') : '+ Προσθήκη' }}
+            </span>
+          </button>
+
+          <!-- Checkout Button -->
+          <button 
+            type="button" 
+            (click)="openPayment()"
+            [disabled]="cart.items().length === 0"
+            class="w-full h-14 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-black text-base rounded-2xl transition flex items-center justify-between px-5 cursor-pointer shadow-xl shadow-emerald-500/20"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-xl">💳</span>
+              <span class="tracking-wider uppercase font-black">ΠΛΗΡΩΜΗ [SPACE]</span>
+            </div>
+            <span class="font-mono text-xl font-black">€{{ cart.grandTotal().toFixed(2) }}</span>
+          </button>
+        </div>
+
+      </section>
+
+      <!-- RIGHT: SEARCH & TOUCH PRODUCT GRID -->
+      <section class="col-span-12 lg:col-span-7 flex flex-col bg-slate-900/60 border border-slate-800 rounded-3xl p-4 shadow-xl overflow-hidden min-h-0">
+        
+        <!-- Large Scanner & Live Search Input -->
+        <div class="relative mb-3.5 shrink-0">
+          <input 
+            #barcodeInput
+            type="text" 
+            [ngModel]="searchQuery()"
+            (ngModelChange)="onSearch($event)"
+            (keydown.enter)="$event.preventDefault(); onSearchEnter()"
+            placeholder="🔎 Σκανάρετε barcode ή αναζητήστε είδος [F2]..."
+            class="w-full h-20 bg-slate-950 border-2 border-slate-700 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/20 rounded-3xl px-6 text-xl font-mono font-black text-slate-100 placeholder-slate-500 focus:outline-none transition-all duration-150 shadow-2xl tracking-wide"
+            autofocus
+          />
+          
+          @if (searchQuery().length > 0) {
+            <button 
+              type="button" 
+              (click)="searchQuery.set(''); searchResults.set([]); focusBarcodeInput()"
+              class="absolute right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-sm flex items-center justify-center transition cursor-pointer"
+              title="Καθαρισμός"
+            >
+              ✕
+            </button>
+          }
+        </div>
+
+        <!-- Catalog / Search Grid Area -->
+        <div class="flex-1 overflow-y-auto pr-1 min-h-0 scrollbar-thin">
+          
+          <!-- 1. Search Results -->
+          @if (searchResults().length > 0) {
+            <div class="mb-4">
+              <h4 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">Αποτελέσματα Αναζήτησης</h4>
+              <div class="grid grid-cols-2 md:grid-cols-3 gap-3.5">
+                @for (prod of searchResults(); track prod.id) {
+                  <button 
+                    type="button" 
+                    (click)="selectProduct(prod)"
+                    class="h-28 p-3 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500 rounded-2xl flex items-center gap-3.5 text-left transition-all cursor-pointer shadow-lg group relative overflow-hidden"
+                  >
+                    <!-- Dedicated Thumbnail Left -->
+                    <div class="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
+                      <img 
+                        [src]="catalogService.getProductImageUrl(prod)" 
+                        (error)="onImageError($event)"
+                        alt="" 
+                        class="w-full h-full object-contain"
+                      />
+                    </div>
+
+                    <!-- Product Details Right -->
+                    <div class="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5">
+                      <div>
+                        <span class="text-base font-black text-white group-hover:text-emerald-300 line-clamp-2 leading-tight block">
+                          {{ prod.name }}
+                        </span>
+                        <span class="text-xs font-mono text-slate-400 font-semibold block mt-0.5 truncate">
+                          {{ prod.categoryName || 'Γενικά' }}
+                        </span>
+                      </div>
+
+                      <div class="flex justify-between items-end pt-1 border-t border-slate-800/80 w-full">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-xs font-mono text-slate-500">{{ prod.barcode || '—' }}</span>
+                          @if (prod.isWeighted) {
+                            <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 font-bold px-1.5 py-0.2 rounded font-mono">
+                              KG
+                            </span>
+                          }
+                        </div>
+                        
+                        <span class="text-xl font-mono font-black text-emerald-400 leading-none">
+                          €{{ (prod.price || 0).toFixed(2) }}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- 2. Fast-Tap Favorites -->
+          <div>
+            <div class="flex justify-between items-center mb-2.5">
+              <h4 class="text-xs font-black text-slate-400 uppercase tracking-wider">📌 Fast-Tap Favorites</h4>
+              <span class="text-xs font-mono text-slate-500">{{ pinnedProducts().length }} Προϊόντα</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              @for (prod of pinnedProducts(); track prod.id) {
+                <button 
+                  type="button" 
+                  (click)="selectProduct(prod)"
+                  class="h-28 p-3 bg-slate-900 hover:bg-slate-850 active:scale-95 border-2 border-slate-800 hover:border-emerald-500/80 rounded-2xl flex items-center gap-3.5 text-left transition-all cursor-pointer shadow-lg group relative overflow-hidden"
+                >
+                  <div class="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
+                    <img 
+                      [src]="catalogService.getProductImageUrl(prod)" 
+                      (error)="onImageError($event)"
+                      alt="" 
+                      class="w-full h-full object-contain"
+                    />
+                  </div>
+
+                  <div class="flex-1 min-w-0 flex flex-col justify-between h-full py-0.5">
+                    <div>
+                      <span class="text-base font-black text-white group-hover:text-emerald-300 line-clamp-2 leading-tight block">
+                        {{ prod.name }}
+                      </span>
+                      <span class="text-xs font-mono text-slate-400 font-semibold block mt-0.5 truncate">
+                        {{ prod.categoryName || 'Γενικά' }}
+                      </span>
+                    </div>
+
+                    <div class="flex justify-between items-end pt-1 border-t border-slate-800/80 w-full">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-mono text-slate-500">{{ prod.barcode || '—' }}</span>
+                        @if (prod.isWeighted) {
+                          <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 font-bold px-1.5 py-0.2 rounded font-mono">
+                            KG
+                          </span>
+                        }
+                      </div>
+                      
+                      <span class="text-xl font-mono font-black text-emerald-400 leading-none">
+                        €{{ (prod.price || 0).toFixed(2) }}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              }
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+    </div>
+
   </main>
 
-</div>
+  <!-- ================= 3. MODALS ================= -->
+
+  <!-- Payment Modal -->
+  @if (showPaymentModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-5">
+        
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <h2 class="text-lg font-black text-slate-100">ΕΠΙΛΟΓΗ ΤΡΟΠΟΥ ΠΛΗΡΩΜΗΣ</h2>
+          <button (click)="showPaymentModal.set(false)" class="text-slate-400 hover:text-slate-100 text-lg font-bold p-1 cursor-pointer">✕</button>
+        </div>
+
+        <!-- Total Display -->
+        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+          <span class="text-xs font-bold text-slate-400 uppercase">Οφειλόμενο Ποσό:</span>
+          <span class="text-3xl font-mono font-black text-emerald-400">€{{ finalPayableAmount().toFixed(2) }}</span>
+        </div>
+
+        <!-- Payment Method Tabs -->
+        <div class="grid grid-cols-2 gap-3">
+          <button 
+            type="button" 
+            (click)="selectPaymentMethod('CASH')"
+            [class.border-emerald-500]="paymentMethod() === 'CASH'"
+            [class.bg-emerald-950/40]="paymentMethod() === 'CASH'"
+            class="h-16 bg-slate-950 border-2 border-slate-800 hover:border-slate-700 rounded-2xl flex items-center justify-center gap-3 text-base font-black transition cursor-pointer"
+          >
+            <span class="text-2xl">💵</span>
+            <span>ΜΕΤΡΗΤΑ</span>
+          </button>
+
+          <button 
+            type="button" 
+            (click)="selectPaymentMethod('CARD')"
+            [class.border-emerald-500]="paymentMethod() === 'CARD'"
+            [class.bg-emerald-950/40]="paymentMethod() === 'CARD'"
+            class="h-16 bg-slate-950 border-2 border-slate-800 hover:border-slate-700 rounded-2xl flex items-center justify-center gap-3 text-base font-black transition cursor-pointer"
+          >
+            <span class="text-2xl">💳</span>
+            <span>ΚΑΡΤΑ / POS</span>
+          </button>
+        </div>
+
+        <!-- Cash Quick Tender -->
+        @if (paymentMethod() === 'CASH') {
+          <div class="space-y-3">
+            <label class="text-xs font-bold text-slate-400 block uppercase font-mono">Γρήγορα Μετρητά (€)</label>
+            <div class="grid grid-cols-4 gap-2.5">
+              @for (amt of [5, 10, 20, 50]; track amt) {
+                <button 
+                  type="button" 
+                  (click)="setTender(amt)" 
+                  class="h-12 bg-slate-950 border border-slate-800 hover:border-emerald-500 text-base font-mono font-black text-slate-200 rounded-xl cursor-pointer transition"
+                >
+                  €{{ amt }}
+                </button>
+              }
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex justify-between items-center text-xs font-mono">
+              <span class="text-slate-400">Ρέστα:</span>
+              <span class="text-xl font-bold text-amber-400">€{{ (changeDue() || 0).toFixed(2) }}</span>
+            </div>
+          </div>
+        }
+
+        <!-- Actions -->
+        <div class="flex gap-3 pt-2">
+          <button 
+            type="button" 
+            (click)="showPaymentModal.set(false)" 
+            class="flex-1 h-14 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-sm cursor-pointer"
+          >
+            Ακύρωση
+          </button>
+          
+      <button 
+  type="button" 
+  (click)="paymentMethod() === 'CARD' ? processCardPayment() : completeSale()" 
+  [disabled]="isCardProcessing() || (paymentMethod() === 'CASH' && cashTendered() < cart.grandTotal())"
+  class="flex-1 h-14 font-black rounded-xl text-base shadow-xl transition flex items-center justify-center gap-2
+         bg-emerald-500 text-slate-950 hover:bg-emerald-400 active:scale-[0.98] cursor-pointer
+         disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:bg-slate-700"
+>
+  @if (isCardProcessing()) {
+    <span class="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+    <span>Σύνδεση με POS...</span>
+  } @else {
+    <span>ΕΚΤΥΠΩΣΗ &amp; ΟΛΟΚΛΗΡΩΣΗ</span>
+  }
+</button>
+        </div>
+
+      </div>
+    </div>
+  }
+
+  <!-- Weighed Item Modal -->
+  @if (showWeightModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4">
+        <h2 class="text-sm font-black text-slate-100 uppercase">ΕΙΣΑΓΩΓΗ ΒΑΡΟΥΣ (KG)</h2>
+        <div class="text-center space-y-1">
+          <h3 class="text-lg font-black text-emerald-400">{{ activeWeightedProduct()?.name }}</h3>
+          <p class="text-sm font-mono text-slate-400">€{{ (activeWeightedProduct()?.price || 0).toFixed(2) }} / kg</p>
+        </div>
+
+        <input 
+          type="number" 
+          step="0.05" 
+          [ngModel]="inputWeightKg()"
+          (ngModelChange)="inputWeightKg.set($event)"
+          class="w-full h-14 bg-slate-950 border-2 border-emerald-500 text-center font-mono font-black text-2xl text-emerald-400 rounded-xl focus:outline-none"
+        />
+
+        <div class="grid grid-cols-4 gap-2">
+          @for (w of [0.250, 0.500, 1.000, 2.000]; track w) {
+            <button 
+              type="button" 
+              (click)="inputWeightKg.set(w)" 
+              class="h-10 bg-slate-950 border border-slate-800 hover:border-slate-700 font-mono font-bold text-xs rounded-xl cursor-pointer"
+            >
+              {{ w.toFixed(3) }}
+            </button>
+          }
+        </div>
+
+        <div class="flex gap-2.5 pt-2">
+          <button (click)="showWeightModal.set(false)" class="flex-1 h-12 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs cursor-pointer">Ακύρωση</button>
+          <button (click)="confirmWeight()" class="flex-1 h-12 bg-emerald-500 text-slate-950 font-black rounded-xl text-sm shadow-lg cursor-pointer">Προσθήκη</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- myDATA Configuration Modal -->
+  @if (showMyDataConfig()) {
+    <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+          <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider">🇬🇷 Ρυθμίσεις myDATA (ΑΑΔΕ)</h3>
+          <button (click)="showMyDataConfig.set(false)" class="text-slate-400 hover:text-slate-100 font-mono text-base cursor-pointer">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs font-mono">
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Περιβάλλον</label>
+            <select 
+              [ngModel]="myDataService.credentials().environment" 
+              (ngModelChange)="myDataService.updateCredentials({ environment: $event })"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none cursor-pointer"
+            >
+              <option value="sandbox">Δοκιμαστικό (Sandbox Dev API)</option>
+              <option value="production">Παραγωγικό (Live Production AADE)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Α.Φ.Μ. Επιχείρησης</label>
+            <input 
+              type="text" 
+              [ngModel]="myDataService.credentials().issuerAfm" 
+              (ngModelChange)="myDataService.updateCredentials({ issuerAfm: $event })"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
+            />
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">aade-user-id</label>
+            <input 
+              type="text" 
+              [ngModel]="myDataService.credentials().aadeUserId" 
+              (ngModelChange)="myDataService.updateCredentials({ aadeUserId: $event })"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
+            />
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-400 mb-1">Ocp-Apim-Subscription-Key</label>
+            <input 
+              type="password" 
+              [ngModel]="myDataService.credentials().subscriptionKey" 
+              (ngModelChange)="myDataService.updateCredentials({ subscriptionKey: $event })"
+              class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-800 flex justify-end">
+          <button 
+            type="button" 
+            (click)="showMyDataConfig.set(false)" 
+            class="h-10 px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer"
+          >
+            Αποθήκευση &amp; Κλείσιμο
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Out of Stock Alert Modal -->
+  @if (showOutOfStockModal()) {
+    @if (outOfStockProduct(); as prod) {
+      <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-rose-600/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 text-center">
+          
+          <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center text-3xl mx-auto shadow-lg shadow-rose-950/50">
+            ⚠️
+          </div>
+
+          <div class="space-y-1">
+            <h3 class="text-xl font-black text-rose-400 uppercase tracking-wide">
+              ΕΞΑΝΤΛΗΜΕΝΟ ΑΠΟΘΕΜΑ
+            </h3>
+            <p class="text-xs font-mono text-slate-400">
+              Το προϊόν δεν μπορεί να προστεθεί στο καλάθι
+            </p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2">
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
+                <img 
+                  [src]="catalogService.getProductImageUrl(prod)" 
+                  (error)="onImageError($event)" 
+                  alt="" 
+                  class="w-full h-full object-contain"
+                />
+              </div>
+              <div class="min-w-0 flex-1">
+                <span class="text-sm font-extrabold text-white block truncate">{{ prod.name }}</span>
+                <span class="text-xs font-mono text-slate-400 block mt-0.5">{{ prod.barcode || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-slate-800/80 text-xs font-mono">
+              <span class="text-slate-400">Διαθέσιμο Απόθεμα:</span>
+              <span class="px-2.5 py-1 rounded-lg font-black text-sm bg-rose-950 text-rose-400 border border-rose-800">
+                {{ prod.stockQuantity }} {{ prod.isWeighted ? 'kg' : 'τεμ' }}
+              </span>
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            (click)="closeOutOfStockModal()"
+            class="w-full h-14 bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-base rounded-2xl transition cursor-pointer shadow-lg shadow-rose-600/30"
+            autofocus
+          >
+            ΕΝΤΑΞΕΙ (ΚΛΕΙΣΙΜΟ) [ENTER]
+          </button>
+
+        </div>
+      </div>
+    }
+  }
+
+  <!-- Discount Modal -->
+  @if (showDiscountModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5">
+        
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <h3 class="text-base font-black text-amber-400 uppercase tracking-wide">
+            🏷️ {{ discountScope() === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
+          </h3>
+          <button (click)="showDiscountModal.set(false)" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer">✕</button>
+        </div>
+
+        <!-- Preset Percentage Buttons -->
+        <div class="grid grid-cols-4 gap-2.5">
+          @for (pct of [5, 10, 20, 50]; track pct) {
+            <button 
+              type="button" 
+              (click)="applyDiscount(pct)"
+              class="h-14 bg-slate-950 border-2 border-slate-800 hover:border-amber-500 text-lg font-mono font-black text-slate-100 rounded-2xl transition cursor-pointer"
+            >
+              -{{ pct }}%
+            </button>
+          }
+        </div>
+
+        <!-- Custom Input -->
+        <div class="space-y-2">
+          <label class="text-xs font-bold text-slate-400 uppercase font-mono">Προσαρμοσμένο Ποσοστό (%)</label>
+          <div class="flex gap-2">
+            <input 
+              type="number" 
+              min="0" 
+              max="100" 
+              [ngModel]="customDiscountInput()"
+              (ngModelChange)="customDiscountInput.set($event)"
+              class="flex-1 h-12 bg-slate-950 border border-slate-700 rounded-xl px-4 text-center font-mono font-black text-xl text-amber-400 focus:outline-none"
+            />
+            <button 
+              type="button" 
+              (click)="applyDiscount(customDiscountInput())"
+              class="px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm transition cursor-pointer"
+            >
+              Εφαρμογή
+            </button>
+          </div>
+        </div>
+
+        <!-- Remove Discount -->
+        <button 
+          type="button" 
+          (click)="applyDiscount(0)"
+          class="w-full h-11 bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 font-bold text-xs rounded-xl transition cursor-pointer"
+        >
+          Κατάργηση Έκπτωσης (0%)
+        </button>
+
+      </div>
+    </div>
+  }
+
+  <!-- Employee Management Modal -->
+  @if (showEmployeeModal()) {
+    <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border-2 border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4 font-mono">
+        
+        <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+          <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
+            <span>👥 ΠΡΟΣΘΗΚΗ / ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΩΠΙΚΟΥ</span>
+          </h3>
+          <button (click)="showEmployeeModal.set(false)" class="text-slate-400 hover:text-white font-bold cursor-pointer">✕</button>
+        </div>
+
+        <!-- Add New Employee Form -->
+        <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+          <h4 class="text-xs font-bold text-slate-300">Νέος Υπάλληλος</h4>
+          
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Όνομα &amp; Επώνυμο</label>
+              <input 
+                type="text" 
+                [(ngModel)]="employeeForm.name" 
+                placeholder="π.χ. Νίκος Παπαδόπουλος"
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">4-Ψήφιο PIN Εισόδου</label>
+              <input 
+                type="password" 
+                maxlength="6"
+                [(ngModel)]="employeeForm.pin" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Ρόλος / Δικαιώματα</label>
+              <select 
+                [(ngModel)]="employeeForm.role" 
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-2 text-xs text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="CASHIER">Ταμίας (POS Only)</option>
+                <option value="MANAGER">Υπεύθυνος Βάρδιας</option>
+                <option value="ADMIN">Διαχειριστής / Ιδιοκτήτης</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Κατάστημα</label>
+              <input 
+                type="text" 
+                [(ngModel)]="employeeForm.storeId" 
+                class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-slate-300 outline-none"
+                placeholder="π.χ. SHOP-01"
+              />
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            (click)="handleSaveEmployee()"
+            class="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 mt-2"
+          >
+            + Αποθήκευση Υπαλλήλου
+          </button>
+        </div>
+
+        <!-- Existing Cashiers List -->
+        <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 mt-4">
+          <span class="text-[11px] text-slate-500 font-bold block">Εγγεγραμμένοι Χρήστες Καταστήματος:</span>
+          @for (c of shiftService.allCashiers(); track c.id) {
+            <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs">
+              <div>
+                <span class="font-bold text-slate-200 block">{{ c.name }}</span>
+                <span class="text-[10px] text-slate-500">PIN: {{ c.pin }} • {{ c.role }} • [{{ c.storeId }}]</span>
+              </div>
+              <button 
+                type="button" 
+                (click)="shiftService.toggleCashierStatus(c.id, false)" 
+                class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer"
+                title="Διαγραφή / Απενεργοποίηση"
+              >
+                🗑️
+              </button>
+            </div>
+          }
+        </div>
+
+      </div>
+    </div>
+  }
+
+  <!-- Modal Component Selectors -->
+  <app-pos-price-check-modal 
+    [isOpen]="showPriceCheckModal()"
+    [initialQuery]="priceCheckInput()"
+    (close)="handlePriceCheckClose()"
+    (addToCart)="handlePriceCheckAddToCart($event)"
+  />
+
+ <app-pos-cash-drawer-modal 
+  [isOpen]="showCashDrawerModal()"
+  (submitLog)="handleCashLogSubmit($event)"
+  (cancel)="showCashDrawerModal.set(false)"
+/>
+
+<app-pos-denomination-modal
+  [isOpen]="showDenominationModal()"
+  (confirmCount)="handleDenominationConfirm($event)"
+  (cancel)="showDenominationModal.set(false)"
+/>
+
+  <app-pos-quick-register-modal 
+    [isOpen]="showQuickRegisterModal()"
+    [productMatch]="discoveredExternalProduct()"
+    (confirmed)="handleQuickRegisterConfirmed($event)"
+    (cancelled)="handleQuickRegisterCancelled()"
+  />
+
+  <app-pos-customer-modal 
+    [isOpen]="showCustomerModal()"
+    [searchResults]="customerSearchResults()"
+    (searchChange)="onCustomerSearch($event)"
+    (selectCustomer)="selectCustomer($event)"
+    (registerNew)="handleCustomerQuickAdd($event)"
+    (close)="showCustomerModal.set(false)"
+  />
+
+@if (shiftService.isLocked() || !shiftService.currentCashier()) {
+  <!-- Lock Screen Modal / Overlay -->
+  <app-pos-lock-screen 
+    [isLocked]="shiftService.isLocked()"
+    [cashiers]="shiftService.allCashiers()"
+    [errorMessage]="pinError()"
+    (pinSubmit)="handlePinSubmit($event)"
+  />
+} @else {
+  <!-- Protected POS Sales Workspace -->
+  <main class="pos-workspace">
+    <!-- Header with active shop & cashier badge -->
+    <header class="pos-header">
+      <div class="store-badge">
+        Κατάστημα: <strong>{{ tenantConfig.activeShop().name }}</strong>
+      </div>
+      <div class="cashier-badge">
+        Ταμίας: <strong>{{ shiftService.currentCashier()?.name }}</strong>
+        <button type="button" class="btn-lock" (click)="shiftService.lockTerminal()">
+          Κλείδωμα / Έξοδος
+        </button>
+      </div>
+    </header>
+
+    <!-- Barcode input, cart, keypad, checkout -->
+    <section class="pos-content">
+      <!-- Your existing register UI -->
+    </section>
+  </main>
+}
+
+  <app-pos-shift-handover-modal 
+    [isOpen]="showShiftHandoverModal()"
+    [shift]="shiftService.currentShift()"
+    [expectedCash]="shiftService.currentShift() ? shiftService.calculateExpectedCash(shiftService.currentShift()!) : 0"
+    (printX)="printXReportSlip()"
+    (confirmClose)="handleShiftClose($event)"
+    (close)="showShiftHandoverModal.set(false)"
+  />
+
+  <app-pos-store-switcher-modal 
+    [isOpen]="showStoreModal()"
+    (close)="showStoreModal.set(false)"
+  />
+
 <!-- Super-Admin PIN Modal -->
 @if (isUnlockModalOpen()) {
   <app-super-admin-modal (close)="isUnlockModalOpen.set(false)" />
