@@ -137,10 +137,16 @@
     </div>
   </header>
 
+  <!-- POS Register Workspace: Occupies remaining vertical height -->
+  <div class="flex-1 flex overflow-hidden">
+    <!-- Left: Cart & Totals -->
+    <!-- Right: Product Speed-Dial & Barcode Input -->
+  </div>
+
 </div>
 
   <!-- ================= 2. MAIN CASHIER WORKSPACE ================= -->
-   <main class="flex-1 flex overflow-hidden">
+  <main class="flex-1 flex flex-col p-3.5 gap-3.5 overflow-hidden min-h-0">
 
     <!-- FAST CASHIER FUNCTION BAR -->
     <div class="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
@@ -1068,7 +1074,7 @@
     [isOpen]="showStoreModal()"
     (close)="showStoreModal.set(false)"
   />
-
+  
 <!-- Super-Admin PIN Modal -->
 @if (isUnlockModalOpen()) {
   <app-super-admin-modal (close)="isUnlockModalOpen.set(false)" />
