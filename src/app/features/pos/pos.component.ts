@@ -12,7 +12,7 @@ import {
 import { StorageQuotaService } from '../../core/services/storage-quota.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink, RouterOutlet } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
 import { SuperAdminModalComponent } from '../../shared/super-admin-modal.component';
 
@@ -59,6 +59,9 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
 @Component({
   selector: 'app-pos',
   standalone: true,
+  host: {
+    'class': 'block w-full h-full min-h-0 min-w-0 overflow-hidden'
+  },
   imports: [
     CommonModule, 
     FormsModule,
@@ -72,8 +75,7 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     SuperAdminModalComponent,
     NewStoreModalComponent,
     PosDenominationModalComponent,
-    RouterLink,
-    RouterOutlet
+    RouterLink
   ],
   templateUrl: './pos.component.html'
 })
