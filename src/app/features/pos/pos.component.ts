@@ -12,7 +12,7 @@ import {
 import { StorageQuotaService } from '../../core/services/storage-quota.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
 import { SuperAdminModalComponent } from '../../shared/super-admin-modal.component';
 
@@ -71,7 +71,9 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     PosStoreSwitcherModalComponent,
     SuperAdminModalComponent,
     NewStoreModalComponent,
-    PosDenominationModalComponent
+    PosDenominationModalComponent,
+    RouterLink,
+    RouterOutlet
   ],
   templateUrl: './pos.component.html'
 })
