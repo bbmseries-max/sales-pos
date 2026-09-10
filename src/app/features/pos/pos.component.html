@@ -1,7 +1,8 @@
 <div class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
 
  <!-- Top Main Header Bar -->
-<header class="w-full bg-slate-900/95 border-b border-slate-800 px-3 py-2 text-white backdrop-blur flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0 select-none min-w-full">
+<!-- Top Fixed Header Strip with Native Touch Scroll -->
+<header class="w-full bg-slate-900/95 border-b border-slate-800 px-3 py-2 text-white backdrop-blur flex items-center gap-3 overflow-x-auto no-scrollbar shrink-0 select-none">
   
   <!-- Left Side: Brand & Active Store Badge -->
   <div class="flex items-center gap-2 shrink-0 min-w-max">
@@ -52,157 +53,161 @@
       </div>
     }
   </div>
-  <div class="flex items-center gap-3">
-  <button 
-    (click)="triggerManualSync()"
-    [disabled]="!syncService.isOnline() || syncService.isSyncing()"
-    class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm border"
-    [ngClass]="{
-      'bg-emerald-950/80 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/80': syncService.isOnline() && syncService.pendingCount() === 0,
-      'bg-amber-950/80 text-amber-300 border-amber-800/60 hover:bg-amber-900/80': syncService.isOnline() && syncService.pendingCount() > 0,
-      'bg-rose-950/80 text-rose-300 border-rose-800/60 cursor-not-allowed': !syncService.isOnline()
-    }"
-    [title]="syncService.isOnline() ? 'Click to trigger immediate cloud sync' : 'Offline mode: sales are saved locally in Dexie'"
-  >
-    @if (syncService.isSyncing()) {
-      <svg class="animate-spin h-3.5 w-3.5 text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
-    } @else {
-      <span class="relative flex h-2.5 w-2.5">
-        <span 
-          class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-          [ngClass]="{
-            'bg-emerald-400': syncService.isOnline() && syncService.pendingCount() === 0,
-            'bg-amber-400': syncService.isOnline() && syncService.pendingCount() > 0,
-            'bg-rose-400': !syncService.isOnline()
-          }"
-        ></span>
-        <span 
-          class="relative inline-flex rounded-full h-2.5 w-2.5"
-          [ngClass]="{
-            'bg-emerald-500': syncService.isOnline() && syncService.pendingCount() === 0,
-            'bg-amber-500': syncService.isOnline() && syncService.pendingCount() > 0,
-            'bg-rose-500': !syncService.isOnline()
-          }"
-        ></span>
-      </span>
-    }
 
-    @if (!syncService.isOnline()) {
-      <span>Εκτός σύνδεσης (Offline)</span>
-    } @else if (syncService.isSyncing()) {
-      <span>Συγχρονισμός...</span>
-    } @else if (syncService.pendingCount() > 0) {
-      <span>Εκκρεμούν: {{ syncService.pendingCount() }}</span>
-    } @else {
-      <span>Online</span>
-    }
-  </button>
-</div>
-
-<div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800 flex items-center justify-between">
-
-  <button
-    (click)="handleForceCatalogPull()"
-    [disabled]="!syncService.isOnline() || syncService.isSyncing()"
-    class="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-50 flex items-center gap-2"
-  >
-    @if (syncService.isSyncing()) {
-      <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-      </svg>
-      <span>Λήψη...</span>
-    } @else {
-      <span>Πλήρης Συγχρονισμός</span>
-    }
-  </button>
-</div>
-
-  <!-- Right Side: Action Tool Buttons -->
-  <!-- 'overflow-x-auto' ensures any buttons that exceed the screen width can be smoothly swiped/scrolled -->
- <div class="flex items-center gap-1.5 shrink-0 overflow-x-auto py-0.5 min-w-max">
-    
-  <!-- Price Check F2 -->
-  <button 
-    type="button"
-    (click)="openPriceCheck()" 
-    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer">
-    <span>🔍</span>
-    <span class="hidden lg:inline">Έλεγχος Τιμής</span>
-    <span class="text-[9px] bg-slate-700 px-1 py-0.5 rounded text-slate-400 hidden xl:inline">F2</span>
-  </button>
-
-  <!-- Cash Movement / Drawer -->
-  <button 
-    type="button" 
-    (click)="showDenominationModal.set(true)" 
-    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1.5 shrink-0 cursor-pointer">
-    <span>🧮</span>
-    <span class="hidden lg:inline">Καταμέτρηση</span>
-  </button>
-
-  <!-- Apothiki / Inventory Link (DIRECT SPA ROUTE) -->
-  <button 
-    type="button"
-    routerLink="/inventory" 
-    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 transition flex items-center gap-1 shrink-0 cursor-pointer">
-    <span>📦</span>
-    <span class="hidden md:inline">Αποθήκη</span>
-  </button>
-
-  <!-- Shift / X-Report -->
-  <button 
-    type="button"
-    (click)="openShiftHandover()" 
-    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer">
-    <span>📋</span>
-    <span class="hidden lg:inline">Βάρδια</span>
-  </button>
-
-  <!-- Add Employee -->
-  <button 
-    type="button"
-    (click)="openEmployeeModal()" 
-    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer">
-    <span>👤</span>
-    <span class="hidden lg:inline">Υπάλληλοι</span>
-  </button>
-
-  <!-- Cashier Session & Lock Button -->
-  <div class="flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl shrink-0">
-    <!-- Status dot & Cashier Name -->
-    <div class="flex items-center gap-2">
-      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-      <span class="text-xs font-semibold text-slate-200">
-        {{ shiftService.currentCashier()?.name || 'Χωρίς Ταμία' }}
-      </span>
-      @if (shiftService.currentCashier()?.role === 'ADMIN') {
-        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/50">
-          ADMIN
+  <!-- Center: Sync Status Pill -->
+  <div class="flex items-center gap-2 shrink-0 min-w-max">
+    <button 
+      type="button"
+      (click)="triggerManualSync()"
+      [disabled]="!syncService.isOnline() || syncService.isSyncing()"
+      class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm border shrink-0"
+      [ngClass]="{
+        'bg-emerald-950/80 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/80': syncService.isOnline() && syncService.pendingCount() === 0,
+        'bg-amber-950/80 text-amber-300 border-amber-800/60 hover:bg-amber-900/80': syncService.isOnline() && syncService.pendingCount() > 0,
+        'bg-rose-950/80 text-rose-300 border-rose-800/60 cursor-not-allowed': !syncService.isOnline()
+      }"
+      [title]="syncService.isOnline() ? 'Click to trigger immediate cloud sync' : 'Offline mode: sales are saved locally in Dexie'"
+    >
+      @if (syncService.isSyncing()) {
+        <svg class="animate-spin h-3.5 w-3.5 text-amber-400 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      } @else {
+        <span class="relative flex h-2.5 w-2.5 shrink-0">
+          <span 
+            class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+            [ngClass]="{
+              'bg-emerald-400': syncService.isOnline() && syncService.pendingCount() === 0,
+              'bg-amber-400': syncService.isOnline() && syncService.pendingCount() > 0,
+              'bg-rose-400': !syncService.isOnline()
+            }"
+          ></span>
+          <span 
+            class="relative inline-flex rounded-full h-2.5 w-2.5"
+            [ngClass]="{
+              'bg-emerald-500': syncService.isOnline() && syncService.pendingCount() === 0,
+              'bg-amber-500': syncService.isOnline() && syncService.pendingCount() > 0,
+              'bg-rose-500': !syncService.isOnline()
+            }"
+          ></span>
         </span>
       }
-    </div>
 
-    <!-- Divider -->
-    <span class="text-slate-700">|</span>
+      @if (!syncService.isOnline()) {
+        <span>Offline</span>
+      } @else if (syncService.isSyncing()) {
+        <span>Συγχρονισμός...</span>
+      } @else if (syncService.pendingCount() > 0) {
+        <span>Εκκρεμούν: {{ syncService.pendingCount() }}</span>
+      } @else {
+        <span>Online</span>
+      }
+    </button>
 
-    <!-- Lock / Logout Button -->
-    <button 
-      type="button" 
-      (click)="switchCashier()" 
-      title="Κλείδωμα / Αλλαγή Ταμία"
-      class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-rose-300 hover:bg-rose-500/10 active:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 rounded-lg transition-all cursor-pointer">
-      <span>🔒</span>
-      <span class="hidden sm:inline">Έξοδος</span>
+    <!-- Force Catalog Pull Button (Compact header version) -->
+    <button
+      type="button"
+      (click)="handleForceCatalogPull()"
+      [disabled]="!syncService.isOnline() || syncService.isSyncing()"
+      title="Πλήρης συγχρονισμός καταλόγου"
+      class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white transition-all disabled:opacity-50 flex items-center gap-1 shrink-0"
+    >
+      @if (syncService.isSyncing()) {
+        <svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      } @else {
+        <span>🔄</span>
+      }
+      <span class="whitespace-nowrap">Κατάλογος</span>
     </button>
   </div>
 
-</div>
-<router-outlet></router-outlet>
+  <!-- Right Side: Action Tool Buttons & Cashier Profile -->
+  <div class="flex items-center gap-1.5 shrink-0 min-w-max ml-auto">
+    
+    <!-- Price Check F2 -->
+    <button 
+      type="button"
+      (click)="openPriceCheck()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
+      <span>🔍</span>
+      <span class="hidden sm:inline">Έλεγχος Τιμής</span>
+      <span class="text-[9px] bg-slate-700 px-1 py-0.5 rounded text-slate-400">F2</span>
+    </button>
+
+    <!-- Cash Movement / Drawer -->
+    <button 
+      type="button" 
+      (click)="showDenominationModal.set(true)" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap">
+      <span>🧮</span>
+      <span class="hidden sm:inline">Καταμέτρηση</span>
+    </button>
+
+    <!-- Apothiki / Inventory Link -->
+    <button 
+      type="button"
+      routerLink="/inventory" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
+      <span>📦</span>
+      <span>Αποθήκη</span>
+    </button>
+
+    <!-- Shift / X-Report -->
+    <button 
+      type="button"
+      (click)="openShiftHandover()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
+      <span>📋</span>
+      <span class="hidden sm:inline">Βάρδια</span>
+    </button>
+
+    <!-- Add Employee -->
+    <button 
+      type="button"
+      (click)="openEmployeeModal()" 
+      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
+      <span>👤</span>
+      <span class="hidden sm:inline">Υπάλληλοι</span>
+    </button>
+
+    <!-- Cashier Session & Lock Button -->
+    <div class="flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl shrink-0 whitespace-nowrap">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-xs font-semibold text-slate-200">
+          {{ shiftService.currentCashier()?.name || 'Χωρίς Ταμία' }}
+        </span>
+        @if (shiftService.currentCashier()?.role === 'ADMIN') {
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/50">
+            ADMIN
+          </span>
+        }
+      </div>
+
+      <span class="text-slate-700">|</span>
+
+      <button 
+        type="button" 
+        (click)="switchCashier()" 
+        title="Κλείδωμα / Αλλαγή Ταμία"
+        class="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-300 hover:text-rose-300 hover:bg-rose-500/10 active:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 rounded-lg transition-all cursor-pointer">
+        <span>🔒</span>
+        <span>Έξοδος</span>
+      </button>
+    </div>
+
+  </div>
+
 </header>
+
+<!-- Main App Workspace Placed OUTSIDE Header -->
+<div class="flex-1 overflow-hidden relative">
+  <router-outlet></router-outlet>
+</div>
 
   <!-- ================= 2. MAIN CASHIER WORKSPACE ================= -->
   <main class="flex-1 flex flex-col p-3.5 gap-3.5 overflow-hidden min-h-0">
