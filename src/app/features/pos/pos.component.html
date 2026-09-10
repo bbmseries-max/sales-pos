@@ -2,211 +2,158 @@
 
  <!-- Top Main Header Bar -->
 <!-- Top Fixed Header Strip with Native Touch Scroll -->
-<header class="w-full bg-slate-900/95 border-b border-slate-800 px-3 py-2 text-white backdrop-blur flex items-center gap-3 overflow-x-auto no-scrollbar shrink-0 select-none">
-  
-  <!-- Left Side: Brand & Active Store Badge -->
-  <div class="flex items-center gap-2 shrink-0 min-w-max">
-    <div 
-      (click)="onSecretLogoClick()" 
-      class="flex items-center gap-1.5 cursor-pointer active:scale-95 transition select-none bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/60"
-      title="Tap 5 times for Super-Admin">
-      <span class="text-xl">🏪</span>
-      <div class="leading-tight">
-        <h1 class="text-xs md:text-sm font-black tracking-tight bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
-          {{ tenantConfig.activeShop().name }}
-        </h1>
-        <span class="text-[9px] text-slate-400 font-mono block">[{{ tenantConfig.activeShop().code }}]</span>
-      </div>
-    </div>
+<!-- POS Screen Container: Locked to viewport height -->
+<div class="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden text-slate-100">
 
-    <!-- Super-Admin Dropdown Strip (if unlocked) -->
-    @if (tenantConfig.isSuperAdmin()) {
-      <div class="flex items-center gap-1 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl shrink-0">
-        <select 
-          #storeSelect
-          [value]="tenantConfig.activeShop().code" 
-          (change)="handleStoreSwitch(storeSelect.value)"
-          class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer max-w-[130px] md:max-w-[180px] truncate">
-          @for (s of tenantConfig.registeredShops(); track s.code) {
-            <option [value]="s.code" [selected]="s.code === tenantConfig.activeShop().code">
-              ⚡ {{ s.name }} ({{ s.code }})
-            </option>
-          }
-        </select>
-
-        <button 
-          type="button" 
-          (click)="isNewStoreModalOpen.set(true)" 
-          title="Add New Store"
-          class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0">
-          <span>➕</span>
-          <span class="hidden md:inline text-[11px]">New</span>
-        </button>
-
-        <button 
-          type="button" 
-          (click)="tenantConfig.lockSuperAdmin()" 
-          title="Lock Super-Admin"
-          class="px-1.5 py-1 text-slate-400 hover:text-rose-400 text-xs transition shrink-0">
-          🔒
-        </button>
-      </div>
-    }
-  </div>
-
-  <!-- Center: Sync Status Pill -->
-  <div class="flex items-center gap-2 shrink-0 min-w-max">
-    <button 
-      type="button"
-      (click)="triggerManualSync()"
-      [disabled]="!syncService.isOnline() || syncService.isSyncing()"
-      class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm border shrink-0"
-      [ngClass]="{
-        'bg-emerald-950/80 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/80': syncService.isOnline() && syncService.pendingCount() === 0,
-        'bg-amber-950/80 text-amber-300 border-amber-800/60 hover:bg-amber-900/80': syncService.isOnline() && syncService.pendingCount() > 0,
-        'bg-rose-950/80 text-rose-300 border-rose-800/60 cursor-not-allowed': !syncService.isOnline()
-      }"
-      [title]="syncService.isOnline() ? 'Click to trigger immediate cloud sync' : 'Offline mode: sales are saved locally in Dexie'"
-    >
-      @if (syncService.isSyncing()) {
-        <svg class="animate-spin h-3.5 w-3.5 text-amber-400 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      } @else {
-        <span class="relative flex h-2.5 w-2.5 shrink-0">
-          <span 
-            class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-            [ngClass]="{
-              'bg-emerald-400': syncService.isOnline() && syncService.pendingCount() === 0,
-              'bg-amber-400': syncService.isOnline() && syncService.pendingCount() > 0,
-              'bg-rose-400': !syncService.isOnline()
-            }"
-          ></span>
-          <span 
-            class="relative inline-flex rounded-full h-2.5 w-2.5"
-            [ngClass]="{
-              'bg-emerald-500': syncService.isOnline() && syncService.pendingCount() === 0,
-              'bg-amber-500': syncService.isOnline() && syncService.pendingCount() > 0,
-              'bg-rose-500': !syncService.isOnline()
-            }"
-          ></span>
-        </span>
-      }
-
-      @if (!syncService.isOnline()) {
-        <span>Offline</span>
-      } @else if (syncService.isSyncing()) {
-        <span>Συγχρονισμός...</span>
-      } @else if (syncService.pendingCount() > 0) {
-        <span>Εκκρεμούν: {{ syncService.pendingCount() }}</span>
-      } @else {
-        <span>Online</span>
-      }
-    </button>
-
-    <!-- Force Catalog Pull Button (Compact header version) -->
-    <button
-      type="button"
-      (click)="handleForceCatalogPull()"
-      [disabled]="!syncService.isOnline() || syncService.isSyncing()"
-      title="Πλήρης συγχρονισμός καταλόγου"
-      class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white transition-all disabled:opacity-50 flex items-center gap-1 shrink-0"
-    >
-      @if (syncService.isSyncing()) {
-        <svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-        </svg>
-      } @else {
-        <span>🔄</span>
-      }
-      <span class="whitespace-nowrap">Κατάλογος</span>
-    </button>
-  </div>
-
-  <!-- Right Side: Action Tool Buttons & Cashier Profile -->
-  <div class="flex items-center gap-1.5 shrink-0 min-w-max ml-auto">
+  <!-- Fixed Height Header (Never pushes page down) -->
+  <header class="h-14 w-full bg-slate-900/95 border-b border-slate-800 shrink-0 px-3 z-30 flex items-center select-none">
     
-    <!-- Price Check F2 -->
-    <button 
-      type="button"
-      (click)="openPriceCheck()" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
-      <span>🔍</span>
-      <span class="hidden sm:inline">Έλεγχος Τιμής</span>
-      <span class="text-[9px] bg-slate-700 px-1 py-0.5 rounded text-slate-400">F2</span>
-    </button>
-
-    <!-- Cash Movement / Drawer -->
-    <button 
-      type="button" 
-      (click)="showDenominationModal.set(true)" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap">
-      <span>🧮</span>
-      <span class="hidden sm:inline">Καταμέτρηση</span>
-    </button>
-
-    <!-- Apothiki / Inventory Link -->
-    <button 
-      type="button"
-      routerLink="/inventory" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
-      <span>📦</span>
-      <span>Αποθήκη</span>
-    </button>
-
-    <!-- Shift / X-Report -->
-    <button 
-      type="button"
-      (click)="openShiftHandover()" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
-      <span>📋</span>
-      <span class="hidden sm:inline">Βάρδια</span>
-    </button>
-
-    <!-- Add Employee -->
-    <button 
-      type="button"
-      (click)="openEmployeeModal()" 
-      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap">
-      <span>👤</span>
-      <span class="hidden sm:inline">Υπάλληλοι</span>
-    </button>
-
-    <!-- Cashier Session & Lock Button -->
-    <div class="flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl shrink-0 whitespace-nowrap">
-      <div class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="text-xs font-semibold text-slate-200">
-          {{ shiftService.currentCashier()?.name || 'Χωρίς Ταμία' }}
-        </span>
-        @if (shiftService.currentCashier()?.role === 'ADMIN') {
-          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/50">
-            ADMIN
-          </span>
-        }
+    <!-- Horizontal Scrollable Strip -->
+    <div class="w-full flex items-center gap-3 overflow-x-auto overflow-y-hidden no-scrollbar py-1">
+      
+      <!-- 1. Store Brand / Secret Logo -->
+      <div 
+        (click)="onSecretLogoClick()" 
+        class="flex items-center gap-1.5 cursor-pointer active:scale-95 transition bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/60 shrink-0">
+        <span class="text-lg">🏪</span>
+        <div class="leading-tight">
+          <h1 class="text-xs md:text-sm font-black tracking-tight bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent whitespace-nowrap">
+            {{ tenantConfig.activeShop().name }}
+          </h1>
+          <span class="text-[9px] text-slate-400 font-mono block">[{{ tenantConfig.activeShop().code }}]</span>
+        </div>
       </div>
 
-      <span class="text-slate-700">|</span>
+      <!-- Super-Admin Dropdown (if unlocked) -->
+      @if (tenantConfig.isSuperAdmin()) {
+        <div class="flex items-center gap-1 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl shrink-0">
+          <select 
+            #storeSelect
+            [value]="tenantConfig.activeShop().code" 
+            (change)="handleStoreSwitch(storeSelect.value)"
+            class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer max-w-[140px] truncate">
+            @for (s of tenantConfig.registeredShops(); track s.code) {
+              <option [value]="s.code" [selected]="s.code === tenantConfig.activeShop().code">
+                ⚡ {{ s.name }}
+              </option>
+            }
+          </select>
+          <button 
+            type="button" 
+            (click)="isNewStoreModalOpen.set(true)" 
+            class="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold shrink-0">
+            ➕
+          </button>
+          <button 
+            type="button" 
+            (click)="tenantConfig.lockSuperAdmin()" 
+            class="px-1.5 py-1 text-slate-400 hover:text-rose-400 text-xs shrink-0">
+            🔒
+          </button>
+        </div>
+      }
 
+      <!-- 2. Sync Pill -->
       <button 
-        type="button" 
-        (click)="switchCashier()" 
-        title="Κλείδωμα / Αλλαγή Ταμία"
-        class="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-300 hover:text-rose-300 hover:bg-rose-500/10 active:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 rounded-lg transition-all cursor-pointer">
-        <span>🔒</span>
-        <span>Έξοδος</span>
+        type="button"
+        (click)="triggerManualSync()"
+        [disabled]="!syncService.isOnline() || syncService.isSyncing()"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition shrink-0 whitespace-nowrap"
+        [ngClass]="{
+          'bg-emerald-950/80 text-emerald-300 border-emerald-800/60': syncService.isOnline() && syncService.pendingCount() === 0,
+          'bg-amber-950/80 text-amber-300 border-amber-800/60': syncService.isOnline() && syncService.pendingCount() > 0,
+          'bg-rose-950/80 text-rose-300 border-rose-800/60': !syncService.isOnline()
+        }">
+        <span class="w-2 h-2 rounded-full" 
+              [ngClass]="syncService.isOnline() ? 'bg-emerald-400' : 'bg-rose-500'"></span>
+        <span>{{ !syncService.isOnline() ? 'Offline' : (syncService.isSyncing() ? 'Sync...' : 'Online') }}</span>
       </button>
-    </div>
 
+      <!-- 3. Catalog Sync -->
+      <button
+        type="button"
+        (click)="handleForceCatalogPull()"
+        [disabled]="!syncService.isOnline() || syncService.isSyncing()"
+        class="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white flex items-center gap-1 shrink-0 whitespace-nowrap">
+        <span>🔄</span>
+        <span>Κατάλογος</span>
+      </button>
+
+      <!-- Push Remaining Action Tools to Right on Wide Screens -->
+      <div class="flex items-center gap-1.5 shrink-0 ml-auto">
+        
+        <!-- Price Check F2 -->
+        <button 
+          type="button"
+          (click)="openPriceCheck()" 
+          class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 flex items-center gap-1 shrink-0 whitespace-nowrap">
+          <span>🔍</span>
+          <span class="hidden sm:inline">Έλεγχος</span>
+          <span class="text-[9px] bg-slate-700 px-1 rounded text-slate-400">F2</span>
+        </button>
+
+        <!-- Counting / Denominations -->
+        <button 
+          type="button" 
+          (click)="showDenominationModal.set(true)" 
+          class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 flex items-center gap-1 shrink-0 whitespace-nowrap">
+          <span>🧮</span>
+          <span class="hidden sm:inline">Καταμέτρηση</span>
+        </button>
+
+        <!-- Apothiki SPA Route -->
+        <button 
+          type="button"
+          routerLink="/inventory" 
+          class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 flex items-center gap-1 shrink-0 whitespace-nowrap">
+          <span>📦</span>
+          <span>Αποθήκη</span>
+        </button>
+
+        <!-- Shift -->
+        <button 
+          type="button"
+          (click)="openShiftHandover()" 
+          class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 flex items-center gap-1 shrink-0 whitespace-nowrap">
+          <span>📋</span>
+          <span class="hidden sm:inline">Βάρδια</span>
+        </button>
+
+        <!-- Employees -->
+        <button 
+          type="button"
+          (click)="openEmployeeModal()" 
+          class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700/60 flex items-center gap-1 shrink-0 whitespace-nowrap">
+          <span>👤</span>
+          <span class="hidden sm:inline">Υπάλληλοι</span>
+        </button>
+
+        <!-- Cashier Session Pill -->
+        <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl shrink-0 whitespace-nowrap">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-xs font-medium text-slate-200">
+            {{ shiftService.currentCashier()?.name || 'Χωρίς Ταμία' }}
+          </span>
+          <span class="text-slate-700">|</span>
+          <button 
+            type="button" 
+            (click)="switchCashier()" 
+            class="text-xs text-slate-300 hover:text-rose-400 transition">
+            🔒 Έξοδος
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </header>
+
+  <!-- POS Register Workspace: Occupies remaining vertical height -->
+  <div class="flex-1 flex overflow-hidden">
+    <!-- Left: Cart & Totals -->
+    <!-- Right: Product Speed-Dial & Barcode Input -->
   </div>
 
-</header>
-
-<!-- Main App Workspace Placed OUTSIDE Header -->
-<div class="flex-1 overflow-hidden relative">
-  <router-outlet></router-outlet>
 </div>
 
   <!-- ================= 2. MAIN CASHIER WORKSPACE ================= -->
