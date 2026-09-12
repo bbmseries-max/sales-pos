@@ -823,7 +823,7 @@ public async handlePinSubmit(pin: string): Promise<void> {
     }
   }
 
-  public async completeSale(): Promise<void> {
+public async completeSale(): Promise<void> {
     const uiMethod = this.paymentMethod();
     const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
     const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
@@ -837,6 +837,9 @@ public async handlePinSubmit(pin: string): Promise<void> {
         this.cashTendered ? this.cashTendered() : 0,
         this.changeDue ? this.changeDue() : 0
       );
+
+      // ✅ RECORD SALE TO SHIFT FOR X/Z ACCURACY:
+      await this.shiftService.recordSaleToShift(tx.grandTotal, mappedMethod);
 
       this.pointsToRedeem?.set?.(0);
       this.showPaymentModal.set(false);
@@ -863,14 +866,6 @@ public async handlePinSubmit(pin: string): Promise<void> {
       this.flashFeedback('⛔ Σφάλμα: ' + (err?.message || 'Αποτυχία ολοκλήρωσης'), 'error');
     } finally {
       this.focusBarcodeInput?.();
-    }
-  }
-
-  private async handleFiscalPostProcessingSafely(tx: any): Promise<void> {
-    try {
-      await this.handleFiscalPostProcessing(tx);
-    } catch (fiscalErr) {
-      console.warn('[Fiscal / Hardware Bypass] Could not connect to fiscal bridge or printer:', fiscalErr);
     }
   }
 
@@ -957,7 +952,11 @@ public async handlePinSubmit(pin: string): Promise<void> {
     this.showCashDrawerModal.set(true);
   }
 
-  public openShiftHandover(): void {
+ public async openShiftHandover(): Promise<void> {
+    const current = this.shiftService.currentCashier();
+    if (!this.shiftService.currentShift() && current) {
+      await this.shiftService.ensureActiveShiftForCashier(current);
+    }
     this.showShiftHandoverModal.set(true);
   }
 

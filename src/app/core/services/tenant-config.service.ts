@@ -14,11 +14,13 @@ export interface ShopInfo {
   isActive?: boolean;
 }
 
+export const RESERVED_SYSTEM_PINS = ['8820'];
+
 const DEFAULT_SHOPS: ShopInfo[] = [
   {
     code: 'mar-market',
     name: 'Maranth Market (Central)',
-    adminPin: '2222',
+    adminPin: '2435',
     address: 'Leof. Pentelis 45, Vrilissia',
     afm: '123456789',
     doy: 'XALANDRIOU',
@@ -28,7 +30,7 @@ const DEFAULT_SHOPS: ShopInfo[] = [
   {
     code: 'ftest',
     name: 'Epta Enteka',
-    adminPin: '1111',
+    adminPin: '5564',
     address: 'Plateia Agias Paraskevis 12',
     afm: '998877665',
     doy: 'AGIAS PARASKEVIS',
@@ -38,10 +40,10 @@ const DEFAULT_SHOPS: ShopInfo[] = [
   {
     code: 'parnasos',
     name: 'Maranth Parnassos',
-    adminPin: '3333',
-    address: 'Arahova Main Rd',
+    adminPin: '1978',
+    address: 'Αρηστοτελους 103',
     afm: '887766554',
-    doy: 'LIVADEIAS',
+    doy: 'ΚΕΦΟΔΕ',
     phone: '22670-31000',
     currency: 'EUR'
   }
@@ -58,55 +60,61 @@ export function sanitizeStoreCode(raw: string): string {
 
 @Injectable({ providedIn: 'root' })
 export class TenantConfigService {
+  
+  public registeredShops = signal<ShopInfo[]>(this.getInitialRegisteredShops());
   public activeShop = signal<ShopInfo>(this.getInitialShop());
   public isSuperAdmin = signal<boolean>(false);
-  public registeredShops = signal<ShopInfo[]>(DEFAULT_SHOPS);
-  public isPinAvailable(pin: string, excludeStoreCode?: string): boolean {
-    const cleanPin = pin.trim();
-    // Disallow reserved PINs or PINs shorter than 4 digits
-    if (cleanPin === '8820' || cleanPin.length < 4) {
-      return false;
-    }
-    const currentShops = this.registeredShops();
-    const conflict = currentShops.find(s => 
-      (s as any).adminPin === cleanPin && s.code !== excludeStoreCode
-    );
-
-    return !conflict;
-  }
 
   constructor() {
     this.loadFromStorage();
   }
 
-  private getInitialShop(): ShopInfo {
-    const cached = localStorage.getItem('active_shop');
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {
-        console.error('[TenantConfig] Failed to parse active_shop from localStorage', e);
-      }
+  public isPinAvailable(pin: string, excludeStoreCode?: string): boolean {
+    const cleanPin = pin.trim();
+    if (RESERVED_SYSTEM_PINS.includes(cleanPin) || cleanPin.length < 4) {
+      return false;
     }
-    // Fall back to the default shop from your DEFAULT_SHOPS array
-    const defaultCode = localStorage.getItem('active_shop_code') || 'ftest';
-    const match = DEFAULT_SHOPS.find(s => s.code === defaultCode) || DEFAULT_SHOPS[0];
-    return match;
+    const conflict = this.registeredShops().find(
+      s => s.adminPin === cleanPin && s.code !== excludeStoreCode
+    );
+    return !conflict;
   }
 
-  private getInitialShops(): ShopInfo[] {
-    const cached = localStorage.getItem('registered_shops');
-    if (cached) {
+  private getInitialRegisteredShops(): ShopInfo[] {
+    const saved = localStorage.getItem('registered_shops');
+    if (saved) {
       try {
-        const parsed = JSON.parse(cached);
+        const parsed: ShopInfo[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Merge defaults with saved: ALWAYS prioritize code-level adminPins for DEFAULT_SHOPS
+          const mergedDefaults = DEFAULT_SHOPS.map(def => {
+            const found = parsed.find(p => p.code === def.code);
+            return found ? { ...found, adminPin: def.adminPin } : def;
+          });
+
+          const customShops = parsed.filter(p => !DEFAULT_SHOPS.some(def => def.code === p.code));
+          return [...mergedDefaults, ...customShops];
         }
       } catch (e) {
-        console.error('[TenantConfig] Failed to parse registered_shops from localStorage', e);
+        console.error('[TenantConfig] Corrupt cached shops, falling back to defaults', e);
       }
     }
     return [...DEFAULT_SHOPS];
+  }
+
+  private getInitialShop(): ShopInfo {
+    const shops = this.getInitialRegisteredShops();
+    const saved = localStorage.getItem('active_shop');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const match = shops.find(s => s.code === parsed.code);
+        if (match) return match;
+      } catch (e) {
+        console.error('[TenantConfig] Corrupt cached active shop', e);
+      }
+    }
+    return shops[0] || DEFAULT_SHOPS[0];
   }
 
   private loadFromStorage(): void {
@@ -116,59 +124,22 @@ export class TenantConfigService {
       this.isSuperAdmin.set(true);
     }
 
-    // 2. Restore Registered Shops
-    let currentShops = DEFAULT_SHOPS;
-    const savedShops = localStorage.getItem('registered_shops');
-    if (savedShops) {
-      try {
-        const parsed = JSON.parse(savedShops);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge defaults with saved so adminPins are preserved even if localStorage is older
-          currentShops = DEFAULT_SHOPS.map(def => {
-            const found = parsed.find((p: ShopInfo) => p.code === def.code);
-            return found ? { ...def, ...found, adminPin: found.adminPin || def.adminPin } : def;
-          });
+    // 2. Synchronize registered shops
+    const syncedShops = this.getInitialRegisteredShops();
+    this.registeredShops.set(syncedShops);
+    localStorage.setItem('registered_shops', JSON.stringify(syncedShops));
 
-          // Add any custom shops created dynamically
-          const customShops = parsed.filter((p: ShopInfo) => !DEFAULT_SHOPS.some(def => def.code === p.code));
-          currentShops = [...currentShops, ...customShops];
-
-          this.registeredShops.set(currentShops);
-        }
-      } catch (err) {
-        console.warn('[TenantConfig] Failed to parse registered_shops:', err);
-      }
-    }
-
-    // 3. Restore Active Shop safely
-    const savedActive = localStorage.getItem('active_shop');
-    if (savedActive) {
-      try {
-        const parsed: ShopInfo = JSON.parse(savedActive);
-        if (parsed?.code) {
-          const match = currentShops.find(s => s.code === parsed.code);
-          const active = match || parsed;
-          this.activeShop.set(active);
-
-          if (!match) {
-            this.registerShop(active, false);
-          }
-          return;
-        }
-      } catch (err) {
-        console.warn('[TenantConfig] Failed to parse active_shop:', err);
-      }
-    }
-
-    // Fallback default
-    this.activeShop.set(currentShops[0] || DEFAULT_SHOPS[0]);
+    // 3. Synchronize active shop
+    const syncedActive = this.getInitialShop();
+    this.activeShop.set(syncedActive);
+    localStorage.setItem('active_shop', JSON.stringify(syncedActive));
+    localStorage.setItem('active_shop_code', syncedActive.code);
   }
 
   public registerShop(shop: ShopInfo, syncStorage = true): { success: boolean; message?: string } {
     const cleanCode = sanitizeStoreCode(shop.code);
-    const pin = (shop as any).adminPin ? String((shop as any).adminPin).trim() : '';
+    const pin = shop.adminPin ? String(shop.adminPin).trim() : '';
 
-    // Validate PIN uniqueness if a PIN was provided
     if (pin && !this.isPinAvailable(pin, cleanCode)) {
       const msg = `Το PIN "${pin}" χρησιμοποιείται ήδη από άλλο κατάστημα ή είναι δεσμευμένο!`;
       console.error(`[TenantConfig] ${msg}`);
@@ -196,10 +167,10 @@ export class TenantConfigService {
     this.registerShop(shop, true);
   }
 
- public updateActiveShopDetails(details: Partial<ShopInfo>): { success: boolean; message?: string } {
+  public updateActiveShopDetails(details: Partial<ShopInfo>): { success: boolean; message?: string } {
     const current = this.activeShop();
     const targetCode = details.code ? sanitizeStoreCode(details.code) : current.code;
-    const pin = (details as any).adminPin ? String((details as any).adminPin).trim() : '';
+    const pin = details.adminPin ? String(details.adminPin).trim() : '';
 
     if (pin && !this.isPinAvailable(pin, targetCode)) {
       const msg = `Το PIN "${pin}" υπάρχει ήδη σε άλλο κατάστημα!`;
@@ -230,7 +201,7 @@ export class TenantConfigService {
     }
 
     // 2. Identify all shops claiming this PIN
-    const matches = this.registeredShops().filter(s => (s as any).adminPin === cleanPin);
+    const matches = this.registeredShops().filter(s => s.adminPin === cleanPin);
 
     if (matches.length > 1) {
       console.error(`🚨 PIN COLLISION: PIN ${cleanPin} is assigned to multiple stores:`, matches.map(m => m.code));
@@ -261,7 +232,11 @@ export class TenantConfigService {
     localStorage.setItem('active_shop', JSON.stringify(match));
     localStorage.setItem('active_shop_code', match.code);
 
-    // Reload triggers clean Dexie connection to MaranthPOS_<cleanCode>
+    // Reset session locks so previous cashier does not leak into the new store
+    sessionStorage.removeItem('active_cashier_data');
+    sessionStorage.setItem('pos_is_locked', 'true');
+
+    // Reload triggers fresh Dexie instance MaranthPOS_<cleanCode>
     window.location.reload();
   }
 
