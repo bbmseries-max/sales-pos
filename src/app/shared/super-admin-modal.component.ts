@@ -35,7 +35,7 @@ import { TenantConfigService } from '../core/services/tenant-config.service';
           <div class="relative mb-4">
             <input
               type="password"
-              maxlength="8"
+              maxlength="4"
               [(ngModel)]="pin"
               name="masterPin"
               placeholder="••••"
