@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+export type FiscalMode = 'FHM' | 'PROVIDER' | 'NONE';
 
 export interface ShopInfo {
   code: string;
@@ -12,6 +13,10 @@ export interface ShopInfo {
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
+  // Fiscal configuration fields
+  fiscalMode?: FiscalMode;
+  fhmEndpoint?: string;
+  providerApiKey?: string;
 }
 
 export const RESERVED_SYSTEM_PINS = ['8820'];
@@ -25,7 +30,9 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     afm: '123456789',
     doy: 'XALANDRIOU',
     phone: '210-6800000',
-    currency: 'EUR'
+    currency: 'EUR',
+    fiscalMode: 'PROVIDER',
+    fhmEndpoint: 'http://127.0.0.1:8080/api/fhm'
   },
   {
     code: 'ftest',
@@ -35,7 +42,9 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     afm: '998877665',
     doy: 'AGIAS PARASKEVIS',
     phone: '210-6001122',
-    currency: 'EUR'
+    currency: 'EUR',
+    fiscalMode: 'PROVIDER',
+    fhmEndpoint: 'http://127.0.0.1:8080/api/fhm'
   },
   {
     code: 'parnasos',
@@ -45,7 +54,9 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     afm: '887766554',
     doy: 'ΚΕΦΟΔΕ',
     phone: '22670-31000',
-    currency: 'EUR'
+    currency: 'EUR',
+    fiscalMode: 'PROVIDER',
+    fhmEndpoint: 'http://127.0.0.1:8080/api/fhm'
   }
 ];
 
