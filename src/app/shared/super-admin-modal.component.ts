@@ -137,7 +137,7 @@ export class SuperAdminModalComponent {
   }
 
   public fillAndSubmitMaster(): void {
-    this.pin = '2435';
+    this.pin = '8820';
     this.submitPin();
   }
 
