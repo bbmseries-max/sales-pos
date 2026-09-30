@@ -3,10 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ZReportService } from '../../core/services/z-report.service';
-import { EscPosPrinterService } from '../../core/services/esc-pos-printer.service';
+import { BridgeService } from '../../core/services/bridge.service';
+import { CashierShiftService } from '../../core/services/cashier-shift.service';
+import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { ZReportAudit, CashDenominationCount } from '../../core/models/z-report.model';
 import { MarketCompanyProfile } from '../../core/models/market.models';
-import { TenantConfigService } from '../../core/services/tenant-config.service';
+import { marketDb } from '../../core/db/market-db';
 
 @Component({
   selector: 'app-z-report',
@@ -15,16 +17,17 @@ import { TenantConfigService } from '../../core/services/tenant-config.service';
   templateUrl: './z-report.component.html'
 })
 export class ZReportComponent implements OnInit {
-  private zService = inject(ZReportService);
+  public zService = inject(ZReportService);
   public tenantConfig = inject(TenantConfigService);
-  private printerService = inject(EscPosPrinterService);
+  public shiftService = inject(CashierShiftService);
+  public bridge = inject(BridgeService);
   private router = inject(Router);
 
   public auditData = signal<ZReportAudit | null>(null);
   public isLoading = signal<boolean>(true);
 
-  // Cash Reconciliation State
-  public openingFloat = signal<number>(100.00);
+  // Cash Reconciliation State (Derived dynamically from active shift)
+  public openingFloat = signal<number>(0.00);
   public cashIn = signal<number>(0.00);
   public cashOut = signal<number>(0.00);
   public isClosed = signal<boolean>(false);
@@ -43,10 +46,6 @@ export class ZReportComponent implements OnInit {
     { denomination: 0.10, count: 0 }
   ]);
 
-  async ngOnInit(): Promise<void> {
-    await this.calculateAudit();
-  }
-
   // Edit Store Details Modal State
   public showStoreEditModal = signal<boolean>(false);
   public editShopForm = signal({
@@ -57,6 +56,16 @@ export class ZReportComponent implements OnInit {
     phone: '',
     code: ''
   });
+
+  async ngOnInit(): Promise<void> {
+    const activeShift = this.shiftService.currentShift();
+    if (activeShift) {
+      this.openingFloat.set(activeShift.openingFloat || 0);
+      this.cashIn.set(activeShift.cashInTotal || 0);
+      this.cashOut.set(activeShift.cashOutTotal || 0);
+    }
+    await this.calculateAudit();
+  }
 
   public openStoreEditModal(): void {
     const shop = this.tenantConfig.activeShop();
@@ -75,6 +84,7 @@ export class ZReportComponent implements OnInit {
     const form = this.editShopForm();
     this.tenantConfig.updateActiveShopDetails(form);
     this.showStoreEditModal.set(false);
+    this.calculateAudit();
   }
 
   public async calculateAudit(): Promise<void> {
@@ -101,35 +111,76 @@ export class ZReportComponent implements OnInit {
   }
 
   public calculateDenominationsTotal(): number {
-    return this.denominations().reduce((sum, item) => sum + (item.denomination * item.count), 0);
+    return Number(
+      this.denominations().reduce((sum, item) => sum + (item.denomination * item.count), 0).toFixed(2)
+    );
+  }
+
+  public getCompanyProfile(): MarketCompanyProfile {
+    const shop = this.tenantConfig.activeShop();
+    return {
+      storeName: shop.name || 'MARANTH RETAIL',
+      address: shop.address || 'Αθήνα',
+      afm: shop.afm || '000000000',
+      doy: shop.doy || 'ΔΟΥ',
+      phone: shop.phone || ''
+    };
   }
 
   public async printZReport(): Promise<void> {
     const audit = this.auditData();
     if (!audit) return;
 
-    const company: MarketCompanyProfile = {
-      storeName: 'MARANTH SUPERMARKET',
-      address: 'Leof. Pentelis 45, Vrilissia',
-      afm: '123456789',
-      doy: 'XALANDRIOU',
-      phone: '210-6800000'
-    };
+    const company = this.getCompanyProfile();
 
-    const rawBuffer = this.zService.buildEscPosZReport(audit, company);
-    const printedSerial = await this.printerService.printViaSerial(rawBuffer);
+    try {
+      const printed = await this.bridge.printShiftReport(
+        {
+          ...audit,
+          company
+        },
+        'Z'
+      );
 
-    if (!printedSerial) {
+      if (!printed) {
+        this.printPreviewInBrowser(audit, company);
+      }
+    } catch (e) {
+      console.warn('[Z-Report] Hardware bridge failed, falling back to browser print:', e);
       this.printPreviewInBrowser(audit, company);
     }
   }
 
-  public closeDayAndLock(): void {
-    if (confirm('ΠΡΟΣΟΧΗ: Θέλετε να εκδώσετε οριστικά το Δελτίο "Ζ" και να μηδενίσετε το ημερήσιο ταμείο;')) {
-      this.isClosed.set(true);
-      this.printZReport();
-      this.zService.currentZNumber.update(n => n + 1);
+  public async closeDayAndLock(): Promise<void> {
+    if (!confirm('ΠΡΟΣΟΧΗ: Θέλετε να εκδώσετε οριστικά το Δελτίο "Ζ" και να μηδενίσετε το ημερήσιο ταμείο;')) {
+      return;
     }
+
+    this.isClosed.set(true);
+    await this.printZReport();
+
+    // Close all open shifts for this tenant in Dexie
+    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const openShifts = await marketDb.shifts
+      .where('storeId').equals(activeStoreCode)
+      .and(s => s.status === 'OPEN')
+      .toArray();
+
+    const now = new Date().toISOString();
+    for (const s of openShifts) {
+      await marketDb.shifts.update(s.id, {
+        status: 'CLOSED',
+        endTime: now,
+        notes: `Κλείσιμο Ημέρας (Ζ #${this.auditData()?.zNumber || 1})`
+      });
+    }
+
+    this.shiftService.currentShift.set(null);
+    this.shiftService.lockTerminal();
+    this.zService.currentZNumber.update(n => n + 1);
+
+    alert('Το Δελτίο "Ζ" εκδόθηκε επιτυχώς. Η εφαρμογή κλειδώνει για τη νέα ημέρα.');
+    this.router.navigate(['/pos']);
   }
 
   public backToPos(): void {
@@ -141,8 +192,6 @@ export class ZReportComponent implements OnInit {
     if (!printWin) return;
 
     const html = `
-      <!DOCTYPE html>
-      <html>
       <head>
         <title>ΗΜΕΡΗΣΙΟ ΔΕΛΤΙΟ "Ζ" #${z.zNumber}</title>
         <style>
@@ -156,7 +205,7 @@ export class ZReportComponent implements OnInit {
           .flex { display: flex; justify-content: space-between; }
         </style>
       </head>
-      <body onload="window.print(); window.close();">
+      <body>
         <div class="center bold" style="font-size: 14px;">${company.storeName}</div>
         <div class="center">ΑΦΜ: ${company.afm} • ΔΟΥ: ${company.doy}</div>
         <div class="double-divider"></div>
@@ -197,11 +246,16 @@ export class ZReportComponent implements OnInit {
         <div class="center bold">ΓΕΝΙΚΟ ΠΡΟΟΔΕΥΤΙΚΟ: €${z.progressiveGrandTotal.toFixed(2)}</div>
         <div class="center" style="margin-top: 6px;">ΤΕΛΟΣ ΗΜΕΡΗΣΙΟΥ ΔΕΛΤΙΟΥ "Ζ"</div>
       </body>
-      </html>
     `;
 
-    printWin.document.open();
-    printWin.document.write(html);
-    printWin.document.close();
+    // Modern, non-deprecated DOM injection
+    printWin.document.documentElement.innerHTML = html;
+
+    // Trigger print once rendered
+    setTimeout(() => {
+      printWin.focus();
+      printWin.print();
+      printWin.close();
+    }, 150);
   }
 }

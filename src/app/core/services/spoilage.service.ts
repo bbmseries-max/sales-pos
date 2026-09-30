@@ -4,6 +4,15 @@ import { SpoilageLog, SpoilageReason, Product } from '../models';
 import { MarketCatalogService } from './market-catalog.service';
 import { TenantConfigService } from './tenant-config.service';
 
+export interface CreateSpoilageDto {
+  product: Product;
+  quantity: number;
+  reason: SpoilageReason;
+  cashierName: string;
+  storeId?: string; // <-- Allow passing the active store
+  notes?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SpoilageService {
   private catalogService = inject(MarketCatalogService);
@@ -35,14 +44,11 @@ export class SpoilageService {
   /**
    * Records a spoilage protocol, writes to Dexie DB, and automatically decrements product stock
    */
-public async logSpoilage(params: {
-    product: Product;
-    quantity: number;
-    reason: SpoilageReason;
-    cashierName: string;
-    notes?: string;
-  }): Promise<SpoilageLog> {
-    const { product, quantity, reason, cashierName, notes } = params;
+/**
+   * Records a spoilage protocol, writes to Dexie DB, and automatically decrements product stock
+   */
+  public async logSpoilage(params: CreateSpoilageDto): Promise<SpoilageLog> {
+    const { product, quantity, reason, cashierName, notes, storeId } = params;
 
     if (!product || !product.id) {
       throw new Error('Invalid product or missing product ID');
@@ -54,10 +60,12 @@ public async logSpoilage(params: {
     const unitCost = Number(product.costPrice ?? (product.price * 0.7).toFixed(2));
     const retailPrice = Number(product.price || 0);
     const totalLossCost = Number((unitCost * validQty).toFixed(2));
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+    const resolvedStoreId = storeId || product.storeId || activeStoreCode;
 
     const log: SpoilageLog = {
       id: `LOSS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6)}`,
+      storeId: resolvedStoreId,
       productId: targetProductId,
       barcode: product.barcode || '',
       name: product.name,
@@ -84,7 +92,7 @@ public async logSpoilage(params: {
         await marketDb.products.update(targetProductId, {
           stockQuantity: newStock,
           stock: newStock,
-          storeId: dbProduct.storeId || activeStoreCode,
+          storeId: dbProduct.storeId || resolvedStoreId,
           updatedAt: new Date().toISOString(),
           _syncStatus: 'dirty'
         });

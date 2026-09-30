@@ -157,28 +157,21 @@
 
     </section>
 
-    <!-- RIGHT: Live Print Preview Canvas (Col 8) -->
-    <section class="col-span-8 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 overflow-y-auto flex justify-center items-start shadow-inner">
-      
-      <!-- Container -->
-      <div 
-        id="printable-labels-area"
-        [class.a4-sheet-layout]="labelSize() === 'A4_SHEET'"
-        [class.thermal-roll-layout]="labelSize() === 'THERMAL_ROLL'"
-        class="bg-white text-black shadow-2xl transition-all"
-      >
-        @for (prod of flattenedLabels(); track $index) {
+       <!-- RIGHT: Live Print Preview Canvas -->
+        @for (enriched of flattenedLabels(); track $index) {
           <div class="shelf-label-card" [class.thermal-card]="labelSize() === 'THERMAL_ROLL'">
             
             <!-- Top: Category / Brand & VAT -->
             <div class="label-top-row">
-              <span class="label-category truncate">{{ prod.brand || prod.categoryName || 'SUPERMARKET' }}</span>
-              <span class="label-vat">ΦΠΑ {{ prod.vatRate }}%</span>
+              <span class="label-category truncate">
+                {{ enriched.product.brand || enriched.product.categoryName || 'SUPERMARKET' }}
+              </span>
+              <span class="label-vat">ΦΠΑ {{ enriched.product.vatRate }}%</span>
             </div>
 
             <!-- Middle: Product Name -->
             <div class="label-product-name line-clamp-2">
-              {{ prod.name }}
+              {{ enriched.product.name }}
             </div>
 
             <!-- Price & Barcode Section -->
@@ -186,27 +179,24 @@
               
               <!-- Left: Barcode Vector + Mandatory Unit Reference Price -->
               <div class="label-barcode-col">
-                <div class="label-barcode-svg" [innerHTML]="getBarcodeSvg(prod.barcode)"></div>
-                <div class="label-barcode-text">{{ prod.barcode || '—' }}</div>
+                <div class="label-barcode-svg" [innerHTML]="getBarcodeSvg(enriched.product.barcode)"></div>
+                <div class="label-barcode-text">{{ enriched.product.barcode || '—' }}</div>
                 <div class="label-net-unit">
-                  Τιμή/{{ computeUnitDisplay(prod) }}: <strong>€{{ computeUnitPriceValue(prod).toFixed(2) }}</strong>
+                  Τιμή/{{ enriched.unitMeasurement }}: <strong>€{{ enriched.pricePerUnit.toFixed(2) }}</strong>
                 </div>
               </div>
 
               <!-- Right: Big Bold Retail Price with Cents -->
               <div class="label-price-box">
                 <div class="label-currency">€</div>
-                <div class="label-price-whole">{{ getPriceWhole(prod.price || 0) }}</div>
-                <div class="label-price-cents">,{{ getPriceCents(prod.price || 0) }}</div>
+                <div class="label-price-whole">{{ getPriceWhole(enriched.product.price || 0) }}</div>
+                <div class="label-price-cents">,{{ getPriceCents(enriched.product.price || 0) }}</div>
               </div>
 
             </div>
 
           </div>
         }
-      </div>
-
-    </section>
 
   </div>
 </div>

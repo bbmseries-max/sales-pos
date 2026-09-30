@@ -115,6 +115,34 @@ export class TenantConfigService {
 
   private getInitialShop(): ShopInfo {
     const shops = this.getInitialRegisteredShops();
+
+    // 1. Priority: URL query parameter (?store=... or ?shop=...)
+    if (typeof window !== 'undefined' && window.location) {
+      const params = new URLSearchParams(window.location.search);
+      const urlStoreCode = params.get('store') || params.get('shop');
+
+      if (urlStoreCode) {
+        const cleanCode = sanitizeStoreCode(urlStoreCode);
+        const urlMatch = shops.find(s => s.code === cleanCode);
+        if (urlMatch) {
+          // Check if switching from a different store via URL
+          const currentSavedCode = localStorage.getItem('active_shop_code');
+          if (currentSavedCode && currentSavedCode !== urlMatch.code) {
+            // Clear prior store's cashier session so it doesn't cross over
+            sessionStorage.removeItem('active_cashier_data');
+            sessionStorage.setItem('pos_is_locked', 'true');
+          }
+
+          localStorage.setItem('active_shop', JSON.stringify(urlMatch));
+          localStorage.setItem('active_shop_code', urlMatch.code);
+          return urlMatch;
+        } else {
+          console.warn(`[TenantConfig] Store code "${urlStoreCode}" from URL not found in registered shops.`);
+        }
+      }
+    }
+
+    // 2. Fallback: Saved shop from previous session
     const saved = localStorage.getItem('active_shop');
     if (saved) {
       try {
@@ -125,6 +153,8 @@ export class TenantConfigService {
         console.error('[TenantConfig] Corrupt cached active shop', e);
       }
     }
+
+    // 3. Ultimate Fallback: Default first shop
     return shops[0] || DEFAULT_SHOPS[0];
   }
 
@@ -247,8 +277,13 @@ export class TenantConfigService {
     sessionStorage.removeItem('active_cashier_data');
     sessionStorage.setItem('pos_is_locked', 'true');
 
-    // Reload triggers fresh Dexie instance MaranthPOS_<cleanCode>
-    window.location.reload();
+    // Update the URL parameter to the new store and reload
+    const url = new URL(window.location.href);
+    url.searchParams.set('store', match.code);
+    // Remove alternate 'shop' param if present to avoid ambiguity
+    url.searchParams.delete('shop');
+    
+    window.location.href = url.toString();
   }
 
   public deleteShop(storeCode: string): void {

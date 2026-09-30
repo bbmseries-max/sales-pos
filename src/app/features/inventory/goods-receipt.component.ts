@@ -4,8 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SupplierOrderService } from '../../core/services/supplier-order.service';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
+import { TenantConfigService } from '../../core/services/tenant-config.service';
+import { BridgeService } from '../../core/services/bridge.service';
+import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { PurchaseOrder, PurchaseOrderItem, Supplier } from '../../core/models/market.models';
-import { GoodsReceiptItem, GoodsReceiptRecord } from '../../core/models/market.models';
+
 @Component({
   selector: 'app-goods-receipt',
   standalone: true,
@@ -13,31 +16,67 @@ import { GoodsReceiptItem, GoodsReceiptRecord } from '../../core/models/market.m
   templateUrl: './goods-receipt.component.html'
 })
 export class GoodsReceiptComponent implements OnInit {
-  public poProductSearch = signal<string>('');
   public orderService = inject(SupplierOrderService);
   public catalogService = inject(MarketCatalogService);
+  public tenantConfig = inject(TenantConfigService);
+  public shiftService = inject(CashierShiftService);
+  public bridge = inject(BridgeService);
 
+  // Modal & Processing State
   public showNewPOModal = signal<boolean>(false);
   public showReceiveModal = signal<boolean>(false);
+  public isProcessing = signal<boolean>(false);
   public activePO = signal<PurchaseOrder | null>(null);
+  public feedbackMsg = signal<string | null>(null);
 
   // New PO Form Signals
+  public poProductSearch = signal<string>('');
   public selectedSupplierId = signal<string>('');
   public newPoNotes = signal<string>('');
   public poDraftItems = signal<PurchaseOrderItem[]>([]);
-  public productSearchTerm = signal<string>('');
 
   // Receiving Modal Signals
   public deliveryInvoiceNo = signal<string>('');
   public receivingItems = signal<PurchaseOrderItem[]>([]);
   public scanReceivingBarcode = signal<string>('');
+  public scanError = signal<string | null>(null);
 
+  // Quick Supplier Creator
   public isAddingNewSupplier = signal<boolean>(false);
   public newSupplierName = signal<string>('');
   public newSupplierAfm = signal<string>('');
   public newSupplierPhone = signal<string>('');
-
   public isSupplierDropdownOpen = signal<boolean>(false);
+
+  // 1. TENANT-ISOLATED PURCHASE ORDERS STREAM
+  public storePurchaseOrders = computed(() => {
+    const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+    return (this.orderService.purchaseOrders() || []).filter(
+      po => !po.storeId || po.storeId === activeCode
+    );
+  });
+
+  // 2. TENANT-ISOLATED CATALOG QUICK-ADD
+  public filteredCatalogProducts = computed(() => {
+    const term = this.poProductSearch().trim().toLowerCase();
+    const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+
+    const storeProducts = this.catalogService.products().filter(p => {
+      const matchStore = !p.storeId || p.storeId === activeCode;
+      return matchStore && !p.deletedAt && p.isActive !== false;
+    });
+
+    if (term.length > 0) {
+      return storeProducts.filter(p =>
+        (p.name && p.name.toLowerCase().includes(term)) ||
+        (p.barcode && String(p.barcode).toLowerCase().includes(term)) ||
+        (p.brand && p.brand.toLowerCase().includes(term)) ||
+        (p.id !== undefined && String(p.id).toLowerCase() === term)
+      ).slice(0, 30);
+    }
+
+    return storeProducts.slice(0, 20);
+  });
 
   async ngOnInit(): Promise<void> {
     await this.orderService.loadAll();
@@ -66,29 +105,9 @@ export class GoodsReceiptComponent implements OnInit {
       : '— Επιλέξτε Προμηθευτή —';
   }
 
-  public filteredCatalogProducts = computed(() => {
-    const term = this.poProductSearch().trim().toLowerCase();
-    const all = this.catalogService.products().filter(p => !p.deletedAt);
-
-    // If search term is present, filter by name, barcode, brand, or ID
-    if (term.length > 0) {
-      return all.filter(p => 
-        (p.name && p.name.toLowerCase().includes(term)) ||
-        (p.barcode && String(p.barcode).toLowerCase().includes(term)) ||
-        (p.brand && p.brand.toLowerCase().includes(term)) ||
-        (p.id !== undefined && String(p.id).toLowerCase().includes(term))
-      ).slice(0, 30); // Max 30 items for zero DOM lag
-    }
-
-    // Default: Show first 20 products
-    return all.slice(0, 20);
-  });
-
-  // Helper to quickly search from keyboard
   public onPoSearchChange(val: string): void {
     this.poProductSearch.set(val || '');
   }
-
 
   public addDraftItem(product: any): void {
     const existing = this.poDraftItems().find(i => i.productId === String(product.id));
@@ -117,28 +136,39 @@ export class GoodsReceiptComponent implements OnInit {
   }
 
   public async savePO(): Promise<void> {
-    if (this.poDraftItems().length === 0) return;
+    if (this.poDraftItems().length === 0 || this.isProcessing()) return;
 
+    this.isProcessing.set(true);
+    const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
     const supplier = this.orderService.suppliers().find(s => s.id === this.selectedSupplierId());
 
-    await this.orderService.createPurchaseOrder({
-      supplierId: this.selectedSupplierId(),
-      supplierName: supplier?.name || 'Supplier',
-      supplierAfm: supplier?.afm,
-      items: this.poDraftItems(),
-      notes: this.newPoNotes()
-    });
+    try {
+      await this.orderService.createPurchaseOrder({
+        supplierId: this.selectedSupplierId(),
+        supplierName: supplier?.name || 'Supplier',
+        supplierAfm: supplier?.afm,
+        storeId: activeStoreCode,
+        items: this.poDraftItems(),
+        notes: this.newPoNotes()
+      } as any);
 
-    this.showNewPOModal.set(false);
+      this.showNewPOModal.set(false);
+      this.flashNotice('✔ Η παραγγελία καταχωρήθηκε!');
+    } catch (err: unknown) {
+      console.error('[PO Save Error]', err);
+    } finally {
+      this.isProcessing.set(false);
+    }
   }
 
   public openReceiveDelivery(po: PurchaseOrder): void {
     this.activePO.set(po);
     this.deliveryInvoiceNo.set(po.invoiceNumber || '');
-    // Clone items with default received quantity matching ordered quantity for speed
+    this.scanError.set(null);
     const cloned: PurchaseOrderItem[] = po.items.map((i: PurchaseOrderItem) => ({
       ...i,
-      receivedQty: i.receivedQty || i.orderedQty
+      receivedQty: i.receivedQty || i.orderedQty,
+      unitCost: i.unitCost || 0
     }));
     this.receivingItems.set(cloned);
     this.showReceiveModal.set(true);
@@ -146,28 +176,65 @@ export class GoodsReceiptComponent implements OnInit {
 
   public onScanDeliverItem(): void {
     const code = this.scanReceivingBarcode().trim();
+    this.scanError.set(null);
     if (!code) return;
 
     const item = this.receivingItems().find(i => i.barcode === code);
     if (item) {
       item.receivedQty = (item.receivedQty ?? 0) + 1;
       this.receivingItems.set([...this.receivingItems()]);
+      this.flashNotice(`+1 ${item.name}`);
+    } else {
+      this.scanError.set(`Το barcode "${code}" δεν περιλαμβάνεται στην παραγγελία!`);
     }
     this.scanReceivingBarcode.set('');
   }
 
   public async confirmGoodsReceipt(): Promise<void> {
     const po = this.activePO();
-    if (!po) return;
+    if (!po || this.isProcessing()) return;
 
-    await this.orderService.receiveDelivery(
-      po.id,
-      this.deliveryInvoiceNo().trim() || 'ΔΑ-' + Date.now().toString().slice(-5),
-      this.receivingItems()
-    );
+    this.isProcessing.set(true);
+    const invoice = this.deliveryInvoiceNo().trim() || 'ΔΑ-' + Date.now().toString().slice(-5);
+    const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+    const cashierName = this.shiftService.currentCashier()?.name || 'Υπεύθυνος Αποθήκης';
 
-    this.showReceiveModal.set(false);
-    await this.catalogService.loadInitialCatalog();
+    try {
+      await this.orderService.receiveDelivery(
+        po.id,
+        invoice,
+        this.receivingItems(),
+        cashierName,
+        activeStoreCode
+      );
+
+      // Print Delivery Protocol via Bridge Daemon
+      await this.printDeliveryReceipt(po, invoice);
+
+      this.showReceiveModal.set(false);
+      await this.catalogService.loadInitialCatalog();
+      this.flashNotice(`✔ Επιτυχής παραλαβή: ${invoice}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Receipt Error]', msg);
+      alert(`Σφάλμα καταχώρησης παραλαβής: ${msg}`);
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  private async printDeliveryReceipt(po: PurchaseOrder, invoice: string): Promise<void> {
+    try {
+      await this.bridge.printReceipt({
+        type: 'GOODS_RECEIPT_PROTOCOL',
+        supplier: po.supplierName,
+        invoice,
+        items: this.receivingItems(),
+        store: this.tenantConfig.activeShop()
+      } as any);
+    } catch (e) {
+      console.warn('[Bridge] Delivery receipt print bypassed:', e);
+    }
   }
 
   public async openNewPO(): Promise<void> {
@@ -202,5 +269,10 @@ export class GoodsReceiptComponent implements OnInit {
     this.newSupplierName.set('');
     this.newSupplierAfm.set('');
     this.newSupplierPhone.set('');
+  }
+
+  private flashNotice(msg: string): void {
+    this.feedbackMsg.set(msg);
+    setTimeout(() => this.feedbackMsg.set(null), 2500);
   }
 }

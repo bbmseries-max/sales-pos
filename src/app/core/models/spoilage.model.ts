@@ -14,6 +14,7 @@ export interface SpoilageLog {
   timestamp: string;
   cashierName?: string;
   notes?: string;
+  storeId?: string; 
 }
 
 export interface CashLog {

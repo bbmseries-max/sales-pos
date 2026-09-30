@@ -71,6 +71,31 @@ export interface GoodsReceiptItem {
   lineTotal: number;
 }
 
+export type StockAuditReason = 
+  | 'INLINE_ADJUSTMENT' 
+  | 'MODAL_EDIT' 
+  | 'SOFT_DELETE' 
+  | 'RESTORE' 
+  | 'SPOILAGE' 
+  | 'DELIVERY'
+  | 'SALE';
+
+export interface StockAuditLog {
+  id: string;
+  productId: string | number;
+  productName: string;
+  barcode?: string;
+  storeId: string;
+  cashierId: string;
+  cashierName: string;
+  previousQuantity: number;
+  newQuantity: number;
+  delta: number;
+  reason: StockAuditReason;
+  timestamp: string;
+  _syncStatus?: 'synced' | 'dirty';
+}
+
 export interface GoodsReceiptRecord {
   id: string; // e.g. "REC-1772530000000"
   documentTitle: string; // e.g. "ΔΑ #10492 — ΔΕΛΤΑ ΤΡΟΦΙΜΑ Α.Ε."

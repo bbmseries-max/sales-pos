@@ -4,6 +4,7 @@ import {
   signal, 
   computed, 
   OnInit, 
+  OnDestroy,
   AfterViewInit, 
   ViewChild, 
   ElementRef, 
@@ -35,13 +36,14 @@ import { MarketCatalogService, ExternalProductMatch } from '../../core/services/
 import { CartService } from '../../core/services/cart.service';
 import { SyncService } from '../../core/services/sync.service';
 import { ScaleBarcodeService } from '../../core/services/scale-barcode.service';
-import { EscPosPrinterService, ReceiptPrintData } from '../../core/services/esc-pos-printer.service';
+// import { EscPosPrinterService, ReceiptPrintData } from '../../core/services/esc-pos-printer.service';
 import { MyDataService } from '../../core/services/mydata.service';
 import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.service';
 import { BarcodeScannerService } from '../../core/services/barcode-scanner.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { marketDb } from '../../core/db/market-db';
 import { ReceiptPrinterService } from '../../core/services/receipt-printer.service';
+import { BridgeService } from '../../core/services/bridge.service';
 
 import { 
   Product, 
@@ -88,14 +90,28 @@ export class PosComponent implements OnInit, AfterViewInit {
   public nextShiftError = signal<string>(''); 
   private storageQuotaService = inject(StorageQuotaService);
 
+  public isCompletingSale = signal<boolean>(false);
   public pinInput = signal<string>('');
   public pinError = signal<string>('');
   public openingFloatInput = signal<number>(100);
+  public selectedShiftCashierId = signal<string>('');
 
+  public bridge = inject(BridgeService);
   public appendPin(digit: string): void {
     if (this.pinInput().length < 6) {
       this.pinInput.update(p => p + digit);
       this.pinError.set('');
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.feedbackTimer) {
+      clearTimeout(this.feedbackTimer);
+      this.feedbackTimer = null;
+    }
+    if (this.secretClickTimer) {
+      clearTimeout(this.secretClickTimer);
+      this.secretClickTimer = null;
     }
   }
 
@@ -117,6 +133,12 @@ export class PosComponent implements OnInit, AfterViewInit {
       this.pinInput.set('');
     }
   }
+
+  public selectCashierForShift(cashier: Cashier): void {
+  this.selectedShiftCashierId.set(cashier.id);
+  this.nextShiftCashierPin.set('');
+  this.nextShiftError.set('');
+}
 
   public async submitPinWithFloat(): Promise<void> {
     const pin = this.pinInput();
@@ -141,7 +163,7 @@ export class PosComponent implements OnInit, AfterViewInit {
   public isNewStoreModalOpen = signal<boolean>(false);
   public scanner = inject(BarcodeScannerService);
   public scaleService = inject(ScaleBarcodeService);
-  public printerService = inject(EscPosPrinterService);
+  // public printerService = inject(EscPosPrinterService);
   public myDataService = inject(MyDataService);
   private receiptPrinter = inject(ReceiptPrinterService);
   public loyaltyService = inject(CustomerLoyaltyService);
@@ -733,11 +755,11 @@ public async handlePinSubmit(pin: string): Promise<void> {
     }
   }
 
-  public async handleShiftClose(countedCash: number): Promise<void> {
+ public async handleShiftClose(countedCash: number): Promise<void> {
     try {
       const active = this.shiftService.currentShift();
       if (active) {
-        this.printerService.printShiftReportHtml(active, 'Z');
+        await this.bridge.printShiftReport(active, 'Z');
       }
 
       const closedShift = await this.shiftService.closeShift(countedCash);
@@ -751,14 +773,14 @@ public async handlePinSubmit(pin: string): Promise<void> {
 
       this.flashFeedback('✔ Η βάρδια έκλεισε. Διαφορά: €' + (closedShift.discrepancy || 0).toFixed(2), 'success');
     } catch (err: any) {
-      this.flashFeedback('⛔ Σφάλμα: ' + err.message, 'error');
+      this.flashFeedback('⛔ Σφάλμα: ' + (err?.message || 'Αποτυχία κλεισίματος'), 'error');
     }
   }
 
   public async printXReportSlip(): Promise<void> {
     const shift = this.shiftService.currentShift();
     if (!shift) return;
-    this.printerService.printShiftReportHtml(shift, 'X');
+    await this.bridge.printShiftReport(shift, 'X');
     this.flashFeedback('✔ Το Δελτίο "Χ" στάλθηκε στον εκτυπωτή!', 'success');
   }
 
@@ -773,12 +795,14 @@ public async handlePinSubmit(pin: string): Promise<void> {
     this.focusBarcodeInput();
   }
 
-  public openPayment(): void {
+ public openPayment(): void {
     if (this.cart.items().length === 0) return;
+    const payable = this.finalPayableAmount();
     this.paymentMethod.set('CASH');
-    this.cashTendered.set(Math.ceil(this.finalPayableAmount()));
-    this.cardAmount.set(this.finalPayableAmount());
+    this.cashTendered.set(Math.ceil(payable) || payable);
+    this.cardAmount.set(payable);
     this.isCardProcessing.set(false);
+    this.isCompletingSale.set(false);
     this.showPaymentModal.set(true);
   }
 
@@ -824,6 +848,9 @@ public async handlePinSubmit(pin: string): Promise<void> {
   }
 
 public async completeSale(): Promise<void> {
+    if (this.isCompletingSale()) return;
+    this.isCompletingSale.set(true);
+
     const uiMethod = this.paymentMethod();
     const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
     const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
@@ -838,7 +865,7 @@ public async completeSale(): Promise<void> {
         this.changeDue ? this.changeDue() : 0
       );
 
-      // ✅ RECORD SALE TO SHIFT FOR X/Z ACCURACY:
+      // Record sale to shift
       await this.shiftService.recordSaleToShift(tx.grandTotal, mappedMethod);
 
       this.pointsToRedeem?.set?.(0);
@@ -853,18 +880,16 @@ public async completeSale(): Promise<void> {
         }
       }
 
-      this.handleFiscalPostProcessing(tx)
-        .then(async (processedTx: any) => {
-          const recordToPrint = processedTx || tx;
-          await this.receiptPrinter.printReceipt(recordToPrint);
-        })
-        .catch(err => console.warn('[Print Slip]', err));
+      // Fiscal processing & Bridge Printing
+      await this.handleFiscalPostProcessing(tx);
 
       this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
-    } catch (err: any) {
-      console.error('[Sale Error]', err);
-      this.flashFeedback('⛔ Σφάλμα: ' + (err?.message || 'Αποτυχία ολοκλήρωσης'), 'error');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[Sale Error]', errorMsg);
+      this.flashFeedback('⛔ Σφάλμα: ' + errorMsg, 'error');
     } finally {
+      this.isCompletingSale.set(false);
       this.focusBarcodeInput?.();
     }
   }
@@ -879,6 +904,7 @@ public async completeSale(): Promise<void> {
       phone: activeShop.phone || '210-6800000'
     };
 
+    // 1. AADE myDATA transmission
     try {
       if (this.myDataService?.transmitReceipt && navigator.onLine) {
         const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
@@ -886,54 +912,32 @@ public async completeSale(): Promise<void> {
           tx.mydataMark = myDataRes.mark;
           tx.mydataUid = myDataRes.uid;
           tx.mydataQrUrl = myDataRes.qrUrl;
-          await marketDb.transactions.put(tx);
         }
       } else {
         tx._syncStatus = 'dirty';
-        await marketDb.transactions.put(tx);
       }
-    } catch (fiscalErr) {
-      console.warn('[Fiscal/myDATA] Transmission skipped or offline, queued locally:', fiscalErr);
+    } catch (fiscalErr: unknown) {
+      const msg = fiscalErr instanceof Error ? fiscalErr.message : String(fiscalErr);
+      console.warn('[Fiscal/myDATA] Transmission skipped or offline, queued locally:', msg);
+      tx._syncStatus = 'dirty';
     }
 
+    // 2. Persist updated transaction record with myDATA info
     try {
-      const storeTitle = this.printerService.transliterateGreek(companyProfile.storeName || 'MARANTH SUPERMARKET');
-      
-      const itemsHtml = (tx.items || []).map(item => {
-        const pName = item.product?.name || (item as any).name || 'PROION';
-        const pPrice = Number(item.product?.price ?? (item as any).price ?? 0);
-        const pQty = Number(item.quantity || 1);
-        const safeName = this.printerService.transliterateGreek(pName).substring(0, 16);
-        const lineTotal = (pQty * pPrice).toFixed(2);
+      await marketDb.transactions.put(tx);
+    } catch (dbErr) {
+      console.error('[DB] Failed updating tx with fiscal data:', dbErr);
+    }
 
-        return `
-          <div class="row">
-            <span>${safeName}</span>
-            <span>${pQty}x ${lineTotal}&euro;</span>
-          </div>
-        `;
-      }).join('');
-
-      const slip = `
-        <div class="center bold large">${storeTitle}</div>
-        <div class="center small">APODEIXI LIANIKIS POLISIS</div>
-        <div class="divider"></div>
-        <div class="small">HM/NIA: ${new Date(tx.timestamp || Date.now()).toLocaleString('el-GR')}</div>
-        <div class="small">PARAST.: ${(tx.id || '').substring(0, 8)}</div>
-        <div class="divider"></div>
-        ${itemsHtml}
-        <div class="divider"></div>
-        <div class="row bold large"><span>SYNOLO:</span><span>${(tx.grandTotal || 0).toFixed(2)} &euro;</span></div>
-        <div class="row"><span>TROPOS:</span><span>${(tx.paymentMethod || 'METRHTA').toUpperCase()}</span></div>
-        ${tx.cashTendered ? `<div class="row"><span>METRHTA:</span><span>${Number(tx.cashTendered).toFixed(2)} &euro;</span></div>` : ''}
-        ${tx.changeDue ? `<div class="row"><span>RESTA:</span><span>${Number(tx.changeDue).toFixed(2)} &euro;</span></div>` : ''}
-        <div class="divider"></div>
-        <div class="center small">EYXARISTOYME GIA THN PROTIMHSH!</div>
-      `;
-
-      this.printerService.printHtmlThermalSlip(slip);
-    } catch (printErr) {
-      console.warn('[Printer] Receipt print bypassed:', printErr);
+    // 3. Print thermal slip via bridge
+    try {
+      await this.bridge.printReceipt({
+        tx,
+        company: companyProfile
+      });
+    } catch (printErr: unknown) {
+      const msg = printErr instanceof Error ? printErr.message : String(printErr);
+      console.warn('[Printer] Receipt print bypassed:', msg);
     }
   }
 
@@ -984,17 +988,18 @@ public async completeSale(): Promise<void> {
     }
   }
 
-  public onPrintXReport(): void {
+  public async onPrintXReport(): Promise<void> {
     const active = this.shiftService.currentShift();
     if (active) {
-      this.printerService.printShiftReportHtml(active, 'X');
+      await this.bridge.printShiftReport(active, 'X');
+      this.flashFeedback('✔ Το Δελτίο "Χ" εκτυπώθηκε!', 'success');
     }
   }
 
   public async onCloseZReport(countedCash: number = 0): Promise<void> {
     const active = this.shiftService.currentShift();
     if (active) {
-      this.printerService.printShiftReportHtml(active, 'Z');
+      await this.bridge.printShiftReport(active, 'Z');
       await this.shiftService.closeShift(countedCash);
       
       this.shiftService.isLocked.set(false);
@@ -1006,22 +1011,38 @@ public async completeSale(): Promise<void> {
   }
 
   public async confirmStartNewShift(): Promise<void> {
-    const pin = this.nextShiftCashierPin().trim();
-    const floatAmt = Number(this.nextShiftFloat()) || 0;
+  const pin = this.nextShiftCashierPin().trim();
+  const floatAmt = Number(this.nextShiftFloat()) || 0;
 
-    if (!pin) {
-      this.nextShiftError.set('Επιλέξτε ταμία ή συμπληρώστε PIN.');
-      return;
-    }
-
-    const res = await this.shiftService.loginWithPin(pin, floatAmt);
-    if (res.success) {
-      this.showNewShiftModal.set(false);
-      this.nextShiftCashierPin.set('');
-      this.flashFeedback(`✔ Η βάρδια άνοιξε με μαγιά €${floatAmt.toFixed(2)}`, 'success');
-      this.focusBarcodeInput();
-    } else {
-      this.nextShiftError.set(res.message);
-    }
+  if (!this.selectedShiftCashierId()) {
+    this.nextShiftError.set('Παρακαλώ επιλέξτε ταμία.');
+    return;
   }
+
+  if (!pin || pin.length < 4) {
+    this.nextShiftError.set('Εισάγετε το 4-ψήφιο PIN σας.');
+    return;
+  }
+
+  // Validate the entered PIN against the selected cashier
+  const selectedCashier = this.shiftService.allCashiers()
+    .find(c => c.id === this.selectedShiftCashierId());
+
+  if (!selectedCashier || selectedCashier.pin !== pin) {
+    this.nextShiftError.set('Λανθασμένο PIN για τον επιλεγμένο ταμία.');
+    this.nextShiftCashierPin.set('');
+    return;
+  }
+
+  const res = await this.shiftService.loginWithPin(pin, floatAmt);
+  if (res.success) {
+    this.showNewShiftModal.set(false);
+    this.selectedShiftCashierId.set('');
+    this.nextShiftCashierPin.set('');
+    this.flashFeedback(`✔ Η βάρδια άνοιξε με μαγιά €${floatAmt.toFixed(2)}`, 'success');
+    this.focusBarcodeInput();
+  } else {
+    this.nextShiftError.set(res.message);
+  }
+}
 }

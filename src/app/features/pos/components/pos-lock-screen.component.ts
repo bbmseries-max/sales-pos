@@ -10,7 +10,7 @@ import { TenantConfigService } from '../../../core/services/tenant-config.servic
     @if (isLocked()) {
       <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-4 select-none">
         
-        <div class="w-full max-w-sm space-y-5 text-center animate-in fade-in zoom-in-95">
+        <div class="w-full max-w-sm space-y-6 text-center animate-in fade-in zoom-in-95">
           
           <!-- Brand Logo Header with Fallback -->
           <div class="flex flex-col items-center justify-center space-y-1">
@@ -86,34 +86,6 @@ import { TenantConfigService } from '../../../core/services/tenant-config.servic
             </button>
           </div>
 
-          <!-- Fast Cashiers List -->
-          @if (cashiers().length > 0) {
-            <div class="pt-3 border-t border-slate-800">
-              <span class="text-[10px] font-mono text-slate-500 uppercase tracking-widest block mb-2">Γρήγοροι Ταμίες</span>
-              <div class="flex justify-center flex-wrap gap-2">
-                @for (c of cashiers(); track c.id) {
-                  <button
-                    type="button"
-                    (click)="submitDirectPin(c.pin)"
-                    class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[11px] font-mono text-slate-300 transition cursor-pointer active:scale-95">
-                    {{ c.name }} ({{ c.pin }})
-                  </button>
-                }
-              </div>
-            </div>
-          }
-
-          <!-- Quick Test / Driver PIN Badge (2435 Central Store Default) -->
-          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between px-2 text-[11px]">
-            <span class="text-slate-500 font-mono">🔑 Δοκιμή PIN:</span>
-            <button
-              type="button"
-              (click)="submitDirectPin(tenantConfig.activeShop().adminPin || '2435')"
-              class="px-2 py-0.5 rounded-md bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 font-mono font-bold border border-emerald-700/50 transition cursor-pointer active:scale-95">
-              {{ tenantConfig.activeShop().adminPin || '2435' }}
-            </button>
-          </div>
-
         </div>
       </div>
     }
@@ -140,12 +112,6 @@ export class PosLockScreenComponent {
         this.clearPin();
       }
     }
-  }
-
-  submitDirectPin(code: string): void {
-    if (!code) return;
-    this.pinSubmit.emit(code.trim());
-    this.clearPin();
   }
 
   clearPin(): void {

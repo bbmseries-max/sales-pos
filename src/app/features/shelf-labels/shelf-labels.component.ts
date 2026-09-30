@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
+import { TenantConfigService } from '../../core/services/tenant-config.service';
+import { BridgeService } from '../../core/services/bridge.service';
 import { 
   Product, 
   SUPERMARKET_DEPARTMENTS, 
@@ -11,7 +13,13 @@ import {
 } from '../../core/models';
 import { generateBarcodeSvg } from '../../core/utils/barcode-svg.util';
 
-export interface LabelItem {
+export interface EnrichedLabel {
+  product: Product;
+  unitMeasurement: string;
+  pricePerUnit: number;
+}
+
+export interface LabelQueueItem {
   product: Product;
   quantity: number;
   unitMeasurement: string;
@@ -27,19 +35,32 @@ export interface LabelItem {
 })
 export class ShelfLabelsComponent implements OnInit {
   public catalogService = inject(MarketCatalogService);
+  public tenantConfig = inject(TenantConfigService);
+  public bridge = inject(BridgeService);
   private sanitizer = inject(DomSanitizer);
   private router = inject(Router);
 
-  public queue = signal<LabelItem[]>([]);
+  public queue = signal<LabelQueueItem[]>([]);
   public searchQuery = signal<string>('');
   public selectedCategory = signal<string>('all');
   public labelSize = signal<'A4_SHEET' | 'THERMAL_ROLL'>('A4_SHEET');
+  public isPrintingBridge = signal<boolean>(false);
   public departments: MasterCategory[] = SUPERMARKET_DEPARTMENTS;
 
+  // 1. TENANT-SCOPED PRODUCTS
+  private storeProducts = computed(() => {
+    const activeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+    return this.catalogService.products().filter(p => {
+      const matchesStore = !p.storeId || p.storeId === activeCode;
+      return matchesStore && !p.deletedAt && p.isActive !== false;
+    });
+  });
+
+  // 2. FILTERED CATALOG FOR LEFT SELECTOR
   public filteredCatalog = computed(() => {
     const term = this.searchQuery().toLowerCase().trim();
     const cat = this.selectedCategory().toLowerCase();
-    let prods = this.catalogService.products().filter(p => !p.deletedAt);
+    let prods = this.storeProducts();
 
     if (cat !== 'all') {
       prods = prods.filter(p => {
@@ -66,11 +87,16 @@ export class ShelfLabelsComponent implements OnInit {
     return prods.slice(0, 60);
   });
 
-  public flattenedLabels = computed(() => {
-    const list: Product[] = [];
+  // 3. FLATTENED LABELS WITH PRE-COMPUTED METRICS (Zero Regex in Template)
+  public flattenedLabels = computed<EnrichedLabel[]>(() => {
+    const list: EnrichedLabel[] = [];
     for (const item of this.queue()) {
       for (let i = 0; i < item.quantity; i++) {
-        list.push(item.product);
+        list.push({
+          product: item.product,
+          unitMeasurement: item.unitMeasurement,
+          pricePerUnit: item.pricePerUnit
+        });
       }
     }
     return list;
@@ -79,14 +105,18 @@ export class ShelfLabelsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.catalogService.loadInitialCatalog();
     
-    // Default queue with first 6 products for instant preview
-    const initial = this.catalogService.products().filter(p => !p.deletedAt).slice(0, 6);
+    // Seed initial preview with tenant's first 6 products
+    const initial = this.storeProducts().slice(0, 6);
     this.queue.set(initial.map(p => ({
       product: p,
       quantity: 1,
-      unitMeasurement: this.computeUnitDisplay(p),
-      pricePerUnit: this.computeUnitPriceValue(p)
+      unitMeasurement: this.calculateUnitDisplay(p),
+      pricePerUnit: this.calculateUnitPriceValue(p)
     })));
+  }
+
+  private getProductKey(p: Product): string {
+    return String(p.id ?? p.barcode ?? '');
   }
 
   public selectCategory(catId: string): void {
@@ -94,13 +124,13 @@ export class ShelfLabelsComponent implements OnInit {
   }
 
   public addToQueue(product: Product): void {
-    const prodId = product.id || product.barcode;
-    const existing = this.queue().find(item => (item.product.id || item.product.barcode) === prodId);
+    const prodKey = this.getProductKey(product);
+    const existing = this.queue().find(item => this.getProductKey(item.product) === prodKey);
     
     if (existing) {
       this.queue.update(items =>
         items.map(i =>
-          (i.product.id || i.product.barcode) === prodId
+          this.getProductKey(i.product) === prodKey
             ? { ...i, quantity: i.quantity + 1 }
             : i
         )
@@ -111,8 +141,8 @@ export class ShelfLabelsComponent implements OnInit {
         {
           product,
           quantity: 1,
-          unitMeasurement: this.computeUnitDisplay(product),
-          pricePerUnit: this.computeUnitPriceValue(product)
+          unitMeasurement: this.calculateUnitDisplay(product),
+          pricePerUnit: this.calculateUnitPriceValue(product)
         }
       ]);
     }
@@ -120,8 +150,7 @@ export class ShelfLabelsComponent implements OnInit {
 
   public addEntireCategoryToQueue(catId: string): void {
     const target = catId.toLowerCase();
-    const prods = this.catalogService.products().filter(p => {
-      if (p.deletedAt) return false;
+    const prods = this.storeProducts().filter(p => {
       if (target === 'all') return true;
       const prodCatId = (p.categoryId || '').toLowerCase();
       const prodCatName = (p.categoryName || '').toLowerCase();
@@ -143,16 +172,9 @@ export class ShelfLabelsComponent implements OnInit {
 
   public getBarcodeSvg(barcode?: string): SafeHtml {
     const code = barcode || '5201004000000';
-    // Dynamic height based on media size
     const height = this.labelSize() === 'THERMAL_ROLL' ? 24 : 32;
     const svg = generateBarcodeSvg(code, height);
     return this.sanitizer.bypassSecurityTrustHtml(svg);
-  }
-
-  public getNetPrice(price: number, vatRate: number): string {
-    const vat = vatRate !== undefined ? vatRate : 24;
-    const net = (price || 0) / (1 + vat / 100);
-    return net.toFixed(2);
   }
 
   public getPriceWhole(price: number): string {
@@ -164,8 +186,8 @@ export class ShelfLabelsComponent implements OnInit {
     return decimals.toString().padStart(2, '0');
   }
 
-  // Mandatory Greek Reference Unit Calculation (Τιμή ανά Κιλό / Λίτρο)
-  public computeUnitDisplay(p: Product): string {
+  // Statutory Greek Retail Unit Calculation (ΔΙ.Ε.Π.Π.Υ. - Τιμή ανά Kg/Lt)
+  public calculateUnitDisplay(p: Product): string {
     if (p.isWeighted) return 'kg';
     const nameLower = (p.name || '').toLowerCase();
     if (nameLower.includes('ml') || nameLower.includes('lt') || nameLower.includes('λίτρο')) return 'lt';
@@ -173,12 +195,11 @@ export class ShelfLabelsComponent implements OnInit {
     return 'τεμ';
   }
 
-  public computeUnitPriceValue(p: Product): number {
+  public calculateUnitPriceValue(p: Product): number {
     const price = p.price || 0;
     if (p.isWeighted) return price;
     
-    // Auto-parse package quantity (e.g., "ΓΑΛΑ 500ml" or "ΖΥΜΑΡΙΚΑ 500gr")
-    const match = (p.name || '').match(/(\d+[\.,]?\d*)\s*(gr|g|ml|lt|l|kg)/i);
+    const match = (p.name || '').match(/(\d+[.,]?\d*)\s*(gr|g|ml|lt|l|kg)/i);
     if (match) {
       const num = parseFloat(match[1].replace(',', '.'));
       const unit = match[2].toLowerCase();
@@ -189,7 +210,36 @@ export class ShelfLabelsComponent implements OnInit {
     return price;
   }
 
-  public printLabels(): void {
+ public async printLabels(): Promise<void> {
+    const items = this.flattenedLabels();
+    if (items.length === 0) return;
+
+    if (this.labelSize() === 'THERMAL_ROLL' && this.bridge.isBridgeAvailable()) {
+      try {
+        this.isPrintingBridge.set(true);
+        const printed = await this.bridge.printShelfLabels(
+          items.map(l => ({
+            name: l.product.name,
+            barcode: l.product.barcode || '',
+            price: l.product.price,
+            unitPrice: l.pricePerUnit,
+            unitMeasure: l.unitMeasurement,
+            vatRate: l.product.vatRate || 24,
+            brand: l.product.brand || l.product.categoryName || ''
+          }))
+        );
+
+        if (printed) {
+          return;
+        }
+      } catch (err) {
+        console.warn('[Bridge] Label TSPL streaming failed, falling back to browser print:', err);
+      } finally {
+        this.isPrintingBridge.set(false);
+      }
+    }
+
+    // Default Browser Print (A4 Sheet or fallback)
     window.print();
   }
 

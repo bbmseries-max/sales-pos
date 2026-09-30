@@ -28,7 +28,6 @@ export class CashierShiftService {
   public currentShift = signal<CashierShift | null>(null);
   public allCashiers = signal<Cashier[]>([]);
 
-  // Keep activeShift as an alias getter/setter for compatibility
   public get activeShift() {
     return this.currentShift;
   }
@@ -41,7 +40,14 @@ export class CashierShiftService {
     const raw = sessionStorage.getItem('active_cashier_data');
     if (raw) {
       try {
-        return JSON.parse(raw) as Cashier;
+        const parsed = JSON.parse(raw) as Cashier;
+        const currentStore = this.tenantConfig.activeShop()?.code;
+        // Invalidate cached cashier if store was switched
+        if (parsed.storeId && currentStore && parsed.storeId !== currentStore) {
+          sessionStorage.removeItem('active_cashier_data');
+          return null;
+        }
+        return parsed;
       } catch (e) {
         console.error('[CashierShiftService] Failed parsing cached cashier', e);
       }
@@ -55,57 +61,62 @@ export class CashierShiftService {
     const cashier = this.currentCashier() || this.getInitialCashier();
     const isUnlocked = !this.checkInitialLock();
 
-    if (cashier && isUnlocked) {
+    if (cashier && isUnlocked && cashier.storeId === this.tenantConfig.activeShop().code) {
       this.currentCashier.set(cashier);
       this.isLocked.set(false);
       await this.ensureActiveShiftForCashier(cashier);
       return;
     }
 
-    this.isLocked.set(true);
+    this.lockTerminal();
   }
 
+  /**
+   * Loads cashiers strictly scoped to activeShop
+   */
   public async loadAllCashiers(): Promise<void> {
-    let list = await marketDb.cashiers.toArray();
-    list = (list || []).filter(c => c.isActive !== false);
-
     const activeShop = this.tenantConfig.activeShop();
-    const activeShopCode = activeShop.code || 'mar-market';
+    const activeShopCode = activeShop?.code || 'mar-market';
 
-    if (list.length === 0) {
-      const storePin = (activeShop as any).adminPin || (
-        activeShopCode === 'ftest' ? '1111' :
-        activeShopCode === 'parnasos' ? '3333' : '2222'
-      );
+    const all = await marketDb.cashiers.toArray();
+    let scopedList = (all || []).filter(c => 
+      c.isActive !== false && (c.storeId === activeShopCode || !c.storeId)
+    );
+
+    // Auto-seed initial store admin only if no cashiers exist for THIS store
+    if (scopedList.length === 0) {
+      const initialAdminPin = activeShop.adminPin || '1234';
 
       const initialAdmin: Cashier = {
-        id: `CASH-ADMIN-${activeShopCode.toUpperCase()}`,
-        name: `Διαχειριστής (${activeShop.name})`,
-        pin: storePin,
+        id: `CASH-${activeShopCode.toUpperCase()}-01`,
+        name: `Υπεύθυνος (${activeShop.name})`,
+        pin: initialAdminPin,
         role: 'ADMIN',
         storeId: activeShopCode,
         isActive: true
       };
 
-      await marketDb.cashiers.add(initialAdmin);
-      list = [initialAdmin];
+      await marketDb.cashiers.put(initialAdmin);
+      scopedList = [initialAdmin];
     }
 
-    this.allCashiers.set(list);
+    this.allCashiers.set(scopedList);
   }
 
   /**
-   * Guarantees that Dexie has an OPEN shift for this cashier
+   * Retrieves or creates an active shift for the cashier without hardcoded float overwrites
    */
-  public async ensureActiveShiftForCashier(cashier: Cashier, openingFloat = 100): Promise<CashierShift> {
+  public async ensureActiveShiftForCashier(cashier: Cashier, floatAmount?: number): Promise<CashierShift> {
     const activeShopCode = this.tenantConfig.activeShop()?.code || cashier.storeId || 'mar-market';
 
     let shift = await marketDb.shifts
       .where('cashierId').equals(cashier.id)
-      .and(s => s.status === 'OPEN')
+      .and(s => s.status === 'OPEN' && s.storeId === activeShopCode)
       .first();
 
     if (!shift) {
+      const resolvedFloat = typeof floatAmount === 'number' ? floatAmount : 0;
+
       shift = {
         id: `SHIFT-${Date.now().toString(36).toUpperCase()}`,
         cashierId: cashier.id,
@@ -113,7 +124,7 @@ export class CashierShiftService {
         storeId: activeShopCode,
         startTime: new Date().toISOString(),
         status: 'OPEN',
-        openingFloat: Number(openingFloat) || 0,
+        openingFloat: resolvedFloat,
         cashInTotal: 0,
         cashOutTotal: 0,
         cashMovements: [],
@@ -126,56 +137,75 @@ export class CashierShiftService {
     return shift;
   }
 
-  public async unlockWithPin(pin: string): Promise<boolean> {
+  /**
+   * Direct login validation scoped to active store
+   */
+  /**
+   * Direct login validation scoped to active store
+   */
+  public async loginWithPin(pin: string, openingFloat?: number): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
+    const activeShop = this.tenantConfig.activeShop();
+    const activeShopCode = activeShop?.code || 'mar-market';
 
-    // 1. Super-Admin PIN (8820)
+    // 1. Super-Admin Check (8820)
     if (cleanPin === '8820') {
       const superAdminCashier: Cashier = {
         id: 'SUPER-ADMIN',
         name: 'Super Admin',
         pin: '8820',
         role: 'ADMIN',
-        storeId: this.tenantConfig.activeShop()?.code || 'ftest',
+        storeId: activeShopCode,
         isActive: true
       };
-      await this.setAuthenticatedCashier(superAdminCashier);
-      return true;
+      await this.setAuthenticatedCashier(superAdminCashier, openingFloat);
+      return { success: true, message: 'Super-Admin Access Granted' };
     }
 
-    // 2. Tenant Store Admin PIN check
-    const storeAuth = this.tenantConfig.resolveAndSwitchByPin(cleanPin);
-    if (storeAuth.success) {
-      await this.loadAllCashiers();
-      const admin = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN') || {
-        id: `ADMIN-${cleanPin}`,
-        name: `Διαχειριστής (${this.tenantConfig.activeShop().name})`,
+    await this.loadAllCashiers();
+
+    // 2. First look for an existing cashier in Dexie with this PIN
+    let cashier = this.allCashiers().find(c => 
+      c.pin === cleanPin && 
+      c.isActive !== false &&
+      (c.storeId === activeShopCode || !c.storeId)
+    );
+
+    // 3. Fallback: If cleanPin matches the store's configured adminPin (e.g. 2435)
+    // but isn't yet saved in Dexie, automatically generate/sync the Admin cashier!
+    if (!cashier && activeShop.adminPin && cleanPin === activeShop.adminPin.trim()) {
+      cashier = {
+        id: `CASH-${activeShopCode.toUpperCase()}-ADMIN`,
+        name: `Υπεύθυνος (${activeShop.name})`,
         pin: cleanPin,
         role: 'ADMIN',
-        storeId: this.tenantConfig.activeShop().code,
+        storeId: activeShopCode,
         isActive: true
       };
-      await this.setAuthenticatedCashier(admin as Cashier);
-      return true;
+
+      await marketDb.cashiers.put(cashier);
+      await this.loadAllCashiers();
     }
 
-    // 3. Regular Cashier lookup
-    await this.loadAllCashiers();
-    const matched = this.allCashiers().find(c => c.pin === cleanPin);
-    if (matched) {
-      await this.setAuthenticatedCashier(matched);
-      return true;
+    if (!cashier) {
+      return { success: false, message: 'Λάθος PIN. Δοκιμάστε ξανά.' };
     }
 
-    return false;
+    await this.setAuthenticatedCashier(cashier, openingFloat);
+    return { success: true, message: `Καλωσήρθατε, ${cashier.name}` };
   }
 
-  public async setAuthenticatedCashier(cashier: Cashier): Promise<void> {
+  public async unlockWithPin(pin: string): Promise<boolean> {
+    const res = await this.loginWithPin(pin);
+    return res.success;
+  }
+
+  public async setAuthenticatedCashier(cashier: Cashier, floatAmount?: number): Promise<void> {
     this.currentCashier.set(cashier);
     this.isLocked.set(false);
     sessionStorage.setItem('pos_is_locked', 'false');
     sessionStorage.setItem('active_cashier_data', JSON.stringify(cashier));
-    await this.ensureActiveShiftForCashier(cashier);
+    await this.ensureActiveShiftForCashier(cashier, floatAmount);
   }
 
   public lockScreen(): void {
@@ -189,46 +219,6 @@ export class CashierShiftService {
     this.isLocked.set(true);
     sessionStorage.setItem('pos_is_locked', 'true');
     sessionStorage.removeItem('active_cashier_data');
-  }
-
-  /**
-   * Logs in a cashier using their PIN and sets up or opens their active shift.
-   */
-  public async loginWithPin(pin: string, openingFloat = 100): Promise<{ success: boolean; message: string }> {
-    const cleanPin = pin.trim();
-    const activeShopCode = this.tenantConfig.activeShop()?.code || 'mar-market';
-
-    // 1. Super-Admin Check
-    if (cleanPin === '8820') {
-      const admin = this.allCashiers().find(c => c.role === 'ADMIN') || this.allCashiers()[0] || {
-        id: 'SUPER-ADMIN',
-        name: 'Super Admin',
-        pin: '8820',
-        role: 'ADMIN',
-        storeId: activeShopCode,
-        isActive: true
-      };
-      await this.setAuthenticatedCashier(admin as Cashier);
-      await this.ensureActiveShiftForCashier(admin as Cashier, openingFloat);
-      return { success: true, message: 'Super-Admin Access Granted' };
-    }
-
-    // 2. Refresh cashiers if list is empty
-    if (this.allCashiers().length === 0) {
-      await this.loadAllCashiers();
-    }
-
-    // 3. Find matching active cashier
-    const cashier = this.allCashiers().find(c => c.pin === cleanPin && c.isActive !== false);
-    if (!cashier) {
-      return { success: false, message: 'Λάθος PIN. Δοκιμάστε ξανά.' };
-    }
-
-    // 4. Authenticate & initialize active shift with the specified opening float
-    await this.setAuthenticatedCashier(cashier);
-    await this.ensureActiveShiftForCashier(cashier, openingFloat);
-
-    return { success: true, message: `Καλωσήρθατε, ${cashier.name}` };
   }
 
   public logout(): void {
@@ -351,16 +341,10 @@ export class CashierShiftService {
 
   public async createCashier(data: Omit<Cashier, 'id'>): Promise<{ success: boolean; message: string; cashier?: Cashier }> {
     const cleanPin = data.pin.trim();
+    const activeShopCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+
     if (cleanPin === '8820') {
       return { success: false, message: 'Το PIN 8820 είναι δεσμευμένο για τον Super Admin.' };
-    }
-
-    const reservedStorePins = this.tenantConfig.registeredShops()
-      .map(s => s.adminPin?.trim())
-      .filter(Boolean);
-
-    if (reservedStorePins.includes(cleanPin)) {
-      return { success: false, message: `Το PIN "${cleanPin}" είναι δεσμευμένο ως κωδικός καταστήματος!` };
     }
 
     await this.loadAllCashiers();
@@ -370,8 +354,9 @@ export class CashierShiftService {
     }
 
     const newCashier: Cashier = {
-      id: 'cashier_' + Date.now(),
+      id: `cashier_${Date.now()}`,
       ...data,
+      storeId: data.storeId || activeShopCode,
       pin: cleanPin
     };
 

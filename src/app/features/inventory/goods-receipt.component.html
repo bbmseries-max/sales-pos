@@ -51,7 +51,7 @@
         </div>
       }
 
-      @for (po of orderService.purchaseOrders(); track po.id) {
+      @for (po of storePurchaseOrders(); track po.id) {
         <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden transition shadow-md">
           
           <!-- Document Card Header -->
@@ -292,6 +292,11 @@
                 ✕
               </button>
             }
+            @if (scanError(); as err) {
+  <div class="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-mono font-bold col-span-2">
+    ⚠️ {{ err }}
+  </div>
+}
           </div>
 
           <!-- Filtered Chips (Smooth Scrolling & Fast) -->
@@ -467,11 +472,18 @@
         <div class="flex justify-end gap-3 pt-2 border-t border-slate-800">
           <button (click)="showReceiveModal.set(false)" class="h-11 px-5 bg-slate-800 text-slate-300 text-xs font-bold rounded-xl cursor-pointer">Ακύρωση</button>
           <button 
-            (click)="confirmGoodsReceipt()" 
-            class="h-11 px-6 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs rounded-xl shadow-lg transition active:scale-95 cursor-pointer"
-          >
-            ✔ ΟΛΟΚΛΗΡΩΣΗ ΠΑΡΑΛΑΒΗΣ &amp; ΕΝΗΜΕΡΩΣΗ ΑΠΟΘΕΜΑΤΟΣ
-          </button>
+  type="button"
+  (click)="confirmGoodsReceipt()" 
+  [disabled]="isProcessing()"
+  class="h-11 px-6 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-black text-xs rounded-xl shadow-lg transition active:scale-95 cursor-pointer flex items-center gap-2"
+>
+  @if (isProcessing()) {
+    <span class="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+    <span>ΕΝΗΜΕΡΩΣΗ ΑΠΟΘΕΜΑΤΟΣ...</span>
+  } @else {
+    <span>✔ ΟΛΟΚΛΗΡΩΣΗ ΠΑΡΑΛΑΒΗΣ &amp; ΕΝΗΜΕΡΩΣΗ ΑΠΟΘΕΜΑΤΟΣ</span>
+  }
+</button>
         </div>
       </div>
     </div>

@@ -42,4 +42,5 @@ export interface PurchaseOrder {
   totalTax: number;
   grandTotalCost: number;
   notes?: string;
+  storeId?: string;
 }

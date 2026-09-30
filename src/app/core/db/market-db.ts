@@ -2,6 +2,7 @@ import Dexie, { Table } from 'dexie';
 import { 
   Product, 
   Category, 
+  StockAuditLog,
   TransactionRecord, 
   SpoilageLog, 
   CashLog, 
@@ -37,6 +38,7 @@ export class MarketDatabase extends Dexie {
   public purchaseOrders!: Table<PurchaseOrder, string>;
   public cashiers!: Table<Cashier, string>;
   public shifts!: Table<CashierShift, string>;
+  public stockLogs!: Table<StockAuditLog, string>;
 
   constructor(storeCode: string = getActiveStoreCode()) {
     // Each store gets its own dedicated, isolated IndexedDB container:
@@ -54,7 +56,8 @@ export class MarketDatabase extends Dexie {
       purchaseOrders: 'id, supplierId, status, orderDate, invoiceNumber, storeId',
       cashiers: 'id, pin, storeId, role, isActive',
       shifts: 'id, cashierId, status, startTime, storeId',
-      goodsReceipts: 'id, supplierId, invoiceNumber, receivedAt, storeId, _syncStatus'
+      goodsReceipts: 'id, supplierId, invoiceNumber, receivedAt, storeId, _syncStatus',
+      stockLogs: 'id, productId, storeId, cashierId, timestamp, _syncStatus'
     });
   }
 }

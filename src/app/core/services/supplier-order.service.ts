@@ -91,48 +91,66 @@ export class SupplierOrderService {
     return newPO;
   }
 
-  public async receiveDelivery(poId: string, invoiceNo: string, receivedItems: PurchaseOrderItem[]): Promise<void> {
-    const po = await marketDb.purchaseOrders.get(poId);
-    if (!po) throw new Error('Η παραγγελία δεν βρέθηκε');
+  public async receiveDelivery(
+    poId: string,
+    invoiceNo: string,
+    items: PurchaseOrderItem[],
+    cashierName: string = 'Υπεύθυνος Αποθήκης',
+    storeId: string = 'mar-market'
+  ): Promise<void> {
+    await marketDb.transaction('rw', [marketDb.products, (marketDb as any).purchaseOrders, (marketDb as any).stockLogs], async () => {
+      for (const item of items) {
+        const received = Number(item.receivedQty || 0);
+        if (received <= 0) continue;
 
-    let allFullyReceived = true;
+        const dbProduct = await marketDb.products.get(item.productId);
+        if (dbProduct) {
+          const currentQty = Number(dbProduct.stockQuantity ?? 0);
+          const newQty = parseFloat((currentQty + received).toFixed(3));
 
-    for (const recItem of receivedItems) {
-      if (recItem.receivedQty < recItem.orderedQty) {
-        allFullyReceived = false;
+          // 1. Increment Physical Stock, update Cost Price and Expiry Date
+          await marketDb.products.update(dbProduct.id!, {
+            stockQuantity: newQty,
+            costPrice: item.unitCost ? Number(item.unitCost) : dbProduct.costPrice,
+            expire: item.expiryDate || dbProduct.expire,
+            statusDate: item.expiryDate || dbProduct.statusDate,
+            storeId: dbProduct.storeId || storeId,
+            updatedAt: new Date().toISOString(),
+            _syncStatus: 'dirty'
+          });
+
+          // 2. Append to immutable StockAuditLog ledger
+          if ((marketDb as any).stockLogs) {
+            await (marketDb as any).stockLogs.put({
+              id: `STK-DELIV-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              productId: dbProduct.id,
+              productName: dbProduct.name,
+              barcode: dbProduct.barcode,
+              storeId: dbProduct.storeId || storeId,
+              cashierId: 'SYSTEM',
+              cashierName,
+              previousQuantity: currentQty,
+              newQuantity: newQty,
+              delta: received,
+              reason: 'DELIVERY',
+              timestamp: new Date().toISOString(),
+              _syncStatus: 'dirty'
+            });
+          }
+        }
       }
 
-      const product: any = await marketDb.products.get(recItem.productId);
-      if (product) {
-        const currentStock = Number(product.stockQuantity ?? product.stock ?? 0);
-        const addedStock = Number(recItem.receivedQty || 0);
-        
-        const updatedFields: Record<string, any> = {
-          stockQuantity: currentStock + addedStock,
-          costPrice: recItem.unitCost
-        };
-
-        if ('stock' in product) {
-          updatedFields['stock'] = currentStock + addedStock;
-        }
-        if (recItem.newRetailPrice && recItem.newRetailPrice > 0) {
-          updatedFields['price'] = recItem.newRetailPrice;
-        }
-        if (recItem.expiryDate) {
-          updatedFields['expire'] = recItem.expiryDate;
-        }
-
-        await marketDb.products.update(product.id, updatedFields);
+      // Mark the Purchase Order as RECEIVED
+      if ((marketDb as any).purchaseOrders) {
+        await (marketDb as any).purchaseOrders.update(poId, {
+          status: 'RECEIVED',
+          invoiceNumber: invoiceNo,
+          receivedAt: new Date().toISOString(),
+          items
+        });
       }
-    }
+    });
 
-    po.invoiceNumber = invoiceNo;
-    po.receivedDate = new Date().toISOString();
-    po.items = receivedItems;
-    po.status = allFullyReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
-
-    await marketDb.purchaseOrders.put(po);
-    await this.catalogService.loadInitialCatalog();
     await this.loadAll();
   }
 }
