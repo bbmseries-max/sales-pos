@@ -1,6 +1,7 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { marketDb } from '../db/market-db';
 import { Cashier } from '../models';
+import { sha256Pin } from '../utils/crypto.utils';
 import { TenantConfigService } from './tenant-config.service';
 
 export interface VatBucket {
@@ -153,21 +154,48 @@ export class ShiftService {
 
   public async unlockWithPin(pin: string): Promise<boolean> {
     const cleanPin = pin.trim();
+    if (!cleanPin) return false;
 
-    // 1. Check tenant admin PINs
-    const storeAuth = this.tenantConfig.resolveAndSwitchByPin(cleanPin);
-    if (storeAuth.success) {
+    const activeShop = this.tenantConfig.activeShop();
+    const activeShopCode = activeShop?.code || 'mar-market';
+
+    // 0. Remote kill-switch check
+    if (activeShop && activeShop.isActive === false) {
+      return false;
+    }
+
+    // 1. Check tenant admin PIN hash
+    const salt = activeShop.adminPinSalt || activeShopCode;
+    const hash = await sha256Pin(cleanPin, salt);
+    const isStoreAdmin = Boolean(activeShop.adminPinHash && hash === activeShop.adminPinHash);
+
+    if (isStoreAdmin) {
       await this.loadAllCashiers();
-      const admin = this.allCashiers().find(c => c.pin === cleanPin || c.role === 'ADMIN');
-      if (admin) {
-        this.setAuthenticatedCashier(admin);
+      let admin = this.allCashiers().find(c => c.storeId === activeShopCode && c.role === 'ADMIN');
+      if (!admin) {
+        admin = {
+          id: `CASH-${activeShopCode.toUpperCase()}-ADMIN`,
+          name: `Υπεύθυνος (${activeShop.name})`,
+          pin: cleanPin,
+          role: 'ADMIN',
+          storeId: activeShopCode,
+          isActive: true
+        };
+        await marketDb.cashiers.put(admin);
+        await this.loadAllCashiers();
       }
+      this.setAuthenticatedCashier(admin);
       return true;
     }
 
-    // 2. Check regular cashier PINs
+    // 2. Check regular cashier PINs strictly scoped to this store
     await this.loadAllCashiers();
-    const matched = this.allCashiers().find(c => c.pin === cleanPin);
+    const matched = this.allCashiers().find(c => 
+      c.pin === cleanPin && 
+      c.isActive !== false && 
+      c.storeId === activeShopCode
+    );
+
     if (matched) {
       this.setAuthenticatedCashier(matched);
       return true;

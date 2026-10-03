@@ -1,25 +1,11 @@
 <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 font-sans select-none overflow-hidden relative">
 
-  <!-- Fixed Top Header Strip -->
+  <!-- ================= 1. FIXED TOP HEADER STRIP ================= -->
   <header class="h-14 w-full max-w-full bg-slate-900/95 border-b border-slate-800 shrink-0 px-3 z-30 flex items-center overflow-x-auto no-scrollbar">
     <div class="flex items-center gap-2.5 min-w-max py-1">
       
-      <!-- Store Brand / Secret Logo -->
-      <div 
-        (click)="onSecretLogoClick()" 
-        class="flex items-center gap-1.5 cursor-pointer active:scale-95 transition bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/60 shrink-0"
-        title="Tap 5 times for Super-Admin">
-        <span class="text-lg">🏪</span>
-        <div class="leading-tight">
-          <h1 class="text-xs md:text-sm font-black tracking-tight bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent whitespace-nowrap">
-            {{ tenantConfig.activeShop().name }}
-          </h1>
-          <span class="text-[9px] text-slate-400 font-mono block">[{{ tenantConfig.activeShop().code }}]</span>
-        </div>
-      </div>
-
       <!-- Super-Admin Strip -->
-      @if (tenantConfig.isSuperAdmin()) {
+      @if (tenantConfig.activeShop().allowStoreSwitch) {
         <div class="flex items-center gap-1 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl shrink-0">
           <select 
             #storeSelect
@@ -35,14 +21,8 @@
           <button 
             type="button" 
             (click)="isNewStoreModalOpen.set(true)" 
-            class="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold shrink-0">
+            class="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer">
             ➕
-          </button>
-          <button 
-            type="button" 
-            (click)="tenantConfig.lockSuperAdmin()" 
-            class="px-1.5 py-1 text-slate-400 hover:text-rose-400 text-xs shrink-0">
-            🔒
           </button>
         </div>
       }
@@ -211,7 +191,7 @@
           </div>
           <button 
             type="button" 
-            (click)="cart.clearCart()" 
+            (click)="cart.clear()" 
             [disabled]="cart.items().length === 0"
             class="text-xs font-mono text-slate-400 hover:text-rose-400 disabled:opacity-30 cursor-pointer transition"
           >
@@ -566,41 +546,7 @@
 
 <!-- ================= 3. MODALS & OVERLAYS ================= -->
 
-<!-- Payment Modal -->
-@if (showPaymentModal()) {
-  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-5">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h2 class="text-lg font-black text-slate-100">ΕΠΙΛΟΓΗ ΤΡΟΠΟΥ ΠΛΗΡΩΜΗΣ</h2>
-        <button (click)="showPaymentModal.set(false)" class="text-slate-400 hover:text-slate-100 text-lg font-bold p-1 cursor-pointer">✕</button>
-      </div>
-      <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
-        <span class="text-xs font-bold text-slate-400 uppercase">Οφειλόμενο Ποσό:</span>
-        <span class="text-3xl font-mono font-black text-emerald-400">€{{ finalPayableAmount().toFixed(2) }}</span>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <button 
-          type="button" 
-          (click)="selectPaymentMethod('CASH')" 
-          [class.border-emerald-500]="paymentMethod() === 'CASH'" 
-          [class.bg-emerald-950/40]="paymentMethod() === 'CASH'" 
-          class="h-16 bg-slate-950 border-2 border-slate-800 hover:border-slate-700 rounded-2xl flex items-center justify-center gap-3 text-base font-black transition cursor-pointer"
-        >
-          <span class="text-2xl">💵</span>
-          <span>ΜΕΤΡΗΤΑ</span>
-        </button>
-        <button 
-          type="button" 
-          (click)="selectPaymentMethod('CARD')" 
-          [class.border-emerald-500]="paymentMethod() === 'CARD'" 
-          [class.bg-emerald-950/40]="paymentMethod() === 'CARD'" 
-          class="h-16 bg-slate-950 border-2 border-slate-800 hover:border-slate-700 rounded-2xl flex items-center justify-center gap-3 text-base font-black transition cursor-pointer"
-        >
-          <span class="text-2xl">💳</span>
-          <span>ΚΑΡΤΑ / POS</span>
-        </button>
-      </div>
-      <!-- Payment Modal -->
+<!-- Payment Modal (Single, Clean Instance) -->
 @if (showPaymentModal()) {
   <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
     <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
@@ -712,31 +658,6 @@
         </button>
       </div>
 
-    </div>
-  </div>
-}
-
-      <div class="flex gap-3 pt-2">
-        <button 
-          type="button" 
-          (click)="showPaymentModal.set(false)" 
-          class="flex-1 h-14 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-sm cursor-pointer"
-        >
-          Ακύρωση
-        </button>
-        <button 
-  type="button" 
-  (click)="paymentMethod() === 'CARD' ? processCardPayment() : completeSale()" 
-  [disabled]="isCardProcessing() || isCompletingSale() || (paymentMethod() === 'CASH' && cashTendered() < cart.grandTotal())" 
-  class="...">
-  @if (isCardProcessing() || isCompletingSale()) {
-    <span class="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
-    <span>Επεξεργασία...</span>
-  } @else {
-    <span>ΕΚΤΥΠΩΣΗ &amp; ΟΛΟΚΛΗΡΩΣΗ</span>
-  }
-</button>
-      </div>
     </div>
   </div>
 }
@@ -890,7 +811,7 @@
     <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
         <h3 class="text-base font-black text-amber-400 uppercase tracking-wide">
-          🏷️ {{ discountScope() === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
+          🏷️️ {{ discountScope() === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
         </h3>
         <button (click)="showDiscountModal.set(false)" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer">✕</button>
       </div>
@@ -999,30 +920,29 @@
         </button>
       </div>
       <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 mt-4">
-  <span class="text-[11px] text-slate-500 font-bold block">Εγγεγραμμένοι Χρήστες Καταστήματος:</span>
-  @for (c of shiftService.allCashiers(); track c.id) {
-    <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs">
-      <div>
-        <span class="font-bold text-slate-200 block">{{ c.name }}</span>
-        <!-- Masked PIN representation -->
-        <span class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
-          <span class="text-emerald-400 font-bold">PIN: ••••</span>
-          <span>•</span>
-          <span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">{{ c.role }}</span>
-          <span>•</span>
-          <span class="text-slate-500">[{{ c.storeId }}]</span>
-        </span>
+        <span class="text-[11px] text-slate-500 font-bold block">Εγγεγραμμένοι Χρήστες Καταστήματος:</span>
+        @for (c of shiftService.allCashiers(); track c.id) {
+          <div class="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs">
+            <div>
+              <span class="font-bold text-slate-200 block">{{ c.name }}</span>
+              <span class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
+                <span class="text-emerald-400 font-bold">PIN: ••••</span>
+                <span>•</span>
+                <span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">{{ c.role }}</span>
+                <span>•</span>
+                <span class="text-slate-500">[{{ c.storeId }}]</span>
+              </span>
+            </div>
+            <button 
+              type="button" 
+              (click)="shiftService.toggleCashierStatus(c.id, false)" 
+              class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer" 
+              title="Διαγραφή / Απενεργοποίηση">
+              🗑️
+            </button>
+          </div>
+        }
       </div>
-      <button 
-        type="button" 
-        (click)="shiftService.toggleCashierStatus(c.id, false)" 
-        class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer" 
-        title="Διαγραφή / Απενεργοποίηση">
-        🗑️
-      </button>
-    </div>
-  }
-</div>
     </div>
   </div>
 }
@@ -1071,11 +991,6 @@
   (close)="showStoreModal.set(false)"
 />
 
-<!-- Super-Admin Unlock Modal -->
-@if (isUnlockModalOpen()) {
-  <app-super-admin-modal (close)="isUnlockModalOpen.set(false)" />
-}
-
 <!-- New Store Modal -->
 @if (isNewStoreModalOpen()) {
   <app-new-store-modal (close)="isNewStoreModalOpen.set(false)" />
@@ -1092,38 +1007,38 @@
       <p class="text-xs text-slate-400 mt-1">Η προηγούμενη βάρδια έκλεισε επιτυχώς. Ορίστε αρχικό ταμείο για τη νέα βάρδια.</p>
 
       <!-- Cashier Selector -->
-<div class="my-4 text-left">
-  <label class="text-xs font-semibold text-slate-300 block mb-2">Επιλογή Ταμία:</label>
-  <div class="flex flex-wrap gap-2">
-    @for (c of shiftService.allCashiers(); track c.id) {
-      <button 
-        type="button" 
-        (click)="selectCashierForShift(c)" 
-        [class.bg-sky-600]="selectedShiftCashierId() === c.id" 
-        [class.text-white]="selectedShiftCashierId() === c.id" 
-        [class.bg-slate-800]="selectedShiftCashierId() !== c.id" 
-        [class.text-slate-300]="selectedShiftCashierId() !== c.id" 
-        class="px-3 py-1.5 rounded-xl text-xs font-bold transition border border-slate-700/60 hover:border-sky-500 cursor-pointer">
-        {{ c.name }}
-      </button>
-    }
-  </div>
-</div>
+      <div class="my-4 text-left">
+        <label class="text-xs font-semibold text-slate-300 block mb-2">Επιλογή Ταμία:</label>
+        <div class="flex flex-wrap gap-2">
+          @for (c of shiftService.allCashiers(); track c.id) {
+            <button 
+              type="button" 
+              (click)="selectCashierForShift(c)" 
+              [class.bg-sky-600]="selectedShiftCashierId() === c.id" 
+              [class.text-white]="selectedShiftCashierId() === c.id" 
+              [class.bg-slate-800]="selectedShiftCashierId() !== c.id" 
+              [class.text-slate-300]="selectedShiftCashierId() !== c.id" 
+              class="px-3 py-1.5 rounded-xl text-xs font-bold transition border border-slate-700/60 hover:border-sky-500 cursor-pointer">
+              {{ c.name }}
+            </button>
+          }
+        </div>
+      </div>
 
-<!-- Secure Manual PIN Entry -->
-@if (selectedShiftCashierId()) {
-  <div class="my-3 text-left">
-    <label class="text-xs font-semibold text-slate-300 block mb-1">4-Ψήφιο PIN Ταμία:</label>
-    <input 
-      type="password" 
-      maxlength="6"
-      [ngModel]="nextShiftCashierPin()"
-      (ngModelChange)="nextShiftCashierPin.set($event)"
-      placeholder="••••"
-      class="w-full h-11 bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-xl px-4 text-center font-mono text-lg tracking-widest text-white outline-none"
-    />
-  </div>
-}
+      <!-- Secure Manual PIN Entry -->
+      @if (selectedShiftCashierId()) {
+        <div class="my-3 text-left">
+          <label class="text-xs font-semibold text-slate-300 block mb-1">4-Ψήφιο PIN Ταμία:</label>
+          <input 
+            type="password" 
+            maxlength="6"
+            [ngModel]="nextShiftCashierPin()"
+            (ngModelChange)="nextShiftCashierPin.set($event)"
+            placeholder="••••"
+            class="w-full h-11 bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-xl px-4 text-center font-mono text-lg tracking-widest text-white outline-none"
+          />
+        </div>
+      }
 
       <div class="my-4 text-left">
         <label class="text-xs font-semibold text-slate-300 block mb-1">Αρχικό Ταμείο / Μαγιά (€):</label>
@@ -1165,10 +1080,10 @@
   </div>
 }
 
-<!-- Terminal Lock Overlay (Global Gate) -->
+<!-- POS LOCK SCREEN OVERLAY -->
 @if (shiftService.isLocked() || !shiftService.currentCashier()) {
   <app-pos-lock-screen 
-    [isLocked]="shiftService.isLocked()" 
+    [isLocked]="true" 
     [cashiers]="shiftService.allCashiers()" 
     [errorMessage]="pinError()" 
     (pinSubmit)="handlePinSubmit($event)"

@@ -1,10 +1,15 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, computed } from '@angular/core';
+import { sha256Pin } from '../utils/crypto.utils';
+
 export type FiscalMode = 'FHM' | 'PROVIDER' | 'NONE';
 
 export interface ShopInfo {
   code: string;
   name: string;
-  adminPin?: string; // Unique login PIN per shop
+  adminPinSalt?: string;
+  adminPinHash?: string; // SHA-256 hash of salt:pin
+  defaultFloat?: number;
+  defaultRegister?: string;
   address?: string;
   afm?: string;
   doy?: string;
@@ -13,50 +18,60 @@ export interface ShopInfo {
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
-  // Fiscal configuration fields
+  allowStoreSwitch?: boolean;
   fiscalMode?: FiscalMode;
   fhmEndpoint?: string;
   providerApiKey?: string;
 }
 
-export const RESERVED_SYSTEM_PINS = ['8820'];
-
-const DEFAULT_SHOPS: ShopInfo[] = [
+export const DEFAULT_SHOPS: ShopInfo[] = [
   {
     code: 'mar-market',
     name: 'Maranth Market (Central)',
-    adminPin: '2435',
+    adminPinSalt: 'mar-market',
+    // Hash of "mar-market:2435"
+    adminPinHash: '9b0919b5f30eaf305e85a691684b27c38014260204851be92d652856b0893fee', // PIN: 2435
+    defaultFloat: 100,
+    defaultRegister: 'REG-01',
     address: 'Leof. Pentelis 45, Vrilissia',
     afm: '123456789',
     doy: 'XALANDRIOU',
     phone: '210-6800000',
     currency: 'EUR',
-    fiscalMode: 'PROVIDER',
-    fhmEndpoint: 'http://127.0.0.1:8080/api/fhm'
+    isActive: true,
+    allowStoreSwitch: true
   },
   {
     code: 'ftest',
     name: 'Epta Enteka',
-    adminPin: '5564',
+    adminPinSalt: 'ftest',
+    // Hash of "ftest:5564"
+    adminPinHash: '1198cab3e7bf1dead5c7e19e044821e281b17044e12d9b37b65a3e3b056b7b5b', // PIN: 5564
+    defaultFloat: 50,
+    defaultRegister: 'REG-01',
     address: 'Plateia Agias Paraskevis 12',
     afm: '998877665',
     doy: 'AGIAS PARASKEVIS',
     phone: '210-6001122',
     currency: 'EUR',
-    fiscalMode: 'PROVIDER',
-    fhmEndpoint: 'http://127.0.0.1:8080/api/fhm'
+    isActive: true,
+    allowStoreSwitch: false
   },
   {
     code: 'parnasos',
     name: 'Maranth Parnassos',
-    adminPin: '1978',
+    adminPinSalt: 'parnasos',
+    // Hash of "parnasos:1978"
+    adminPinHash: 'ca4bd03986619a01a38d485124ce7b251f158431986027d2e915fb8ba459991f', // PIN: 1978
+    defaultFloat: 50,
+    defaultRegister: 'REG-01',
     address: 'Αρηστοτελους 103',
     afm: '887766554',
     doy: 'ΚΕΦΟΔΕ',
     phone: '22670-31000',
     currency: 'EUR',
-    fiscalMode: 'PROVIDER',
-    fhmEndpoint: 'http://127.0.0.1:8080/api/fhm'
+    isActive: true,
+    allowStoreSwitch: false
   }
 ];
 
@@ -65,30 +80,46 @@ export function sanitizeStoreCode(raw: string): string {
     .trim()
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9\u0370-\u03ff-]/g, '') // allow greek, latin, numbers, dashes
+    .replace(/[^a-z0-9\u0370-\u03ff-]/g, '')
     .replace(/-+/g, '-');
 }
 
 @Injectable({ providedIn: 'root' })
 export class TenantConfigService {
-  
   public registeredShops = signal<ShopInfo[]>(this.getInitialRegisteredShops());
-  public activeShop = signal<ShopInfo>(this.getInitialShop());
-  public isSuperAdmin = signal<boolean>(false);
+  public activeShopCode = signal<string>(this.resolveInitialShopCode());
+
+  public activeShop = computed(() => {
+    const code = this.activeShopCode();
+    const found = this.registeredShops().find(s => s.code === code);
+    return found || this.registeredShops()[0] || DEFAULT_SHOPS[0];
+  });
 
   constructor() {
-    this.loadFromStorage();
+    this.syncStorage();
   }
 
-  public isPinAvailable(pin: string, excludeStoreCode?: string): boolean {
-    const cleanPin = pin.trim();
-    if (RESERVED_SYSTEM_PINS.includes(cleanPin) || cleanPin.length < 4) {
-      return false;
+  private resolveInitialShopCode(): string {
+    // 1. Inspect URL Query Param: ?shop=ftest or ?store=ftest
+    if (typeof window !== 'undefined' && window.location) {
+      const params = new URLSearchParams(window.location.search);
+      const urlShop = params.get('shop') || params.get('store');
+      
+      const cleanCode = urlShop ? sanitizeStoreCode(urlShop) : '';
+      if (cleanCode && this.getInitialRegisteredShops().some(s => s.code === cleanCode)) {
+        localStorage.setItem('active_shop_code', cleanCode);
+        return cleanCode;
+      }
     }
-    const conflict = this.registeredShops().find(
-      s => s.adminPin === cleanPin && s.code !== excludeStoreCode
-    );
-    return !conflict;
+
+    // 2. Local storage fallback
+    const saved = localStorage.getItem('active_shop_code');
+    if (saved && this.getInitialRegisteredShops().some(s => s.code === saved)) {
+      return saved;
+    }
+
+    // 3. Fallback default
+    return DEFAULT_SHOPS[0].code;
   }
 
   private getInitialRegisteredShops(): ShopInfo[] {
@@ -97,100 +128,66 @@ export class TenantConfigService {
       try {
         const parsed: ShopInfo[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge defaults with saved: ALWAYS prioritize code-level adminPins for DEFAULT_SHOPS
           const mergedDefaults = DEFAULT_SHOPS.map(def => {
             const found = parsed.find(p => p.code === def.code);
-            return found ? { ...found, adminPin: def.adminPin } : def;
+            return found ? { ...found, adminPinHash: def.adminPinHash, adminPinSalt: def.adminPinSalt } : def;
           });
-
           const customShops = parsed.filter(p => !DEFAULT_SHOPS.some(def => def.code === p.code));
           return [...mergedDefaults, ...customShops];
         }
       } catch (e) {
-        console.error('[TenantConfig] Corrupt cached shops, falling back to defaults', e);
+        console.error('[TenantConfig] Corrupt cached shops, fallback to defaults', e);
       }
     }
     return [...DEFAULT_SHOPS];
   }
 
-  private getInitialShop(): ShopInfo {
-    const shops = this.getInitialRegisteredShops();
+  public switchShop(code: string): boolean {
+    const target = this.registeredShops().find(s => s.code === code);
+    if (!target) return false;
 
-    // 1. Priority: URL query parameter (?store=... or ?shop=...)
-    if (typeof window !== 'undefined' && window.location) {
-      const params = new URLSearchParams(window.location.search);
-      const urlStoreCode = params.get('store') || params.get('shop');
-
-      if (urlStoreCode) {
-        const cleanCode = sanitizeStoreCode(urlStoreCode);
-        const urlMatch = shops.find(s => s.code === cleanCode);
-        if (urlMatch) {
-          // Check if switching from a different store via URL
-          const currentSavedCode = localStorage.getItem('active_shop_code');
-          if (currentSavedCode && currentSavedCode !== urlMatch.code) {
-            // Clear prior store's cashier session so it doesn't cross over
-            sessionStorage.removeItem('active_cashier_data');
-            sessionStorage.setItem('pos_is_locked', 'true');
-          }
-
-          localStorage.setItem('active_shop', JSON.stringify(urlMatch));
-          localStorage.setItem('active_shop_code', urlMatch.code);
-          return urlMatch;
-        } else {
-          console.warn(`[TenantConfig] Store code "${urlStoreCode}" from URL not found in registered shops.`);
-        }
-      }
+    if (this.activeShop()?.allowStoreSwitch === false) {
+      console.warn('[Tenant] Store switching is restricted on this terminal.');
+      return false;
     }
 
-    // 2. Fallback: Saved shop from previous session
-    const saved = localStorage.getItem('active_shop');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const match = shops.find(s => s.code === parsed.code);
-        if (match) return match;
-      } catch (e) {
-        console.error('[TenantConfig] Corrupt cached active shop', e);
-      }
-    }
-
-    // 3. Ultimate Fallback: Default first shop
-    return shops[0] || DEFAULT_SHOPS[0];
+    this.activeShopCode.set(code);
+    localStorage.setItem('active_shop_code', code);
+    return true;
   }
 
-  private loadFromStorage(): void {
-    // 1. Restore Super-Admin session state
-    const savedSuperAdmin = sessionStorage.getItem('maranth_super_admin');
-    if (savedSuperAdmin === 'true') {
-      this.isSuperAdmin.set(true);
-    }
-
-    // 2. Synchronize registered shops
-    const syncedShops = this.getInitialRegisteredShops();
-    this.registeredShops.set(syncedShops);
-    localStorage.setItem('registered_shops', JSON.stringify(syncedShops));
-
-    // 3. Synchronize active shop
-    const syncedActive = this.getInitialShop();
-    this.activeShop.set(syncedActive);
-    localStorage.setItem('active_shop', JSON.stringify(syncedActive));
-    localStorage.setItem('active_shop_code', syncedActive.code);
+  private syncStorage(): void {
+    localStorage.setItem('registered_shops', JSON.stringify(this.registeredShops()));
+    localStorage.setItem('active_shop_code', this.activeShopCode());
   }
 
-  public registerShop(shop: ShopInfo, syncStorage = true): { success: boolean; message?: string } {
+  public async registerShop(shop: Partial<ShopInfo> & { code: string; name: string; adminPin?: string }, syncStorage = true): Promise<{ success: boolean; message?: string }> {
     const cleanCode = sanitizeStoreCode(shop.code);
-    const pin = shop.adminPin ? String(shop.adminPin).trim() : '';
+    const salt = shop.adminPinSalt || cleanCode;
 
-    if (pin && !this.isPinAvailable(pin, cleanCode)) {
-      const msg = `Το PIN "${pin}" χρησιμοποιείται ήδη από άλλο κατάστημα ή είναι δεσμευμένο!`;
-      console.error(`[TenantConfig] ${msg}`);
-      return { success: false, message: msg };
+    // Compute hash if plaintext adminPin was passed
+    let hash = shop.adminPinHash;
+    if (!hash && shop.adminPin) {
+      hash = await sha256Pin(shop.adminPin, salt);
     }
 
     const cleanShop: ShopInfo = {
-      ...shop,
       code: cleanCode,
-      currency: shop.currency || 'EUR'
+      name: shop.name,
+      adminPinSalt: salt,
+      adminPinHash: hash || '',
+      defaultFloat: shop.defaultFloat ?? 50,
+      defaultRegister: shop.defaultRegister ?? 'REG-01',
+      address: shop.address || '',
+      afm: shop.afm || '',
+      doy: shop.doy || '',
+      phone: shop.phone || '',
+      currency: shop.currency || 'EUR',
+      isActive: shop.isActive !== false,
+      allowStoreSwitch: shop.allowStoreSwitch ?? false,
+      fiscalMode: shop.fiscalMode,
+      fhmEndpoint: shop.fhmEndpoint,
+      providerApiKey: shop.providerApiKey
     };
 
     const current = this.registeredShops();
@@ -200,24 +197,16 @@ export class TenantConfigService {
     if (syncStorage) {
       localStorage.setItem('registered_shops', JSON.stringify(updated));
     }
-
     return { success: true };
   }
 
-  public registerNewStore(shop: ShopInfo): void {
-    this.registerShop(shop, true);
+  public async registerNewStore(shop: Partial<ShopInfo> & { code: string; name: string; adminPin?: string }): Promise<void> {
+    await this.registerShop(shop, true);
   }
 
-  public updateActiveShopDetails(details: Partial<ShopInfo>): { success: boolean; message?: string } {
+  public async updateActiveShopDetails(details: Partial<ShopInfo>): Promise<{ success: boolean; message?: string }> {
     const current = this.activeShop();
     const targetCode = details.code ? sanitizeStoreCode(details.code) : current.code;
-    const pin = details.adminPin ? String(details.adminPin).trim() : '';
-
-    if (pin && !this.isPinAvailable(pin, targetCode)) {
-      const msg = `Το PIN "${pin}" υπάρχει ήδη σε άλλο κατάστημα!`;
-      console.error(`[TenantConfig] ${msg}`);
-      return { success: false, message: msg };
-    }
 
     const updated: ShopInfo = {
       ...current,
@@ -226,64 +215,7 @@ export class TenantConfigService {
       updatedAt: new Date().toISOString()
     };
 
-    this.activeShop.set(updated);
-    localStorage.setItem('active_shop', JSON.stringify(updated));
-    localStorage.setItem('active_shop_code', updated.code);
-    return this.registerShop(updated, true);
-  }
-
-  public resolveAndSwitchByPin(pin: string): { success: boolean; store?: ShopInfo } {
-    const cleanPin = pin.trim();
-
-    // 1. Super-Admin bypass
-    if (cleanPin === '8820') {
-      this.unlockSuperAdmin(cleanPin);
-      return { success: true };
-    }
-
-    // 2. Identify all shops claiming this PIN
-    const matches = this.registeredShops().filter(s => s.adminPin === cleanPin);
-
-    if (matches.length > 1) {
-      console.error(`🚨 PIN COLLISION: PIN ${cleanPin} is assigned to multiple stores:`, matches.map(m => m.code));
-      alert('Σφάλμα διένεξης PIN: Περισσότερα από ένα καταστήματα έχουν το ίδιο PIN!');
-      return { success: false };
-    }
-
-    if (matches.length === 1) {
-      const targetStore = matches[0];
-      if (this.activeShop().code !== targetStore.code) {
-        this.switchShop(targetStore.code);
-      }
-      return { success: true, store: targetStore };
-    }
-
-    return { success: false };
-  }
-
-  public switchShop(storeCode: string): void {
-    const cleanCode = sanitizeStoreCode(storeCode);
-    const match = this.registeredShops().find(s => s.code === cleanCode || s.code === storeCode);
-    if (!match) {
-      console.error(`[TenantConfig] Cannot switch: Store code "${storeCode}" not found.`);
-      return;
-    }
-
-    this.activeShop.set(match);
-    localStorage.setItem('active_shop', JSON.stringify(match));
-    localStorage.setItem('active_shop_code', match.code);
-
-    // Reset session locks so previous cashier does not leak into the new store
-    sessionStorage.removeItem('active_cashier_data');
-    sessionStorage.setItem('pos_is_locked', 'true');
-
-    // Update the URL parameter to the new store and reload
-    const url = new URL(window.location.href);
-    url.searchParams.set('store', match.code);
-    // Remove alternate 'shop' param if present to avoid ambiguity
-    url.searchParams.delete('shop');
-    
-    window.location.href = url.toString();
+    return await this.registerShop(updated, true);
   }
 
   public deleteShop(storeCode: string): void {
@@ -297,22 +229,8 @@ export class TenantConfigService {
     this.registeredShops.set(updated);
     localStorage.setItem('registered_shops', JSON.stringify(updated));
 
-    if (this.activeShop().code === storeCode) {
+    if (this.activeShopCode() === storeCode) {
       this.switchShop(updated[0].code);
     }
-  }
-
-  public unlockSuperAdmin(pin: string): boolean {
-    if (pin.trim() === '8820') {
-      this.isSuperAdmin.set(true);
-      sessionStorage.setItem('maranth_super_admin', 'true');
-      return true;
-    }
-    return false;
-  }
-
-  public lockSuperAdmin(): void {
-    this.isSuperAdmin.set(false);
-    sessionStorage.removeItem('maranth_super_admin');
   }
 }

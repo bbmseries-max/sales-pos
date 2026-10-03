@@ -1,5 +1,6 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { marketDb } from '../db/market-db';
+import { sha256Pin } from '../utils/crypto.utils';
 import { TenantConfigService } from './tenant-config.service';
 import { Cashier, CashierShift, ShiftPaymentSummary } from '../models/market.models';
 
@@ -72,33 +73,17 @@ export class CashierShiftService {
   }
 
   /**
-   * Loads cashiers strictly scoped to activeShop
+   * Loads cashiers strictly scoped to activeShop (no orphan cross-store leaks)
    */
   public async loadAllCashiers(): Promise<void> {
     const activeShop = this.tenantConfig.activeShop();
     const activeShopCode = activeShop?.code || 'mar-market';
 
     const all = await marketDb.cashiers.toArray();
-    let scopedList = (all || []).filter(c => 
-      c.isActive !== false && (c.storeId === activeShopCode || !c.storeId)
+    // Strict isolation: ONLY include records where storeId explicitly matches
+    const scopedList = (all || []).filter(c => 
+      c.isActive !== false && c.storeId === activeShopCode
     );
-
-    // Auto-seed initial store admin only if no cashiers exist for THIS store
-    if (scopedList.length === 0) {
-      const initialAdminPin = activeShop.adminPin || '1234';
-
-      const initialAdmin: Cashier = {
-        id: `CASH-${activeShopCode.toUpperCase()}-01`,
-        name: `Υπεύθυνος (${activeShop.name})`,
-        pin: initialAdminPin,
-        role: 'ADMIN',
-        storeId: activeShopCode,
-        isActive: true
-      };
-
-      await marketDb.cashiers.put(initialAdmin);
-      scopedList = [initialAdmin];
-    }
 
     this.allCashiers.set(scopedList);
   }
@@ -115,7 +100,9 @@ export class CashierShiftService {
       .first();
 
     if (!shift) {
-      const resolvedFloat = typeof floatAmount === 'number' ? floatAmount : 0;
+      const resolvedFloat = typeof floatAmount === 'number' 
+        ? floatAmount 
+        : (this.tenantConfig.activeShop()?.defaultFloat ?? 0);
 
       shift = {
         id: `SHIFT-${Date.now().toString(36).toUpperCase()}`,
@@ -138,42 +125,46 @@ export class CashierShiftService {
   }
 
   /**
-   * Direct login validation scoped to active store
-   */
-  /**
-   * Direct login validation scoped to active store
+   * Direct login validation strictly scoped to active store with SHA-256 Admin verification
    */
   public async loginWithPin(pin: string, openingFloat?: number): Promise<{ success: boolean; message: string }> {
     const cleanPin = pin.trim();
     const activeShop = this.tenantConfig.activeShop();
     const activeShopCode = activeShop?.code || 'mar-market';
 
-    // 1. Super-Admin Check (8820)
-    if (cleanPin === '8820') {
-      const superAdminCashier: Cashier = {
-        id: 'SUPER-ADMIN',
-        name: 'Super Admin',
-        pin: '8820',
-        role: 'ADMIN',
-        storeId: activeShopCode,
-        isActive: true
+    // 1. REMOTE KILL-SWITCH ENFORCEMENT
+    if (!activeShop || activeShop.isActive === false) {
+      this.lockTerminal();
+      return { 
+        success: false, 
+        message: 'Το κατάστημα έχει απενεργοποιηθεί. Επικοινωνήστε με τη Maranth Market.' 
       };
-      await this.setAuthenticatedCashier(superAdminCashier, openingFloat);
-      return { success: true, message: 'Super-Admin Access Granted' };
+    }
+
+    if (!cleanPin) {
+      return { success: false, message: 'Παρακαλώ εισάγετε PIN.' };
     }
 
     await this.loadAllCashiers();
 
-    // 2. First look for an existing cashier in Dexie with this PIN
+    // 2. Match local cashier in Dexie strictly scoped to activeShopCode
     let cashier = this.allCashiers().find(c => 
       c.pin === cleanPin && 
-      c.isActive !== false &&
-      (c.storeId === activeShopCode || !c.storeId)
+      c.isActive !== false && 
+      c.storeId === activeShopCode
     );
 
-    // 3. Fallback: If cleanPin matches the store's configured adminPin (e.g. 2435)
-    // but isn't yet saved in Dexie, automatically generate/sync the Admin cashier!
-    if (!cashier && activeShop.adminPin && cleanPin === activeShop.adminPin.trim()) {
+    // 3. Check Admin PIN using SHA-256 Hash
+    const inputHash = await sha256Pin(cleanPin, activeShop.adminPinSalt || activeShopCode);
+    const isAdminPinMatch = Boolean(activeShop.adminPinHash && inputHash === activeShop.adminPinHash);
+
+    // LOG UNCONDITIONALLY:
+    const salt = activeShop?.adminPinSalt || activeShopCode;
+    //const inputHash = await sha256Pin(cleanPin, salt);
+    const targetHash = activeShop?.adminPinHash; // <--- MUST DECLARE VARIABLE HERE
+ 
+
+    if (isAdminPinMatch) {
       cashier = {
         id: `CASH-${activeShopCode.toUpperCase()}-ADMIN`,
         name: `Υπεύθυνος (${activeShop.name})`,
@@ -288,6 +279,7 @@ export class CashierShiftService {
 
     await marketDb.shifts.put(closedShift);
     this.currentShift.set(null);
+    this.lockTerminal();
 
     return {
       shiftId: closedShift.id,
@@ -343,12 +335,8 @@ export class CashierShiftService {
     const cleanPin = data.pin.trim();
     const activeShopCode = this.tenantConfig.activeShop()?.code || 'mar-market';
 
-    if (cleanPin === '8820') {
-      return { success: false, message: 'Το PIN 8820 είναι δεσμευμένο για τον Super Admin.' };
-    }
-
     await this.loadAllCashiers();
-    const duplicate = this.allCashiers().find(c => c.pin === cleanPin);
+    const duplicate = this.allCashiers().find(c => c.pin === cleanPin && c.storeId === activeShopCode);
     if (duplicate) {
       return { success: false, message: `Το PIN "${cleanPin}" χρησιμοποιείται ήδη από "${duplicate.name}".` };
     }
@@ -356,7 +344,7 @@ export class CashierShiftService {
     const newCashier: Cashier = {
       id: `cashier_${Date.now()}`,
       ...data,
-      storeId: data.storeId || activeShopCode,
+      storeId: activeShopCode,
       pin: cleanPin
     };
 

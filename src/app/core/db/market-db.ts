@@ -14,17 +14,31 @@ import {
 } from '../models/market.models';
 
 /**
- * Reads the active shop code directly from localStorage to mount the correct isolated database sandbox.
+ * Reads the active shop code first from URL query params (?shop=...),
+ * falling back to localStorage, and defaulting to 'mar-market'.
  */
 export function getActiveStoreCode(): string {
   try {
-    const raw = localStorage.getItem('active_shop');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.code) return parsed.code;
+    if (typeof window !== 'undefined' && window.location) {
+      const params = new URLSearchParams(window.location.search);
+      const urlShop = params.get('shop');
+      if (urlShop) {
+        return urlShop;
+      }
     }
-  } catch {}
-  return localStorage.getItem('active_shop_code') || 'mar-market';
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('active_shop');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.code) return parsed.code;
+      }
+      const stored = localStorage.getItem('active_shop_code');
+      if (stored) return stored;
+    }
+  } catch (e) {
+    console.warn('[DB] Could not resolve store code:', e);
+  }
+  return 'mar-market';
 }
 
 export class MarketDatabase extends Dexie {
@@ -39,10 +53,9 @@ export class MarketDatabase extends Dexie {
   public cashiers!: Table<Cashier, string>;
   public shifts!: Table<CashierShift, string>;
   public stockLogs!: Table<StockAuditLog, string>;
+  public goodsReceipts!: Table<any, string>;
 
   constructor(storeCode: string = getActiveStoreCode()) {
-    // Each store gets its own dedicated, isolated IndexedDB container:
-    // e.g., 'MaranthPOS_mar-market', 'MaranthPOS_ftest'
     super(`MaranthPOS_${storeCode}`);
 
     this.version(1).stores({
@@ -65,8 +78,14 @@ export class MarketDatabase extends Dexie {
 // Active singleton instance for current store
 export const marketDb = new MarketDatabase();
 
-// Expose globally to window for easy debugging in DevTools Console (F12)
 if (typeof window !== 'undefined') {
   (window as any).marketDb = marketDb;
 }
 
+marketDb.open()
+  .then(db => {
+    console.log('[Dexie] Database opened successfully:', db.name, 'version:', db.verno);
+  })
+  .catch(err => {
+    console.error('[Dexie] FATAL: Failed to open IndexedDB:', err);
+  });

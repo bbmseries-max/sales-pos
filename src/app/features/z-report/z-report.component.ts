@@ -46,17 +46,6 @@ export class ZReportComponent implements OnInit {
     { denomination: 0.10, count: 0 }
   ]);
 
-  // Edit Store Details Modal State
-  public showStoreEditModal = signal<boolean>(false);
-  public editShopForm = signal({
-    name: '',
-    afm: '',
-    doy: '',
-    address: '',
-    phone: '',
-    code: ''
-  });
-
   async ngOnInit(): Promise<void> {
     const activeShift = this.shiftService.currentShift();
     if (activeShift) {
@@ -67,30 +56,10 @@ export class ZReportComponent implements OnInit {
     await this.calculateAudit();
   }
 
-  public openStoreEditModal(): void {
-    const shop = this.tenantConfig.activeShop();
-    this.editShopForm.set({
-      name: shop.name || '',
-      afm: shop.afm || '',
-      doy: shop.doy || '',
-      address: shop.address || '',
-      phone: shop.phone || '',
-      code: shop.code || ''
-    });
-    this.showStoreEditModal.set(true);
-  }
-
-  public saveStoreDetails(): void {
-    const form = this.editShopForm();
-    this.tenantConfig.updateActiveShopDetails(form);
-    this.showStoreEditModal.set(false);
-    this.calculateAudit();
-  }
-
   public async calculateAudit(): Promise<void> {
     this.isLoading.set(true);
     const countedTotal = this.calculateDenominationsTotal();
-    
+
     const report = await this.zService.generateDailyAudit(
       new Date(),
       this.openingFloat(),
@@ -119,11 +88,11 @@ export class ZReportComponent implements OnInit {
   public getCompanyProfile(): MarketCompanyProfile {
     const shop = this.tenantConfig.activeShop();
     return {
-      storeName: shop.name || 'MARANTH RETAIL',
-      address: shop.address || 'Αθήνα',
-      afm: shop.afm || '000000000',
-      doy: shop.doy || 'ΔΟΥ',
-      phone: shop.phone || ''
+      storeName: shop?.name || 'MARANTH RETAIL',
+      address: shop?.address || 'Αθήνα',
+      afm: shop?.afm || '000000000',
+      doy: shop?.doy || 'ΔΟΥ',
+      phone: shop?.phone || ''
     };
   }
 
@@ -152,110 +121,187 @@ export class ZReportComponent implements OnInit {
   }
 
   public async closeDayAndLock(): Promise<void> {
-    if (!confirm('ΠΡΟΣΟΧΗ: Θέλετε να εκδώσετε οριστικά το Δελτίο "Ζ" και να μηδενίσετε το ημερήσιο ταμείο;')) {
+    const confirmed = window.confirm(
+      'ΠΡΟΣΟΧΗ: Θέλετε να εκδώσετε οριστικά το Δελτίο "Ζ" και να μηδενίσετε το ημερήσιο ταμείο;'
+    );
+    if (!confirmed) {
       return;
     }
 
-    this.isClosed.set(true);
-    await this.printZReport();
+    const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
 
-    // Close all open shifts for this tenant in Dexie
-    const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
-    const openShifts = await marketDb.shifts
-      .where('storeId').equals(activeStoreCode)
-      .and(s => s.status === 'OPEN')
-      .toArray();
+    try {
+      this.isClosed.set(true);
 
-    const now = new Date().toISOString();
-    for (const s of openShifts) {
-      await marketDb.shifts.update(s.id, {
-        status: 'CLOSED',
-        endTime: now,
-        notes: `Κλείσιμο Ημέρας (Ζ #${this.auditData()?.zNumber || 1})`
-      });
+      // 1. Print report (isolated error handling)
+    //  try {
+      //  await this.printZReport();
+     // } catch (printErr) {
+      //  console.error('Z-Report printing error:', printErr);
+    //  }
+
+      // 2. Close all open shifts in Dexie for this store
+      const openShifts = await marketDb.shifts
+        .where('storeId')
+        .equals(activeStoreCode)
+        .and(s => s.status === 'OPEN')
+        .toArray();
+
+      const now = new Date().toISOString();
+      const zNum = this.auditData()?.zNumber || 1;
+
+      for (const s of openShifts) {
+        if (s.id !== undefined) {
+          await marketDb.shifts.update(s.id, {
+            status: 'CLOSED',
+            endTime: now,
+            notes: `Κλείσιμο Ημέρας (Ζ #${zNum})`
+          });
+        }
+      }
+
+      // 3. Reset shift state and lock
+      this.shiftService.currentShift.set(null);
+      this.shiftService.lockTerminal();
+      this.zService.currentZNumber.update(n => n + 1);
+
+    } catch (err) {
+      console.error('Failed to finalize Z-report shift closure:', err);
+      alert('Σφάλμα κατά το κλείσιμο βάρδιας. Ελέγξτε την κονσόλα.');
+      return;
     }
 
-    this.shiftService.currentShift.set(null);
-    this.shiftService.lockTerminal();
-    this.zService.currentZNumber.update(n => n + 1);
+    console.log('[Z-Report] Navigating back to POS with shop:', activeStoreCode);
 
-    alert('Το Δελτίο "Ζ" εκδόθηκε επιτυχώς. Η εφαρμογή κλειδώνει για τη νέα ημέρα.');
-    this.router.navigate(['/pos']);
+    // 4. Clean navigation without crashing with the print preview window
+    await this.router.navigate(['/pos'], {
+      queryParams: { shop: activeStoreCode },
+      replaceUrl: true
+    });
   }
 
   public backToPos(): void {
-    this.router.navigate(['/pos']);
+    const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+    this.router.navigate(['/pos'], {
+      queryParams: { shop: activeStoreCode }
+    });
   }
 
   private printPreviewInBrowser(z: ZReportAudit, company: MarketCompanyProfile): void {
-    const printWin = window.open('', '_blank', 'width=420,height=700');
-    if (!printWin) return;
-
-    const html = `
-      <head>
-        <title>ΗΜΕΡΗΣΙΟ ΔΕΛΤΙΟ "Ζ" #${z.zNumber}</title>
-        <style>
-          @page { margin: 0; size: 80mm auto; }
-          body { font-family: 'Courier New', monospace; width: 76mm; margin: 0 auto; padding: 3mm; font-size: 11px; }
-          .center { text-align: center; }
-          .right { text-align: right; }
-          .bold { font-weight: bold; }
-          .divider { border-top: 1px dashed #000; margin: 4px 0; }
-          .double-divider { border-top: 2px solid #000; margin: 5px 0; }
-          .flex { display: flex; justify-content: space-between; }
-        </style>
-      </head>
-      <body>
-        <div class="center bold" style="font-size: 14px;">${company.storeName}</div>
-        <div class="center">ΑΦΜ: ${company.afm} • ΔΟΥ: ${company.doy}</div>
-        <div class="double-divider"></div>
-        <div class="center bold" style="font-size: 15px;">ΔΕΛΤΙΟ "Ζ" ΑΡ. ${z.zNumber}</div>
-        <div class="double-divider"></div>
-        <div class="flex"><span>ΗΜ/ΝΙΑ: ${new Date(z.closedAt).toLocaleDateString('el-GR')}</span><span>ΩΡΑ: ${new Date(z.closedAt).toLocaleTimeString('el-GR')}</span></div>
-        <div class="flex"><span>ΤΑΜΕΙΟ: ${z.registerId}</span><span>ΧΕΙΡΙΣΤΗΣ: ${z.cashierName}</span></div>
-        <div class="flex"><span>ΑΠΟΔΕΙΞΕΙΣ: ${z.transactionCount}</span></div>
-        <div class="divider"></div>
-        <div class="flex bold"><span>ΑΚΑΘΑΡΙΣΤΟΣ ΤΖΙΡΟΣ:</span><span>€${z.grossTurnover.toFixed(2)}</span></div>
-        <div class="flex"><span>ΚΑΘΑΡΗ ΑΞΙΑ:</span><span>€${z.netTurnover.toFixed(2)}</span></div>
-        <div class="flex"><span>ΣΥΝΟΛΟ Φ.Π.Α.:</span><span>€${z.totalTax.toFixed(2)}</span></div>
-        <div class="divider"></div>
-        <div class="bold">ΑΝΑΛΥΣΗ ΠΛΗΡΩΜΩΝ:</div>
-        <div class="flex"><span>  ΜΕΤΡΗΤΑ:</span><span>€${z.salesCash.toFixed(2)}</span></div>
-        <div class="flex"><span>  ΚΑΡΤΕΣ / POS:</span><span>€${z.salesCard.toFixed(2)}</span></div>
-        <div class="double-divider"></div>
-        <div class="bold center">ΑΝΑΛΥΣΗ Φ.Π.Α.</div>
-        <table style="width: 100%; font-size: 10px;">
-          <tr><th align="left">ΣΥΝΤ</th><th align="right">ΚΑΘΑΡΟ</th><th align="right">ΦΠΑ</th><th align="right">ΣΥΝΟΛΟ</th></tr>
-          ${Object.entries(z.vatAnalysis).filter(([_, d]) => d.gross > 0).map(([_, d]) => `
-            <tr>
-              <td>${d.rate}%</td>
-              <td align="right">€${d.net.toFixed(2)}</td>
-              <td align="right">€${d.vat.toFixed(2)}</td>
-              <td align="right">€${d.gross.toFixed(2)}</td>
-            </tr>
-          `).join('')}
-        </table>
-        <div class="double-divider"></div>
-        <div class="bold">ΤΑΜΕΙΑΚΟ ΙΣΟΖΥΓΙΟ:</div>
-        <div class="flex"><span>Αρχικό Ταμείο (Float):</span><span>€${z.openingFloat.toFixed(2)}</span></div>
-        <div class="flex"><span>Εισπράξεις Μετρητών:</span><span>€${z.salesCash.toFixed(2)}</span></div>
-        <div class="flex"><span>Αναμενόμενο Ταμείο:</span><span>€${z.expectedDrawerCash.toFixed(2)}</span></div>
-        <div class="flex bold"><span>Καταμετρημένο:</span><span>€${z.actualCountedCash.toFixed(2)}</span></div>
-        <div class="flex bold" style="font-size: 12px;"><span>ΔΙΑΦΟΡΑ (${z.variance >= 0 ? 'Πλεόνασμα' : 'Έλλειμμα'}):</span><span>€${Math.abs(z.variance).toFixed(2)}</span></div>
-        <div class="double-divider"></div>
-        <div class="center bold">ΓΕΝΙΚΟ ΠΡΟΟΔΕΥΤΙΚΟ: €${z.progressiveGrandTotal.toFixed(2)}</div>
-        <div class="center" style="margin-top: 6px;">ΤΕΛΟΣ ΗΜΕΡΗΣΙΟΥ ΔΕΛΤΙΟΥ "Ζ"</div>
-      </body>
-    `;
-
-    // Modern, non-deprecated DOM injection
-    printWin.document.documentElement.innerHTML = html;
-
-    // Trigger print once rendered
-    setTimeout(() => {
-      printWin.focus();
-      printWin.print();
-      printWin.close();
-    }, 150);
+  const printWin = window.open('', '_blank', 'width=460,height=780,menubar=no,toolbar=no,location=no,status=no');
+  if (!printWin) {
+    console.warn('Popup blocked. Please allow popups for printing.');
+    return;
   }
+
+  const vatRows = Object.entries(z.vatAnalysis || {})
+    .filter(([_, d]) => d.gross > 0)
+    .map(([_, d]) => `
+      <tr>
+        <td>${d.rate}%</td>
+        <td style="text-align: right;">€${d.net.toFixed(2)}</td>
+        <td style="text-align: right;">€${d.vat.toFixed(2)}</td>
+        <td style="text-align: right;">€${d.gross.toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <title>Δελτίο Ζ #${z.zNumber}</title>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      body { margin: 0; padding: 0; }
+    }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      width: 76mm;
+      margin: 0 auto;
+      padding: 10px 5px;
+      font-size: 11px;
+      color: #000;
+      background: #fff;
+    }
+    .action-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ccc;
+    }
+    .action-bar button {
+      flex: 1;
+      padding: 8px 12px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 1px solid #333;
+    }
+    .btn-print { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+    .btn-close { background: #e5e7eb; color: #111; }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .divider { border-top: 1px dashed #000; margin: 5px 0; }
+    .double-divider { border-top: 2px solid #000; margin: 6px 0; }
+    .flex { display: flex; justify-content: space-between; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div class="no-print action-bar">
+    <button class="btn-print" onclick="window.print()">Εκτύπωση</button>
+    <button class="btn-close" onclick="window.close()">Κλείσιμο</button>
+  </div>
+
+  <div class="center bold" style="font-size: 14px;">${company.storeName}</div>
+  <div class="center">ΑΦΜ: ${company.afm} • ΔΟΥ: ${company.doy}</div>
+  <div class="double-divider"></div>
+  <div class="center bold" style="font-size: 15px;">ΔΕΛΤΙΟ "Ζ" ΑΡ. ${z.zNumber}</div>
+  <div class="double-divider"></div>
+  <div class="flex"><span>ΗΜ/ΝΙΑ: ${new Date(z.closedAt).toLocaleDateString('el-GR')}</span><span>ΩΡΑ: ${new Date(z.closedAt).toLocaleTimeString('el-GR')}</span></div>
+  <div class="flex"><span>ΤΑΜΕΙΟ: ${z.registerId}</span><span>ΧΕΙΡΙΣΤΗΣ: ${z.cashierName}</span></div>
+  <div class="flex"><span>ΑΠΟΔΕΙΞΕΙΣ: ${z.transactionCount}</span></div>
+  <div class="divider"></div>
+  <div class="flex bold"><span>ΑΚΑΘΑΡΙΣΤΟΣ ΤΖΙΡΟΣ:</span><span>€${z.grossTurnover.toFixed(2)}</span></div>
+  <div class="flex"><span>ΚΑΘΑΡΗ ΑΞΙΑ:</span><span>€${z.netTurnover.toFixed(2)}</span></div>
+  <div class="flex"><span>ΣΥΝΟΛΟ Φ.Π.Α.:</span><span>€${z.totalTax.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="bold">ΑΝΑΛΥΣΗ ΠΛΗΡΩΜΩΝ:</div>
+  <div class="flex"><span>  ΜΕΤΡΗΤΑ:</span><span>€${z.salesCash.toFixed(2)}</span></div>
+  <div class="flex"><span>  ΚΑΡΤΕΣ / POS:</span><span>€${z.salesCard.toFixed(2)}</span></div>
+  <div class="double-divider"></div>
+  <div class="bold center">ΑΝΑΛΥΣΗ Φ.Π.Α.</div>
+  <table>
+    <thead>
+      <tr><th style="text-align: left;">ΣΥΝΤ</th><th style="text-align: right;">ΚΑΘΑΡΟ</th><th style="text-align: right;">ΦΠΑ</th><th style="text-align: right;">ΣΥΝΟΛΟ</th></tr>
+    </thead>
+    <tbody>
+      ${vatRows}
+    </tbody>
+  </table>
+  <div class="double-divider"></div>
+  <div class="bold">ΤΑΜΕΙΑΚΟ ΙΣΟΖΥΓΙΟ:</div>
+  <div class="flex"><span>Αρχικό Ταμείο:</span><span>€${z.openingFloat.toFixed(2)}</span></div>
+  <div class="flex"><span>Εισπράξεις Μετρητών:</span><span>€${z.salesCash.toFixed(2)}</span></div>
+  <div class="flex"><span>Αναμενόμενο:</span><span>€${z.expectedDrawerCash.toFixed(2)}</span></div>
+  <div class="flex bold"><span>Καταμετρημένο:</span><span>€${z.actualCountedCash.toFixed(2)}</span></div>
+  <div class="flex bold"><span>ΔΙΑΦΟΡΑ (${z.variance >= 0 ? 'Πλεόνασμα' : 'Έλλειμμα'}):</span><span>€${Math.abs(z.variance).toFixed(2)}</span></div>
+  <div class="double-divider"></div>
+  <div class="center bold">ΓΕΝΙΚΟ ΠΡΟΟΔΕΥΤΙΚΟ: €${z.progressiveGrandTotal.toFixed(2)}</div>
+  <div class="center" style="margin-top: 8px;">ΤΕΛΟΣ ΗΜΕΡΗΣΙΟΥ ΔΕΛΤΙΟΥ "Ζ"</div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+ printWin.document.documentElement.innerHTML = html;
+}
 }

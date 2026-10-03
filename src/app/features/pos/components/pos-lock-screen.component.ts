@@ -1,4 +1,4 @@
-import { Component, input, output, signal, inject } from '@angular/core';
+import { Component, input, output, signal, inject, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TenantConfigService } from '../../../core/services/tenant-config.service';
 
@@ -12,7 +12,7 @@ import { TenantConfigService } from '../../../core/services/tenant-config.servic
         
         <div class="w-full max-w-sm space-y-6 text-center animate-in fade-in zoom-in-95">
           
-          <!-- Brand Logo Header with Fallback -->
+          <!-- Brand Logo Header -->
           <div class="flex flex-col items-center justify-center space-y-1">
             @if (!hasLogoError()) {
               <img
@@ -64,7 +64,7 @@ import { TenantConfigService } from '../../../core/services/tenant-config.servic
               </button>
             }
             <button 
-              type="button"
+              type="button" 
               (click)="clearPin()"
               class="h-14 rounded-2xl bg-slate-900 border border-slate-800 hover:border-red-500/60 hover:text-red-400 active:scale-95 text-xs font-mono font-bold text-slate-400 transition cursor-pointer"
             >
@@ -103,11 +103,31 @@ export class PosLockScreenComponent {
   pin = signal<string>('');
   hasLogoError = signal<boolean>(false);
 
+  @HostListener('window:keydown', ['$event'])
+  handleKeyboard(event: KeyboardEvent): void {
+    if (!this.isLocked()) return;
+
+    if (event.key >= '0' && event.key <= '9') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.enterDigit(event.key);
+    } else if (event.key === 'Backspace') {
+      event.preventDefault();
+      this.backspace();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      this.clearPin();
+    }
+  }
+
   enterDigit(d: string): void {
     if (this.pin().length < 4) {
       const next = this.pin() + d;
       this.pin.set(next);
+      console.log('[LOCK-SCREEN] Digit entered:', d, 'Current PIN buffer:', next);
+      
       if (next.length === 4) {
+        console.log('[LOCK-SCREEN] 4 Digits reached, emitting pinSubmit:', next);
         this.pinSubmit.emit(next);
         this.clearPin();
       }

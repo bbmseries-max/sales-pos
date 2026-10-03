@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { Router, RouterLinkActive, RouterLink } from '@angular/router';
 import { marketDb } from '../../core/db/market-db';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
@@ -36,6 +37,7 @@ export class InventoryComponent implements OnInit {
   public tenantConfig = inject(TenantConfigService);
   public syncService = inject(SyncService);
   private router = inject(Router);
+  private shiftService = inject(CashierShiftService);
 
   // Single Source of Truth for Departments
   public masterDepartments: MasterCategory[] = SUPERMARKET_DEPARTMENTS;
@@ -387,10 +389,14 @@ export class InventoryComponent implements OnInit {
   }
 
   public navigateToImport(): void {
-    if (!this.tenantConfig.isSuperAdmin()) {
-      console.warn('[Security] Unauthorized attempt to access bulk import.');
-      return;
-    }
+    const currentCashier = this.shiftService.currentCashier();
+const isAdmin = currentCashier?.role === 'ADMIN';
+
+if (!isAdmin) {
+  // Show warning / block action
+  alert('Απαιτούνται δικαιώματα διαχειριστή καταστήματος.');
+  return;
+}
     this.router.navigate(['/import']);
   }
 
