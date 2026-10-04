@@ -1,4 +1,4 @@
-import { Component, input, output, signal, computed } from '@angular/core';
+import { Component, input, output, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CashierShift } from '../../../core/models/market.models';
@@ -47,8 +47,9 @@ import { CashierShift } from '../../../core/models/market.models';
             <label class="text-[11px] font-bold text-slate-300 uppercase block font-mono">Καταμέτρηση Μετρητών Συρταριού (€)</label>
             <input 
               type="number" 
-              step="0.01"
-              [(ngModel)]="countedCash"
+              step="0.01" 
+              [ngModel]="countedCash()"
+              (ngModelChange)="onCountedCashChange($event)"
               class="w-full h-12 bg-slate-950 border-2 border-slate-700 focus:border-amber-500 rounded-xl px-3 font-mono font-black text-lg text-emerald-400 focus:outline-none"
             />
           </div>
@@ -66,15 +67,15 @@ import { CashierShift } from '../../../core/models/market.models';
 
           <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
             <button 
-              type="button"
-              (click)="printX.emit()"
+              type="button" 
+              (click)="printX.emit()" 
               class="h-12 bg-slate-800 hover:bg-slate-750 text-amber-400 font-black text-xs rounded-xl transition cursor-pointer border border-amber-500/40"
             >
               🖨️ ΕΚΤΥΠΩΣΗ "Χ"
             </button>
             <button 
-              type="button"
-              (click)="confirmClose.emit(countedCash())"
+              type="button" 
+              (click)="handleConfirm()" 
               class="h-12 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition active:scale-95 cursor-pointer"
             >
               ✔ ΚΛΕΙΣΙΜΟ ΒΑΡΔΙΑΣ
@@ -87,31 +88,35 @@ import { CashierShift } from '../../../core/models/market.models';
   `
 })
 export class PosShiftHandoverModalComponent {
-  
-  // Signal Inputs
   public isOpen = input<boolean>(false);
   public shift = input<CashierShift | null>(null);
   public expectedCash = input<number>(0);
 
-  // Signal Outputs
   public printX = output<void>();
   public confirmClose = output<number>();
   public close = output<void>();
 
-  // State Signals
   public countedCash = signal<number>(0);
 
-  // Computed Discrepancy (Counted - Expected)
-  public discrepancy = computed(() => {
+  constructor() {
+    // Whenever modal opens, auto-fill countedCash with expectedCash so it's ready to edit or confirm
+    effect(() => {
+      if (this.isOpen()) {
+        this.countedCash.set(this.expectedCash());
+      }
+    });
+  }
+
+  public onCountedCashChange(value: any): void {
+    const num = parseFloat(value);
+    this.countedCash.set(isNaN(num) ? 0 : num);
+  }
+
+  public diff(): number {
     return Number((this.countedCash() - this.expectedCash()).toFixed(2));
-  });
+  }
 
   public handleConfirm(): void {
     this.confirmClose.emit(this.countedCash());
-  }
-
-
-  diff(): number {
-    return Number(this.countedCash()) - Number(this.expectedCash());
   }
 }

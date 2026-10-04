@@ -14,6 +14,7 @@ export interface ShopInfo {
   afm?: string;
   doy?: string;
   phone?: string;
+  registerId?: string;
   currency?: string;
   createdAt?: string;
   updatedAt?: string;

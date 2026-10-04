@@ -1,6 +1,6 @@
-import { Injectable, signal, inject } from '@angular/core';
+import { Injectable, signal, inject, computed } from '@angular/core';
 import { marketDb } from '../db/market-db';
-import { Cashier } from '../models';
+import { Cashier, CashierShift } from '../models';
 import { sha256Pin } from '../utils/crypto.utils';
 import { TenantConfigService } from './tenant-config.service';
 
@@ -33,7 +33,78 @@ export class ShiftService {
   public openingCash = signal<number>(50.0);
   public allCashiers = signal<Cashier[]>([]);
   public currentCashier = signal<Cashier | null>(null);
+  public currentShift = signal<CashierShift | null>(null);
   public isLocked = signal<boolean>(this.checkInitialLock());
+
+  // Role verification signals
+  public isAdmin = computed(() => {
+    const cashier = this.currentCashier();
+    return cashier?.role === 'ADMIN';
+  });
+
+  public isSimpleCashier = computed(() => {
+    const cashier = this.currentCashier();
+    return cashier !== null && cashier.role !== 'ADMIN';
+  });
+
+  public async getActiveStoreShifts(): Promise<CashierShift[]> {
+  const storeCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+  return await marketDb.shifts
+    .where('storeId')
+    .equals(storeCode)
+    .and(s => s.status === 'OPEN')
+    .toArray();
+}
+
+// 2. Format working hours from ISO string
+public getShiftDurationFormatted(startTimeIso: string, endTimeIso?: string): string {
+  const start = new Date(startTimeIso).getTime();
+  const end = endTimeIso ? new Date(endTimeIso).getTime() : Date.now();
+  const diffMs = Math.max(0, end - start);
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return `${hours}ω ${minutes}λ`;
+}
+
+// 3. Manager Force-Close Method using your CashierShift properties
+public async forceCloseShift(shiftId: string, managerReason: string = 'Βίαιο κλείσιμο από Διαχειριστή'): Promise<void> {
+  if (!this.isAdmin()) {
+    throw new Error('Μόνο ο διαχειριστής ή υπεύθυνος έχει δικαίωμα εξαναγκαστικού κλεισίματος.');
+  }
+
+  const shift = await marketDb.shifts.get(shiftId);
+  if (!shift) {
+    throw new Error('Η βάρδια δεν βρέθηκε.');
+  }
+
+  const now = new Date().toISOString();
+
+  // Formula: expected = openingFloat + cash sales + cashIn - cashOut
+  const float = shift.openingFloat || 0;
+  const cashSales = shift.sales?.cash || 0;
+  const cashIn = shift.cashInTotal || 0;
+  const cashOut = shift.cashOutTotal || 0;
+  const expected = float + cashSales + cashIn - cashOut;
+
+  await marketDb.shifts.update(shiftId, {
+    status: 'CLOSED',
+    endTime: now,
+    expectedCashInDrawer: expected,
+    countedCash: expected,
+    countedCashInDrawer: expected,
+    discrepancy: 0,
+    notes: shift.notes ? `${shift.notes} | ${managerReason}` : managerReason
+  });
+
+  // If the shift being closed is the one running on this station, reset session
+  if (this.currentShift()?.id === shiftId) {
+    this.currentShift.set(null);
+    this.lockTerminal();
+  }
+}
 
   constructor() {
     this.loadAllCashiers();

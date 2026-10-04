@@ -10,12 +10,14 @@ export interface CashMovement {
 export interface ShiftPaymentSummary {
   cash: number;
   card: number;
-  split: number;
+  debit?: number;
+  split?: number;
+  total?: number;
   totalSales: number;
   transactionCount: number;
 }
 export type ShiftReportType = 'X-REPORT' | 'Z-REPORT';
-export type CashierRole = 'CASHIER' | 'MANAGER' | 'ADMIN';
+export type CashierRole = 'ADMIN' | 'CASHIER' | 'MANAGER';
 
 export interface Cashier {
   id: string;
@@ -30,20 +32,26 @@ export interface Cashier {
 
 export interface CashierShift {
   id: string;
+  shiftNumber?: number;
   cashierId: string;
   cashierName: string;
   startTime: string;
   endTime?: string;
+  durationMinutes?: number;
+  registerId?: string;
   status: 'OPEN' | 'CLOSED';
   openingFloat: number;
   cashInTotal: number;
   cashOutTotal: number;
   cashMovements?: CashMovement[];
   countedCash?: number;
+  sales: ShiftPaymentSummary;
+  expectedCash?: number;
+  actualCountedCash?: number;
+  discrepancy?: number;
+  closedBy?: 'CASHIER' | 'MANAGER_FORCE' | 'SYSTEM_Z';
+  notes?: string;
   countedCashInDrawer?: number;
   expectedCashInDrawer?: number;
-  discrepancy?: number;
-  notes?: string;
-  sales: ShiftPaymentSummary;
   storeId?: string;
 }

@@ -167,27 +167,128 @@ export class BridgeService implements OnDestroy {
   /**
    * Print X or Z Shift Report via maranth-bridge.exe
    */
-  public async printShiftReport(shift: any, reportType: 'X' | 'Z'): Promise<boolean> {
-    if (!this.isBridgeAvailable()) {
-      console.warn(`[Bridge] Offline. ${reportType}-Report printing bypassed.`);
-      return false;
+  /**
+   * Print X or Z Shift Report via maranth-bridge.exe with automatic browser fallback
+   */
+  public async printShiftReport(shift: any, reportType: 'X' | 'Z', companyProfile?: any): Promise<boolean> {
+    // 1. Try hardware bridge if available
+    if (this.isBridgeAvailable()) {
+      try {
+        const res = await fetch(`${this.baseUrl}/api/printer/raw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'SHIFT_REPORT',
+            reportType,
+            shift,
+            printedAt: new Date().toISOString()
+          })
+        });
+        if (res.ok) return true;
+      } catch (err) {
+        console.error(`[Bridge] ${reportType}-Report printing failed on bridge, falling back:`, err);
+      }
     }
 
-    try {
-      const res = await fetch(`${this.baseUrl}/api/printer/raw`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'SHIFT_REPORT',
-          reportType,
-          shift,
-          printedAt: new Date().toISOString()
-        })
-      });
-      return res.ok;
-    } catch (err) {
-      console.error(`[Bridge] ${reportType}-Report printing failed:`, err);
-      return false;
+    // 2. Fallback to Browser Print Preview if bridge is offline or failed
+    console.warn(`[Bridge] Hardware bridge offline. Opening browser preview for ${reportType}-Report.`);
+    this.printReportInBrowser(shift, reportType, companyProfile);
+    return true;
+  }
+
+  private printReportInBrowser(shift: any, reportType: 'X' | 'Z', company?: any): void {
+    const printWin = window.open('', '_blank', 'width=460,height=780,menubar=no,toolbar=no,location=no,status=no');
+    if (!printWin) {
+      console.warn('Popup blocked. Please allow popups for printing.');
+      return;
     }
+
+    const title = reportType === 'X' ? 'ΕΝΔΙΑΜΕΣΟ ΔΕΛΤΙΟ "Χ"' : 'ΗΜΕΡΗΣΙΟ ΔΕΛΤΙΟ "Ζ"';
+    const storeName = company?.storeName || 'Maranth Market';
+    const afm = company?.afm || '-';
+    const doy = company?.doy || '-';
+
+    const salesCash = shift.sales?.cash ?? 0;
+    const salesCard = shift.sales?.card ?? 0;
+    const totalSales = shift.sales?.totalSales ?? 0;
+    const count = shift.sales?.transactionCount ?? 0;
+    const openingFloat = shift.openingFloat ?? 0;
+
+    const html = `<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      body { margin: 0; padding: 0; }
+    }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      width: 76mm;
+      margin: 0 auto;
+      padding: 10px 5px;
+      font-size: 11px;
+      color: #000;
+      background: #fff;
+    }
+    .action-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ccc;
+    }
+    .action-bar button {
+      flex: 1;
+      padding: 8px 12px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 1px solid #333;
+    }
+    .btn-print { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+    .btn-close { background: #e5e7eb; color: #111; }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .divider { border-top: 1px dashed #000; margin: 5px 0; }
+    .double-divider { border-top: 2px solid #000; margin: 6px 0; }
+    .flex { display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="no-print action-bar">
+    <button class="btn-print" onclick="window.print()">Εκτύπωση</button>
+    <button class="btn-close" onclick="window.close()">Κλείσιμο</button>
+  </div>
+
+  <div class="center bold" style="font-size: 14px;">${storeName}</div>
+  <div class="center">ΑΦΜ: ${afm} • ΔΟΥ: ${doy}</div>
+  <div class="double-divider"></div>
+  <div class="center bold" style="font-size: 15px;">${title}</div>
+  <div class="double-divider"></div>
+  <div class="flex"><span>ΗΜ/ΝΙΑ: ${new Date().toLocaleDateString('el-GR')}</span><span>ΩΡΑ: ${new Date().toLocaleTimeString('el-GR')}</span></div>
+  <div class="flex"><span>ΧΕΙΡΙΣΤΗΣ: ${shift.cashierName || 'Ταμίας'}</span></div>
+  <div class="flex"><span>ΑΠΟΔΕΙΞΕΙΣ: ${count}</span></div>
+  <div class="divider"></div>
+  <div class="flex bold"><span>ΣΥΝΟΛΙΚΕΣ ΠΩΛΗΣΕΙΣ:</span><span>€${Number(totalSales).toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="bold">ΑΝΑΛΥΣΗ:</div>
+  <div class="flex"><span>  ΜΕΤΡΗΤΑ:</span><span>€${Number(salesCash).toFixed(2)}</span></div>
+  <div class="flex"><span>  ΚΑΡΤΑ:</span><span>€${Number(salesCard).toFixed(2)}</span></div>
+  <div class="double-divider"></div>
+  <div class="bold">ΤΑΜΕΙΟ:</div>
+  <div class="flex"><span>Αρχικό Ταμείο (Float):</span><span>€${Number(openingFloat).toFixed(2)}</span></div>
+  <div class="flex"><span>Εισπράξεις Μετρητών:</span><span>€${Number(salesCash).toFixed(2)}</span></div>
+  ${shift.expectedDrawerCash !== undefined ? `<div class="flex"><span>Αναμενόμενο:</span><span>€${Number(shift.expectedDrawerCash).toFixed(2)}</span></div>` : ''}
+  ${shift.countedCashInDrawer !== undefined ? `<div class="flex bold"><span>Καταμετρημένο:</span><span>€${Number(shift.countedCashInDrawer).toFixed(2)}</span></div>` : ''}
+  ${shift.discrepancy !== undefined ? `<div class="flex bold"><span>ΔΙΑΦΟΡΑ:</span><span>€${Number(shift.discrepancy).toFixed(2)}</span></div>` : ''}
+  <div class="double-divider"></div>
+  <div class="center" style="margin-top: 8px;">ΤΕΛΟΣ ΔΕΛΤΙΟΥ</div>
+</body>
+</html>`;
+
+    printWin.document.documentElement.innerHTML = html;
   }
 }

@@ -13,4 +13,5 @@ export interface Customer {
   notes?: string;
   createdAt: string;
   lastVisit: string;
+  currentDebt?: number;
 }

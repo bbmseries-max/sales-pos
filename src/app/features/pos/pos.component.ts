@@ -19,7 +19,7 @@ import { PosLockScreenComponent } from './components/pos-lock-screen.component';
 import { PosDenominationModalComponent } from './components/pos-denomination-modal.component';
 import { PosShiftHandoverModalComponent } from './components/pos-shift-handover-modal.component';
 import { PosCustomerModalComponent } from './components/pos-customer-modal.component';
-import { PosCashDrawerModalComponent, CashLogEvent } from './components/pos-cash-drawer-modal.component';
+import { CashLogEvent } from './components/pos-cash-drawer-modal.component';
 import { 
   PosQuickRegisterModalComponent, 
   QuickRegisterConfirmEvent 
@@ -52,8 +52,17 @@ import {
   CashierRole
 } from '../../core/models';
 
-export type UiPaymentMethod = 'CASH' | 'CARD' | 'SPLIT';
+export type UiPaymentMethod = 'CASH' | 'CARD' | 'DEBIT' | 'SPLIT';
 export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
+
+export interface ShiftPaymentSummary {
+  cash: number;
+  card: number;
+  split?: number;
+  debit?: number;       // Total amount written to customer tab ("βερεσέ")
+  totalSales: number;   // Gross total turnover (Cash + Card + Debit)
+  transactionCount?: number;
+}
 
 @Component({
   selector: 'app-pos',
@@ -170,6 +179,136 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   public isCardProcessing = signal<boolean>(false);
   public cardTxSuccess = signal<boolean>(false);
   public pointsToRedeem = signal<number>(0);
+  public splitCardAmount = signal<number>(0);
+  public cartTotal = computed(() => Number(this.cart.grandTotal() || 0));
+
+  // Payment Mode & Selected Customer for "Βερεσέ"
+  public selectedCustomerId = signal<string | null>(null);
+  public customers = signal<Customer[]>([]);
+
+  // Mapping to DB
+  public mapToDbPaymentMethod(uiMethod: UiPaymentMethod): DbPaymentMethod {
+  switch (uiMethod) {
+    case 'CASH': return 'Cash';
+    case 'CARD': return 'Card';
+    case 'SPLIT': return 'Split';
+    case 'DEBIT': return 'Debit';
+   }
+  }
+  
+
+  // Customer State
+// public customers = signal<Array<{ id: string; name: string; phone?: string; currentDebt: number }>>([]);
+// public selectedCustomerId = signal<string | null>(null);
+public customerInputName = signal<string>('');
+public isCreatingCustomer = signal<boolean>(false);
+
+// Load existing customers from Dexie
+public async loadCustomers(): Promise<void> {
+  if (!marketDb.customers) return;
+  const list = await marketDb.customers.toArray();
+  this.customers.set(list || []);
+}
+
+// Quick Inline Create Customer
+public async createCustomerOnTheFly(): Promise<void> {
+  const rawName = this.customerInputName().trim();
+  if (!rawName) return;
+
+  this.isCreatingCustomer.set(true);
+  try {
+    const now = new Date().toISOString();
+    const newCustomer: Customer = {
+      id: `CUST-${Date.now().toString(36).toUpperCase()}`,
+      name: rawName,
+      phone: '',
+      loyaltyPoints: 0,
+      totalSpent: 0,
+      totalVisits: 0,
+      lastVisit: now,
+      currentDebt: 0,
+      createdAt: now
+    };
+
+    await marketDb.customers.add(newCustomer);
+    await this.loadCustomers();
+    this.selectedCustomerId.set(newCustomer.id);
+  } finally {
+    this.isCreatingCustomer.set(false);
+  }
+}
+
+// Cash remainder is automatically computed from the total
+public splitCashAmount = computed(() => {
+  const total = Number(this.cartTotal() || 0);
+  const card = Number(this.splitCardAmount() || 0);
+  const diff = total - card;
+  return diff > 0 ? parseFloat(diff.toFixed(2)) : 0;
+});
+
+// Helper for cashier entering card amount
+public onCardSplitInput(val: any): void {
+  const total = Number(this.cartTotal() || 0);
+  const entered = parseFloat(val) || 0;
+  // Prevent card portion from exceeding grand total
+  this.splitCardAmount.set(Math.min(Math.max(0, entered), total));
+}
+
+// --- Split Payment Calculation Helpers ---
+  public setSplitExactCard(amount: number): void {
+    const total = this.cartTotal();
+    const valid = Math.min(Math.max(0, Number(amount) || 0), total);
+    this.cardAmount.set(parseFloat(valid.toFixed(2)));
+  }
+
+  public setSplitExactCash(amount: number): void {
+    const total = this.cartTotal();
+    const validCash = Math.min(Math.max(0, Number(amount) || 0), total);
+    // Whatever is paid in cash, the card receives the exact remainder:
+    this.cardAmount.set(parseFloat((total - validCash).toFixed(2)));
+  }
+
+  public splitHalf(): void {
+    const half = parseFloat((this.cartTotal() / 2).toFixed(2));
+    this.cardAmount.set(half);
+  }
+
+// Quick 50/50 split helper button
+public splitFiftyFifty(): void {
+  const total = Number(this.cartTotal() || 0);
+  const half = parseFloat((total / 2).toFixed(2));
+  this.splitCardAmount.set(half);
+}
+
+// Execute Split Sale
+public async finalizeSplitPayment(): Promise<void> {
+  const total = Number(this.cartTotal() || 0);
+  const card = Number(this.splitCardAmount() || 0);
+  const cash = Number(this.splitCashAmount() || 0);
+
+  if (parseFloat((cash + card).toFixed(2)) !== parseFloat(total.toFixed(2))) {
+    this.flashFeedback('⚠️ Το άθροισμα Μετρητών + Κάρτας δεν ισούται με το σύνολο!', 'error');
+    return;
+  }
+
+  try {
+    const cashierName = this.shiftService.currentCashier()?.name || 'Ταμίας';
+    
+    // Checkout on cart (records Split in transaction DB)
+    const tx = await this.cart.checkout('Split' as any, cashierName, total, 0);
+
+    // Record with explicit breakdown into drawer & card batches
+    await this.shiftService.recordSaleToShift(total, 'SPLIT', false, { cash, card });
+
+    this.showPaymentModal.set(false);
+    this.splitCardAmount.set(0);
+
+    await this.handleFiscalPostProcessing(tx);
+    this.flashFeedback(`✔ Ολοκληρώθηκε: €${cash.toFixed(2)} Μετρητά / €${card.toFixed(2)} Κάρτα`, 'success');
+  } catch (err: any) {
+    this.flashFeedback('⛔ Σφάλμα μεικτής πληρωμής: ' + (err.message || ''), 'error');
+  }
+}
 
   // 10. Notifications & Debounce Locks
   public feedbackMessage = signal<string>('');
@@ -183,6 +322,8 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   public pointsDiscountAmount = computed(() => {
     return Number((this.pointsToRedeem() * this.loyaltyService.pointDiscountValue).toFixed(2));
   });
+
+  
 
   public finalPayableAmount = computed(() => {
     const total = this.cart.grandTotal() - this.pointsDiscountAmount();
@@ -202,6 +343,7 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Lifecycle
   async ngOnInit(): Promise<void> {
+    this.loadCustomers();
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
     await this.refreshPinnedProducts();
@@ -262,6 +404,12 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  public lockTerminal(): void {
+    this.showNewShiftModal.set(false);
+    this.showShiftHandoverModal.set(false);
+    this.shiftService.lockTerminal();
+  }
+
   // Alias in case any template button or modal still calls submitPin directly
   public submitPin(pinFromPad?: string): Promise<void> {
     return this.handlePinSubmit(pinFromPad || this.pinInput());
@@ -273,18 +421,17 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
     this.nextShiftError.set('');
   }
 
+  public onNextShiftFloatChange(val: any): void {
+    const parsed = parseFloat(val);
+    this.nextShiftFloat.set(isNaN(parsed) ? 0 : parsed);
+  }
+
   public async confirmStartNewShift(): Promise<void> {
-    console.log('=== [1] confirmStartNewShift CALLED ===');
     const pin = this.nextShiftCashierPin().trim();
     const floatAmt = Number(this.nextShiftFloat()) || 0;
+    const selectedId = this.selectedShiftCashierId();
 
-    console.log('=== [2] Data ===', {
-      selectedId: this.selectedShiftCashierId(),
-      pin,
-      floatAmt
-    });
-
-    if (!this.selectedShiftCashierId()) {
+    if (!selectedId) {
       this.nextShiftError.set('Παρακαλώ επιλέξτε ταμία.');
       return;
     }
@@ -294,8 +441,8 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const res = await this.shiftService.loginWithPin(pin, floatAmt);
-    console.log('=== [3] loginWithPin result ===', res);
+    // Pass the selected cashier ID explicitly so it logs in the chosen user
+    const res = await this.shiftService.loginCashierById(selectedId, pin, floatAmt);
 
     if (res.success) {
       this.showNewShiftModal.set(false);
@@ -473,7 +620,17 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
       const half = Number((this.finalPayableAmount() / 2).toFixed(2));
       this.cashTendered.set(half);
       this.cardAmount.set(Number((this.finalPayableAmount() - half).toFixed(2)));
-    }
+    } else if (this.paymentMethod() === 'DEBIT') {
+  // If user typed a name but forgot to hit "+ Προσθήκη", auto-create it now:
+  if (!this.selectedCustomerId() && this.customerInputName().trim()) {
+    this.createCustomerOnTheFly();
+  }
+
+  if (!this.selectedCustomerId()) {
+    this.flashFeedback('⚠️ Επιλέξτε ή πληκτρολογήστε όνομα πελάτη για το βερεσέ.', 'error');
+    return;
+  }
+}
   }
 
   public setTender(amount: number): void {
@@ -486,8 +643,14 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
       const cashierName = this.shiftService.currentCashier()?.name || 
         `Ταμίας [${this.tenantConfig.activeShop()?.code || 'REG'}]`;
       const tx = await this.cart.checkout('Card', cashierName, this.cardAmount(), 0);
-      
-      await this.shiftService.recordSaleToShift(tx.grandTotal, 'Card');
+      const isSplit = this.paymentMethod() === 'SPLIT';
+
+      await this.shiftService.recordSaleToShift(
+  this.cart.grandTotal(),
+  this.paymentMethod(), // 'CASH' | 'CARD' | 'SPLIT' | 'DEBIT'
+  false,
+  isSplit ? { cash: this.cashLogAmount(), card: this.cardAmount() } : undefined
+);
 
       this.isCardProcessing.set(false);
       this.cardTxSuccess.set(true);
@@ -548,6 +711,11 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
       this.focusBarcodeInput?.();
     }
   }
+
+  // In pos.component.ts:
+public combinedPaymentTotal = computed(() => {
+  return Number(this.cashLogAmount() || 0) + Number(this.cardAmount() || 0);
+});
 
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
     const companyProfile = this.getActiveCompanyProfile();

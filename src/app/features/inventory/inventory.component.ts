@@ -2,7 +2,8 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { Router, RouterLinkActive, RouterLink } from '@angular/router';
-import { marketDb } from '../../core/db/market-db';
+import { EmployeeManagementModalComponent } from './components/employee-management-modal.component';
+ import { marketDb } from '../../core/db/market-db';
 import { MarketCatalogService } from '../../core/services/market-catalog.service';
 import { TenantConfigService } from '../../core/services/tenant-config.service';
 import { SyncService } from '../../core/services/sync.service';
@@ -27,7 +28,8 @@ export type FilterTab = 'all' | 'low-stock' | 'expiring' | 'pinned';
   standalone: true,
   imports: [FormsModule,
     RouterLink,
-    RouterLinkActive],
+    RouterLinkActive,
+  EmployeeManagementModalComponent],
   templateUrl: './inventory.component.html'
 })
 export class InventoryComponent implements OnInit {
@@ -47,6 +49,7 @@ export class InventoryComponent implements OnInit {
   public selectedTab = signal<FilterTab>('all');
   public selectedCategoryId = signal<string | number>('all');
   public searchQuery = signal<string>('');
+  public isEmployeeModalOpen = signal<boolean>(false);
 
   // Header Summary Counts
   public totalCount = signal<number>(0);

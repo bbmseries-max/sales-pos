@@ -129,51 +129,48 @@ export class ZReportComponent implements OnInit {
     }
 
     const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
+    const counted = this.auditData()?.actualCountedCash ?? this.calculateDenominationsTotal();
 
     try {
       this.isClosed.set(true);
 
-      // 1. Print report (isolated error handling)
-    //  try {
-      //  await this.printZReport();
-     // } catch (printErr) {
-      //  console.error('Z-Report printing error:', printErr);
-    //  }
+      // 1. Properly close the active shift through CashierShiftService
+      if (this.shiftService.currentShift()) {
+        await this.shiftService.closeShift(counted, `Κλείσιμο Ημέρας (Ζ #${this.auditData()?.zNumber || 1})`);
+      } else {
+        // Fallback: close any orphaned open shifts in DB for this store
+        const openShifts = await marketDb.shifts
+          .where('storeId')
+          .equals(activeStoreCode)
+          .and(s => s.status === 'OPEN')
+          .toArray();
 
-      // 2. Close all open shifts in Dexie for this store
-      const openShifts = await marketDb.shifts
-        .where('storeId')
-        .equals(activeStoreCode)
-        .and(s => s.status === 'OPEN')
-        .toArray();
-
-      const now = new Date().toISOString();
-      const zNum = this.auditData()?.zNumber || 1;
-
-      for (const s of openShifts) {
-        if (s.id !== undefined) {
-          await marketDb.shifts.update(s.id, {
-            status: 'CLOSED',
-            endTime: now,
-            notes: `Κλείσιμο Ημέρας (Ζ #${zNum})`
-          });
+        const now = new Date().toISOString();
+        for (const s of openShifts) {
+          if (s.id) {
+            await marketDb.shifts.update(s.id, {
+              status: 'CLOSED',
+              endTime: now,
+              notes: 'Κλείσιμο Ημέρας (Ζ)'
+            });
+          }
         }
+        this.shiftService.lockTerminal();
       }
 
-      // 3. Reset shift state and lock
-      this.shiftService.currentShift.set(null);
-      this.shiftService.lockTerminal();
+      // 2. Increment Z number
       this.zService.currentZNumber.update(n => n + 1);
 
+      // 3. Trigger printing non-blockingly (Bridge or Browser Popup)
+      this.printZReport().catch(err => console.warn('[Z-Report] Print failed:', err));
+
     } catch (err) {
-      console.error('Failed to finalize Z-report shift closure:', err);
-      alert('Σφάλμα κατά το κλείσιμο βάρδιας. Ελέγξτε την κονσόλα.');
+      console.error('Failed to close shift:', err);
+      alert('Σφάλμα κατά το κλείσιμο βάρδιας.');
       return;
     }
 
-    console.log('[Z-Report] Navigating back to POS with shop:', activeStoreCode);
-
-    // 4. Clean navigation without crashing with the print preview window
+    // 4. Clean navigate to POS in locked state
     await this.router.navigate(['/pos'], {
       queryParams: { shop: activeStoreCode },
       replaceUrl: true

@@ -62,6 +62,15 @@
     <span>Εισαγωγή Excel</span>
   </button>
 
+  <!-- Staff & Shifts Manager -->
+  <button 
+    type="button" 
+    (click)="isEmployeeModalOpen.set(true)" 
+    class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 hover:text-white active:scale-95 transition-all shadow-sm cursor-pointer">
+    <span class="text-base">👥</span>
+    <span>Προσωπικό & Βάρδιες</span>
+  </button>
+
   <!-- 7. Z-Report / Κλείσιμο Ημέρας (Pushed to Far Right) -->
   <button 
     type="button"
@@ -549,5 +558,8 @@
       </div>
     </div>
   }
-
 </div>
+<!-- EMPLOYEE & SHIFT MANAGEMENT MODAL -->
+@if (isEmployeeModalOpen()) {
+  <app-employee-management-modal (close)="isEmployeeModalOpen.set(false)" />
+}
