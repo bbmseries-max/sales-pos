@@ -323,8 +323,6 @@ public async finalizeSplitPayment(): Promise<void> {
     return Number((this.pointsToRedeem() * this.loyaltyService.pointDiscountValue).toFixed(2));
   });
 
-  
-
   public finalPayableAmount = computed(() => {
     const total = this.cart.grandTotal() - this.pointsDiscountAmount();
     return Math.max(0, Number(total.toFixed(2)));
@@ -554,8 +552,8 @@ public async finalizeSplitPayment(): Promise<void> {
       this.shiftService.lockTerminal();
       this.showNewShiftModal.set(true);
 
-      const sign = (reportSnapshot.discrepancy || 0) >= 0 ? '+' : '';
-      this.flashFeedback(`✔ Η βάρδια έκλεισε. Διαφορά: ${sign}€${(reportSnapshot.discrepancy || 0).toFixed(2)}`, 'success');
+      const sign = (reportSnapshot.variance || 0) >= 0 ? '+' : '';
+      this.flashFeedback(`✔ Η βάρδια έκλεισε. Διαφορά: ${sign}€${(reportSnapshot.variance || 0).toFixed(2)}`, 'success');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.flashFeedback('⛔ Σφάλμα: ' + msg, 'error');
@@ -667,52 +665,99 @@ public async finalizeSplitPayment(): Promise<void> {
   }
 
   public async completeSale(): Promise<void> {
-    if (this.isCompletingSale()) return;
-    this.isCompletingSale.set(true);
+  if (this.isCompletingSale()) return;
+  this.isCompletingSale.set(true);
 
-    const uiMethod = this.paymentMethod();
-    const mappedMethod: DbPaymentMethod = uiMethod === 'CARD' ? 'Card' : uiMethod === 'SPLIT' ? 'Split' : 'Cash';
-    const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
-    const redeemed = this.pointsToRedeem ? this.pointsToRedeem() : 0;
-    
-    const cashierName = this.shiftService.currentCashier()?.name || 
-      `Ταμίας [${this.tenantConfig.activeShop()?.code || 'REG'}]`;
+  const uiMethod = this.paymentMethod();
+  
+  // 1. Properly map all 4 payment types
+  const mappedMethod: DbPaymentMethod = 
+    uiMethod === 'CARD' ? 'Card' : 
+    uiMethod === 'SPLIT' ? 'Split' : 
+    uiMethod === 'DEBIT' ? 'Debit' : 'Cash';
 
-    try {
-      const tx = await this.cart.checkout(
-        mappedMethod,
-        cashierName,
-        this.cashTendered ? this.cashTendered() : 0,
-        this.changeDue ? this.changeDue() : 0
-      );
+  const activeCust = this.loyaltyService?.activeCustomer ? this.loyaltyService.activeCustomer() : null;
+  const redeemed = this.pointsToRedeem ? this.pointsToRedeem() : 0;
+  
+  const cashierName = this.shiftService.currentCashier()?.name || 
+    `Ταμίας [${this.tenantConfig.activeShop()?.code || 'REG'}]`;
 
-      await this.shiftService.recordSaleToShift(tx.grandTotal, mappedMethod);
-
-      this.pointsToRedeem?.set?.(0);
-      this.showPaymentModal.set(false);
-
-      if (activeCust && this.loyaltyService?.processPostSale) {
-        try {
-          const { pointsEarned } = await this.loyaltyService.processPostSale(activeCust, tx.grandTotal, redeemed);
-          tx.pointsEarned = pointsEarned;
-        } catch (loyaltyErr) {
-          console.warn('[Loyalty]', loyaltyErr);
-        }
-      }
-
-      await this.handleFiscalPostProcessing(tx);
-      this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error('[Sale Error]', errorMsg);
-      this.flashFeedback('⛔ Σφάλμα: ' + errorMsg, 'error');
-    } finally {
+  // 2. Validate DEBIT customer selection
+  if (uiMethod === 'DEBIT') {
+    if (!this.selectedCustomerId() && this.customerInputName().trim()) {
+      await this.createCustomerOnTheFly();
+    }
+    if (!this.selectedCustomerId()) {
+      this.flashFeedback('⛔ Επιλέξτε ή καταχωρήστε πελάτη για το βερεσέ.', 'error');
       this.isCompletingSale.set(false);
-      this.focusBarcodeInput?.();
+      return;
     }
   }
 
-  // In pos.component.ts:
+  try {
+    const tx = await this.cart.checkout(
+      mappedMethod,
+      cashierName,
+      this.cashTendered ? this.cashTendered() : 0,
+      this.changeDue ? this.changeDue() : 0
+    );
+
+    // 3. Compute explicit cash and card breakdown for the shift ledger
+    const totalAmount = Number(tx.grandTotal) || 0;
+    const isSplit = uiMethod === 'SPLIT';
+    const splitDetails = {
+      cash: isSplit ? Number(this.cashTendered() || 0) : (uiMethod === 'CASH' ? totalAmount : 0),
+      card: isSplit ? Number(this.cardAmount() || 0) : (uiMethod === 'CARD' ? totalAmount : 0)
+    };
+
+    // 4. Record to shift with splitDetails
+    await this.shiftService.recordSaleToShift(
+      totalAmount, 
+      mappedMethod, 
+      false, 
+      splitDetails
+    );
+
+    // 5. Update Customer Ledger if DEBIT ("Βερεσέ")
+    if (uiMethod === 'DEBIT' && this.selectedCustomerId()) {
+      const custId = this.selectedCustomerId()!;
+      const customer = await marketDb.customers.get(custId);
+      if (customer) {
+        const newDebt = parseFloat(((Number(customer.currentDebt) || 0) + totalAmount).toFixed(2));
+        await marketDb.customers.update(custId, { currentDebt: newDebt });
+        await this.loadCustomers();
+      }
+    }
+
+    // 6. Reset Form & UI Signals
+    this.pointsToRedeem?.set?.(0);
+    this.showPaymentModal.set(false);
+    this.selectedCustomerId?.set(null);
+    this.customerInputName?.set('');
+    this.cardAmount?.set(0);
+    this.paymentMethod?.set('CASH');
+
+    if (activeCust && this.loyaltyService?.processPostSale) {
+      try {
+        const { pointsEarned } = await this.loyaltyService.processPostSale(activeCust, tx.grandTotal, redeemed);
+        tx.pointsEarned = pointsEarned;
+      } catch (loyaltyErr) {
+        console.warn('[Loyalty]', loyaltyErr);
+      }
+    }
+
+    await this.handleFiscalPostProcessing(tx);
+    this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[Sale Error]', errorMsg);
+    this.flashFeedback('⛔ Σφάλμα: ' + errorMsg, 'error');
+  } finally {
+    this.isCompletingSale.set(false);
+    this.focusBarcodeInput?.();
+  }
+}
+
 public combinedPaymentTotal = computed(() => {
   return Number(this.cashLogAmount() || 0) + Number(this.cardAmount() || 0);
 });

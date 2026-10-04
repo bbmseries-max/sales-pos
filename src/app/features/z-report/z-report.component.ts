@@ -124,45 +124,52 @@ export class ZReportComponent implements OnInit {
     const confirmed = window.confirm(
       'ΠΡΟΣΟΧΗ: Θέλετε να εκδώσετε οριστικά το Δελτίο "Ζ" και να μηδενίσετε το ημερήσιο ταμείο;'
     );
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     const activeStoreCode = this.tenantConfig.activeShop()?.code || 'mar-market';
     const counted = this.auditData()?.actualCountedCash ?? this.calculateDenominationsTotal();
+    const currentZ = this.zService.currentZNumber();
+    const company = this.getCompanyProfile();
 
     try {
       this.isClosed.set(true);
 
-      // 1. Properly close the active shift through CashierShiftService
+      // 1. Capture the closed audit directly from closeShift
+      let closedAudit: ZReportAudit | null = null;
+
       if (this.shiftService.currentShift()) {
-        await this.shiftService.closeShift(counted, `Κλείσιμο Ημέρας (Ζ #${this.auditData()?.zNumber || 1})`);
+        closedAudit = await this.shiftService.closeShift(
+          counted,
+          `Κλείσιμο Ημέρας (Ζ #${currentZ})`,
+          currentZ
+        );
       } else {
-        // Fallback: close any orphaned open shifts in DB for this store
-        const openShifts = await marketDb.shifts
+        // Fallback for orphaned open shifts in DB
+        const openShift = await marketDb.shifts
           .where('storeId')
           .equals(activeStoreCode)
           .and(s => s.status === 'OPEN')
-          .toArray();
+          .first();
 
-        const now = new Date().toISOString();
-        for (const s of openShifts) {
-          if (s.id) {
-            await marketDb.shifts.update(s.id, {
-              status: 'CLOSED',
-              endTime: now,
-              notes: 'Κλείσιμο Ημέρας (Ζ)'
-            });
-          }
+        if (openShift) {
+          this.shiftService.currentShift.set(openShift);
+          closedAudit = await this.shiftService.closeShift(
+            counted,
+            `Κλείσιμο Ημέρας (Ζ #${currentZ})`,
+            currentZ
+          );
+        } else {
+          this.shiftService.lockTerminal();
         }
-        this.shiftService.lockTerminal();
       }
 
-      // 2. Increment Z number
+      // 2. Increment Z sequence
       this.zService.currentZNumber.update(n => n + 1);
 
-      // 3. Trigger printing non-blockingly (Bridge or Browser Popup)
-      this.printZReport().catch(err => console.warn('[Z-Report] Print failed:', err));
+      // 3. Print the report using the closedAudit and existing browser print method
+      if (closedAudit) {
+        this.printPreviewInBrowser(closedAudit, company);
+      }
 
     } catch (err) {
       console.error('Failed to close shift:', err);
@@ -170,7 +177,7 @@ export class ZReportComponent implements OnInit {
       return;
     }
 
-    // 4. Clean navigate to POS in locked state
+    // 4. Navigate back to POS in locked state
     await this.router.navigate(['/pos'], {
       queryParams: { shop: activeStoreCode },
       replaceUrl: true
@@ -185,24 +192,24 @@ export class ZReportComponent implements OnInit {
   }
 
   private printPreviewInBrowser(z: ZReportAudit, company: MarketCompanyProfile): void {
-  const printWin = window.open('', '_blank', 'width=460,height=780,menubar=no,toolbar=no,location=no,status=no');
-  if (!printWin) {
-    console.warn('Popup blocked. Please allow popups for printing.');
-    return;
-  }
+    const printWin = window.open('', '_blank', 'width=460,height=780,menubar=no,toolbar=no,location=no,status=no');
+    if (!printWin) {
+      console.warn('Popup blocked. Please allow popups for printing.');
+      return;
+    }
 
-  const vatRows = Object.entries(z.vatAnalysis || {})
-    .filter(([_, d]) => d.gross > 0)
-    .map(([_, d]) => `
-      <tr>
-        <td>${d.rate}%</td>
-        <td style="text-align: right;">€${d.net.toFixed(2)}</td>
-        <td style="text-align: right;">€${d.vat.toFixed(2)}</td>
-        <td style="text-align: right;">€${d.gross.toFixed(2)}</td>
-      </tr>
-    `).join('');
+    const vatRows = Object.entries(z.vatAnalysis || {})
+      .filter(([_, d]) => d.gross > 0)
+      .map(([_, d]) => `
+        <tr>
+          <td>${d.rate}%</td>
+          <td style="text-align: right;">€${d.net.toFixed(2)}</td>
+          <td style="text-align: right;">€${d.vat.toFixed(2)}</td>
+          <td style="text-align: right;">€${d.gross.toFixed(2)}</td>
+        </tr>
+      `).join('');
 
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="el">
 <head>
   <meta charset="utf-8">
@@ -268,6 +275,7 @@ export class ZReportComponent implements OnInit {
   <div class="bold">ΑΝΑΛΥΣΗ ΠΛΗΡΩΜΩΝ:</div>
   <div class="flex"><span>  ΜΕΤΡΗΤΑ:</span><span>€${z.salesCash.toFixed(2)}</span></div>
   <div class="flex"><span>  ΚΑΡΤΕΣ / POS:</span><span>€${z.salesCard.toFixed(2)}</span></div>
+  ${(z.salesOther || 0) > 0 ? `<div class="flex"><span>  ΒΕΡΕΣΕ (ΤΕΦΤΕΡΙ):</span><span>€${z.salesOther.toFixed(2)}</span></div>` : ''}
   <div class="double-divider"></div>
   <div class="bold center">ΑΝΑΛΥΣΗ Φ.Π.Α.</div>
   <table>
@@ -299,6 +307,8 @@ export class ZReportComponent implements OnInit {
 </body>
 </html>`;
 
- printWin.document.documentElement.innerHTML = html;
-}
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+  }
 }

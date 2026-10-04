@@ -1,5 +1,6 @@
 import { Injectable, signal, inject, computed } from '@angular/core';
 import { marketDb } from '../db/market-db';
+import { ZReportAudit } from '../models/z-report.model';
 import { sha256Pin } from '../utils/crypto.utils';
 import { TenantConfigService } from './tenant-config.service';
 import { Cashier, CashierShift, ShiftPaymentSummary } from '../models/market.models';
@@ -37,6 +38,93 @@ export class CashierShiftService {
     const cashier = this.currentCashier();
     return cashier?.role === 'ADMIN';
   });
+
+  public async closeShift(countedCash: number, notes?: string, zNumber = 1): Promise<ZReportAudit> {
+  const active = this.currentShift();
+  if (!active) throw new Error('Δεν υπάρχει ενεργή βάρδια.');
+
+  // Fetch latest persistent state from Dexie
+  const freshShift = await marketDb.shifts.get(active.id) || active;
+
+  const expected = this.calculateExpectedCash(freshShift);
+  const counted = Number(countedCash) || 0;
+  const variance = Number((counted - expected).toFixed(2));
+  const endTime = new Date().toISOString();
+
+  const closedShift: CashierShift = {
+    ...freshShift,
+    status: 'CLOSED',
+    endTime,
+    expectedCash: expected,
+    expectedCashInDrawer: expected,
+    countedCash: counted,
+    countedCashInDrawer: counted,
+    actualCountedCash: counted,
+    discrepancy: variance,
+    closedBy: 'SYSTEM_Z',
+    notes: notes || ''
+  };
+
+  await marketDb.shifts.put(closedShift);
+  this.currentShift.set(null);
+  this.lockTerminal();
+
+  const sales = freshShift.sales || {
+    cash: 0,
+    card: 0,
+    split: 0,
+    debit: 0,
+    totalSales: 0,
+    transactionCount: 0
+  };
+
+  const gross = Number(sales.totalSales) || 0;
+  const net = parseFloat((gross / 1.13).toFixed(2));
+  const tax = parseFloat((gross - net).toFixed(2));
+
+  // Construct direct ZReportAudit matching your model
+  const auditRecord: ZReportAudit = {
+    id: `Z-${Date.now().toString(36).toUpperCase()}`,
+    zNumber,
+    date: endTime.split('T')[0],
+    openedAt: freshShift.startTime,
+    closedAt: endTime,
+    cashierName: freshShift.cashierName || 'Ταμίας',
+    registerId: freshShift.registerId || 'POS-01',
+
+    transactionCount: sales.transactionCount || 0,
+    refundCount: 0,
+    refundTotal: 0,
+
+    grossTurnover: gross,
+    netTurnover: net,
+    totalTax: tax,
+    progressiveGrandTotal: gross,
+
+    salesCash: Number(sales.cash) || 0,
+    salesCard: Number(sales.card) || 0,
+    salesOther: Number(sales.debit || 0),
+
+    openingFloat: Number(freshShift.openingFloat) || 0,
+    cashIn: Number(freshShift.cashInTotal) || 0,
+    cashOut: Number(freshShift.cashOutTotal) || 0,
+    expectedDrawerCash: expected,
+    actualCountedCash: counted,
+    variance: variance,
+
+    vatAnalysis: {
+      '13%': {
+        rate: 13,
+        net: net,
+        vat: tax,
+        gross: gross
+      }
+    },
+    status: 'CLOSED'
+  };
+
+  return auditRecord;
+}
 
   // 1. Get all active shifts in the active store
   public async getActiveStoreShifts(): Promise<CashierShift[]> {
@@ -406,45 +494,6 @@ public async recordSaleToShift(
   await marketDb.shifts.put(updated);
   this.currentShift.set(updated);
 }
-
-  public async closeShift(countedCash: number, notes?: string): Promise<ShiftReportSnapshot> {
-    const active = this.currentShift();
-    if (!active) throw new Error('Δεν υπάρχει ενεργή βάρδια.');
-
-    const expected = this.calculateExpectedCash(active);
-    const discrepancy = Number((Number(countedCash) - expected).toFixed(2));
-    const endTime = new Date().toISOString();
-
-    const closedShift: CashierShift = {
-      ...active,
-      status: 'CLOSED',
-      endTime,
-      expectedCashInDrawer: expected,
-      countedCashInDrawer: Number(countedCash),
-      discrepancy,
-      notes: notes || ''
-    };
-
-    await marketDb.shifts.put(closedShift);
-    this.currentShift.set(null);
-    this.lockTerminal();
-
-    return {
-      shiftId: closedShift.id,
-      cashierName: closedShift.cashierName || 'Ταμίας',
-      startTime: closedShift.startTime,
-      endTime: closedShift.endTime,
-      openingFloat: closedShift.openingFloat || 0,
-      sales: { ...(closedShift.sales || { cash: 0, card: 0, split: 0, totalSales: 0, transactionCount: 0 }) },
-      cashInTotal: closedShift.cashInTotal || 0,
-      cashOutTotal: closedShift.cashOutTotal || 0,
-      expectedDrawerCash: expected,
-      countedCash: Number(countedCash),
-      discrepancy,
-      reportType: 'Z-REPORT',
-      generatedAt: endTime
-    };
-  }
 
   public async recordCashMovement(type: 'IN' | 'OUT' | 'FLOAT' | 'DROP', amount: number, reason: string): Promise<void> {
     let shift = this.currentShift();
