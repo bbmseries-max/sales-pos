@@ -603,12 +603,25 @@
   (close)="closeOutOfStockModal()"
 />
 
+<app-pos-expired-modal
+  [isOpen]="showExpiredModal()"
+  [product]="pendingExpiredProduct()"
+  (resolve)="handleExpiredProductResolution($event)"
+  (cancel)="showExpiredModal.set(false); pendingExpiredProduct.set(null); focusBarcodeInput()"
+/>
+
 <!-- Discount Modal -->
 <app-pos-discount-modal
   [isOpen]="showDiscountModal()"
   [scope]="discountScope()"
   (discountApply)="applyDiscount($event)"
   (close)="showDiscountModal.set(false)"
+/>
+
+<app-pos-cash-drawer-modal
+  [isOpen]="showCashDrawerModal()"
+  (submitLog)="handleCashLogSubmit($event)"
+  (cancel)="showCashDrawerModal.set(false)"
 />
 
 <!-- Employee Management Modal -->

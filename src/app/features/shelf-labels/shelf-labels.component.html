@@ -157,46 +157,60 @@
 
     </section>
 
-       <!-- RIGHT: Live Print Preview Canvas -->
-        @for (enriched of flattenedLabels(); track $index) {
-          <div class="shelf-label-card" [class.thermal-card]="labelSize() === 'THERMAL_ROLL'">
-            
-            <!-- Top: Category / Brand & VAT -->
-            <div class="label-top-row">
-              <span class="label-category truncate">
-                {{ enriched.product.brand || enriched.product.categoryName || 'SUPERMARKET' }}
-              </span>
-              <span class="label-vat">ΦΠΑ {{ enriched.product.vatRate }}%</span>
-            </div>
+     <!-- RIGHT: Live Print Preview Canvas -->
+<div class="col-span-8 flex flex-col bg-slate-900/40 border border-slate-800 rounded-3xl p-6 overflow-hidden shadow-xl">
+  
+  <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4 no-print">
+    <span class="text-xs font-mono font-bold text-slate-400">
+      Προεπισκόπηση: {{ labelSize() === 'A4_SHEET' ? 'A4 Φύλλο (3x8 - 24 ανά σελίδα)' : 'Ρολό Θερμικού (50x30mm)' }}
+    </span>
+    <span class="text-[11px] font-mono text-amber-400">
+      {{ flattenedLabels().length }} ετικέτες
+    </span>
+  </div>
 
-            <!-- Middle: Product Name -->
-            <div class="label-product-name line-clamp-2">
-              {{ enriched.product.name }}
-            </div>
-
-            <!-- Price & Barcode Section -->
-            <div class="label-bottom-grid">
-              
-              <!-- Left: Barcode Vector + Mandatory Unit Reference Price -->
-              <div class="label-barcode-col">
-                <div class="label-barcode-svg" [innerHTML]="getBarcodeSvg(enriched.product.barcode)"></div>
-                <div class="label-barcode-text">{{ enriched.product.barcode || '—' }}</div>
-                <div class="label-net-unit">
-                  Τιμή/{{ enriched.unitMeasurement }}: <strong>€{{ enriched.pricePerUnit.toFixed(2) }}</strong>
-                </div>
-              </div>
-
-              <!-- Right: Big Bold Retail Price with Cents -->
-              <div class="label-price-box">
-                <div class="label-currency">€</div>
-                <div class="label-price-whole">{{ getPriceWhole(enriched.product.price || 0) }}</div>
-                <div class="label-price-cents">,{{ getPriceCents(enriched.product.price || 0) }}</div>
-              </div>
-
-            </div>
-
+  <!-- Note the ID and dynamic class bindings -->
+  <div class="label-canvas-container flex-1 overflow-y-auto">
+    <div 
+      id="printable-labels-area"
+      [class.a4-sheet-layout]="labelSize() === 'A4_SHEET'"
+      [class.thermal-roll-layout]="labelSize() === 'THERMAL_ROLL'"
+    >
+      @for (enriched of flattenedLabels(); track $index) {
+        <div class="shelf-label-card" [class.thermal-card]="labelSize() === 'THERMAL_ROLL'">
+          <!-- Top Row -->
+          <div class="label-top-row">
+            <span class="truncate">{{ enriched.product.brand || enriched.product.categoryName || 'SUPERMARKET' }}</span>
+            <span>ΦΠΑ {{ enriched.product.vatRate }}%</span>
           </div>
-        }
+
+          <!-- Product Name -->
+          <div class="label-product-name">
+            {{ enriched.product.name }}
+          </div>
+
+          <!-- Price & Barcode Grid -->
+          <div class="label-bottom-grid">
+            <div class="label-barcode-col">
+              <div class="label-barcode-svg" [innerHTML]="getBarcodeSvg(enriched.product.barcode)"></div>
+              <div class="label-barcode-text">{{ enriched.product.barcode || '—' }}</div>
+              <div class="label-net-unit">
+                Τιμή/{{ enriched.unitMeasurement }}: <strong>€{{ enriched.pricePerUnit.toFixed(2) }}</strong>
+              </div>
+            </div>
+
+            <div class="label-price-box">
+              <div class="label-currency">€</div>
+              <div class="label-price-whole">{{ getPriceWhole(enriched.product.price || 0) }}</div>
+              <div class="label-price-cents">,{{ getPriceCents(enriched.product.price || 0) }}</div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+</div>
 
   </div>
 </div>

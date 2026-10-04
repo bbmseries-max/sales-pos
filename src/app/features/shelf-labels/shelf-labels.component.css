@@ -18,6 +18,8 @@
   grid-auto-rows: 37.125mm;
   box-sizing: border-box;
   background: #ffffff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
 }
 
 /* Base Thermal Roll Screen Preview (50mm x 30mm) */
@@ -28,6 +30,8 @@
   display: flex;
   flex-direction: column;
   background: #ffffff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
 }
 
 /* Individual Label Card Geometry (A4) */
@@ -159,61 +163,61 @@
 
 /* --- HARDWARE-CALIBRATED PRINT ENGINE --- */
 @media print {
-  @page {
-    margin: 0 !important;
+  .no-print {
+    display: none !important;
   }
 
   html, body {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
   }
 
-  body * {
-    visibility: hidden !important;
-  }
-
-  #printable-labels-area,
-  #printable-labels-area * {
-    visibility: visible !important;
-  }
-
-  #printable-labels-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+  /* Reset outer application containers so they don't break the page */
+  :host,
+  .h-screen,
+  .grid-cols-12,
+  main,
+  section,
+  .label-canvas-container {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    width: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+    overflow: visible !important;
   }
 
-  .no-print {
-    display: none !important;
-  }
-
-  /* A4 Sheet Print Mode */
+  /* A4 Sheet Print Mode: Lock to Portrait, 70mm x 3 columns */
   .a4-sheet-layout {
     width: 210mm !important;
+    min-height: 297mm !important;
     display: grid !important;
-    grid-template-columns: 70mm 70mm 70mm !important;
+    grid-template-columns: repeat(3, 70mm) !important;
     grid-auto-rows: 37.125mm !important;
     gap: 0 !important;
-    page-break-after: always;
+    margin: 0 auto !important;
+    box-shadow: none !important;
   }
 
   .a4-sheet-layout .shelf-label-card {
     width: 70mm !important;
     height: 37.125mm !important;
-    border: none !important;
+    border: 0.2px dashed #e2e8f0 !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
-  /* Thermal Roll Print Mode (Auto Page Sizing per Tag) */
+  /* Thermal Roll Print Mode (50mm x 30mm) */
   .thermal-roll-layout {
     width: 50mm !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
   }
 
   .thermal-roll-layout .shelf-label-card {
@@ -222,5 +226,6 @@
     border: none !important;
     page-break-after: always !important;
     break-after: page !important;
+    page-break-inside: avoid !important;
   }
 }

@@ -10,11 +10,13 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
+import { PosExpiredModalComponent, ExpiredResolutionEvent } from './components/pos-expired-modal/pos-expired-modal.component';
 import { PosOutOfStockModalComponent } from './components/pos-out-of-stock-modal/pos-out-of-stock-modal.component';
 import { PosMydataModalComponent } from './components/pos-mydata-modal/pos-mydata-modal.component';
 import { PosWeightModalComponent } from './components/pos-weight-modal/pos-weight-modal.component';
 import { PosDiscountModalComponent } from './components/pos-discount-modal/pos-discount-modal.component';
-import { PosPaymentModalComponent, PaymentCompletionEvent } from './components/pos-payment-modal/pos-payment-modal/pos-payment-modal.component';
+import { PaymentCompletionEvent } from './components/pos-payment-modal/pos-payment-modal/pos-payment-modal.component';
+import { PosPaymentModalComponent } from './components/pos-payment-modal/pos-payment-modal/pos-payment-modal.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -24,7 +26,7 @@ import { PosLockScreenComponent } from './components/pos-lock-screen.component';
 import { PosDenominationModalComponent } from './components/pos-denomination-modal.component';
 import { PosShiftHandoverModalComponent } from './components/pos-shift-handover-modal.component';
 import { PosCustomerModalComponent } from './components/pos-customer-modal.component';
-import { CashLogEvent } from './components/pos-cash-drawer-modal.component';
+// import { CashLogEvent } from './components/pos-cash-drawer-modal.component';
 import { 
   PosQuickRegisterModalComponent, 
   QuickRegisterConfirmEvent 
@@ -32,7 +34,7 @@ import {
 import { PosPriceCheckModalComponent } from './components/pos-price-check-modal.component';
 import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-modal.component';
 import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
-
+import { PosCashDrawerModalComponent, CashLogEvent } from './components/pos-cash-drawer-modal.component';
 // Services
 import { StorageQuotaService } from '../../core/services/storage-quota.service';
 import { CashierShiftService } from '../../core/services/cashier-shift.service';
@@ -56,20 +58,11 @@ import {
   Customer,
   Cashier,
   CartItem,
-  CashierRole
+  CashierRole, ShiftPaymentSummary
 } from '../../core/models';
 
 export type UiPaymentMethod = 'CASH' | 'CARD' | 'DEBIT' | 'SPLIT';
 export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
-
-export interface ShiftPaymentSummary {
-  cash: number;
-  card: number;
-  split?: number;
-  debit?: number;       // Total amount written to customer tab ("βερεσέ")
-  totalSales: number;   // Gross total turnover (Cash + Card + Debit)
-  transactionCount?: number;
-}
 
 @Component({
   selector: 'app-pos',
@@ -83,8 +76,10 @@ export interface ShiftPaymentSummary {
     FormsModule,
     PosEmployeeModalComponent,
     PosNewShiftModalComponent,
+    PosExpiredModalComponent,
     PosOutOfStockModalComponent,
     PosMydataModalComponent,
+    PosCashDrawerModalComponent,
     PosQuickRegisterModalComponent,
     PosPriceCheckModalComponent,
     PosCustomerModalComponent,
@@ -199,6 +194,8 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   // Payment Mode & Selected Customer for "Βερεσέ"
   public selectedCustomerId = signal<string | null>(null);
   public customers = signal<Customer[]>([]);
+  public showExpiredModal = signal<boolean>(false);
+  public pendingExpiredProduct = signal<Product | null>(null);
 
   // Mapping to DB
   public mapToDbPaymentMethod(uiMethod: UiPaymentMethod): DbPaymentMethod {
@@ -207,8 +204,36 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
     case 'CARD': return 'Card';
     case 'SPLIT': return 'Split';
     case 'DEBIT': return 'Debit';
+    default: return 'Cash';
    }
   }
+
+  public handleExpiredProductResolution(event: ExpiredResolutionEvent): void {
+  this.showExpiredModal.set(false);
+  const prod = event.product;
+
+  if (event.action === 'UPDATE_DATE_AND_ADD' && event.newExpiryDate) {
+    // 1. Update in memory and Dexie DB
+    prod.expire = event.newExpiryDate;
+    if (prod.id) {
+      marketDb.products.update(prod.id, { expire: event.newExpiryDate }).catch(err => {
+        console.warn('[DB Error updating expiry date]:', err);
+      });
+    }
+    this.flashFeedback(`✔ Ενημερώθηκε νέα λήξη (${new Date(event.newExpiryDate).toLocaleDateString('el-GR')})`, 'success');
+  }
+
+  this.pendingExpiredProduct.set(null);
+
+  // 2. Add to cart
+  if (prod.isWeighted) {
+    this.promptWeight(prod);
+  } else {
+    this.cart.addItem(prod, 1);
+    this.flashFeedback('✔ ' + prod.name, 'success');
+  }
+  this.focusBarcodeInput();
+}
 
   public async handleStartShiftModalSubmit(payload: StartShiftPayload): Promise<void> {
   this.selectedShiftCashierId.set(payload.cashierId);
@@ -856,6 +881,7 @@ public combinedPaymentTotal = computed(() => {
   private async handleFiscalPostProcessing(tx: TransactionRecord): Promise<void> {
     const companyProfile = this.getActiveCompanyProfile();
 
+    // 1. AADE myDATA transmission
     try {
       if (this.myDataService?.transmitReceipt && navigator.onLine) {
         const myDataRes = await this.myDataService.transmitReceipt(tx, companyProfile);
@@ -873,21 +899,183 @@ public combinedPaymentTotal = computed(() => {
       tx._syncStatus = 'dirty';
     }
 
+    // 2. Persist transaction to Dexie DB
     try {
       await marketDb.transactions.put(tx);
     } catch (dbErr) {
       console.error('[DB] Failed updating tx with fiscal data:', dbErr);
     }
 
+    // 3. Hardware print with automatic browser fallback
     try {
-      await this.bridge.printReceipt({
+      const printResult = await this.bridge.printReceipt({
         tx,
         company: companyProfile
       });
+      // If bridge returns falsy/undefined or explicitly failed, trigger browser preview
+      if (!printResult) {
+        this.openBrowserReceiptPreview(tx, companyProfile);
+      }
     } catch (printErr: unknown) {
-      const msg = printErr instanceof Error ? printErr.message : String(printErr);
-      console.warn('[Printer] Receipt print bypassed:', msg);
+      console.warn('[Bridge Printer Offline] Launching browser thermal receipt fallback.');
+      this.openBrowserReceiptPreview(tx, companyProfile);
     }
+  }
+
+  public openBrowserReceiptPreview(tx: TransactionRecord, company: MarketCompanyProfile): void {
+    const printWin = window.open('', '_blank', 'width=440,height=750,menubar=no,toolbar=no,location=no,status=no');
+    if (!printWin) {
+      alert('Το πρόγραμμα περιήγησης μπλόκαρε το παράθυρο εκτύπωσης. Επιτρέψτε τα popups για το ταμείο.');
+      return;
+    }
+
+    const items = tx.items || [];
+    const itemsHtml = items.map(item => {
+      const qtyStr = item.product?.isWeighted 
+        ? `${Number(item.quantity).toFixed(3)} kg` 
+        : `${item.quantity}x`;
+      const unitPriceStr = `€${Number(item.unitPrice || 0).toFixed(2)}`;
+      const lineTotalStr = `€${Number(item.lineTotal || (item.unitPrice ?? 0 * item.quantity)).toFixed(2)}`;
+
+      return `
+        <tr>
+          <td style="padding: 2px 0; text-align: left; vertical-align: top;">
+            <div style="font-weight: bold;">${item.product?.name || 'Προϊόν'}</div>
+            <div style="font-size: 10px; color: #444;">${qtyStr} @ ${unitPriceStr}</div>
+          </td>
+          <td style="padding: 2px 0; text-align: right; vertical-align: top; font-weight: bold; white-space: nowrap;">
+            ${lineTotalStr}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const vatRate = 13; // Greek grocery standard VAT
+    const grossTotal = Number(tx.grandTotal || 0);
+    const netTotal = grossTotal / (1 + vatRate / 100);
+    const vatTotal = grossTotal - netTotal;
+
+    const receiptDate = tx.timestamp ? new Date(tx.timestamp) : new Date();
+    const dateFormatted = receiptDate.toLocaleDateString('el-GR');
+    const timeFormatted = receiptDate.toLocaleTimeString('el-GR');
+
+    const paymentLabel = 
+      tx.paymentMethod === 'Card' ? 'ΚΑΡΤΑ / POS' :
+      tx.paymentMethod === 'Split' ? 'ΜΕΙΚΤΗ (ΜΕΤΡΗΤΑ + ΚΑΡΤΑ)' :
+      tx.paymentMethod === 'Debit' ? 'ΒΕΡΕΣΕ (ΤΕΦΤΕΡΙ)' : 'ΜΕΤΡΗΤΑ';
+
+    printWin.document.open();
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html lang="el">
+      <head>
+        <meta charset="utf-8" />
+        <title>Απόδειξη #${tx.id || ''}</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            color: #000;
+            width: 72mm;
+            margin: 0 auto;
+            padding: 8px 4px;
+            line-height: 1.25;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: 900; }
+          .flex { display: flex; justify-content: space-between; }
+          .divider { border-top: 1px dashed #000; margin: 5px 0; }
+          .double-divider { border-top: 2px solid #000; margin: 6px 0; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          .qr-placeholder { font-size: 9px; word-break: break-all; margin-top: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 13px;">${company.storeName || 'SUPER MARKET'}</div>
+        <div class="center">${company.address || ''}</div>
+        <div class="center">ΑΦΜ: ${company.afm || '-'} • ΔΟΥ: ${company.doy || '-'}</div>
+        <div class="center">ΤΗΛ: ${company.phone || '-'}</div>
+
+        <div class="double-divider"></div>
+        <div class="center bold">ΝΟΜΙΜΗ ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ</div>
+        <div class="center" style="font-size: 10px;">ΑΡ. ΣΥΝΑΛΛΑΓΗΣ: #${tx.id || '---'}</div>
+        <div class="divider"></div>
+
+        <div class="flex">
+          <span>ΗΜ/ΝΙΑ: ${dateFormatted}</span>
+          <span>ΩΡΑ: ${timeFormatted}</span>
+        </div>
+        <div class="flex">
+          <span>ΤΑΜΙΑΣ: ${tx.cashierName || 'Ταμίας'}</span>
+        </div>
+
+        <div class="divider"></div>
+        <table>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+        <div class="divider"></div>
+
+        <div class="flex" style="font-size: 10px;">
+          <span>ΚΑΘΑΡΗ ΑΞΙΑ:</span>
+          <span>€${netTotal.toFixed(2)}</span>
+        </div>
+        <div class="flex" style="font-size: 10px;">
+          <span>Φ.Π.Α. (${vatRate}%):</span>
+          <span>€${vatTotal.toFixed(2)}</span>
+        </div>
+        
+        <div class="double-divider"></div>
+        <div class="flex bold" style="font-size: 14px;">
+          <span>ΣΥΝΟΛΟ:</span>
+          <span>€${grossTotal.toFixed(2)}</span>
+        </div>
+        <div class="divider"></div>
+
+        <div class="flex">
+          <span>ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ:</span>
+          <span class="bold">${paymentLabel}</span>
+        </div>
+
+        ${tx.cashTendered ? `
+          <div class="flex">
+            <span>ΜΕΤΡΗΤΑ:</span>
+            <span>€${Number(tx.cashTendered).toFixed(2)}</span>
+          </div>
+        ` : ''}
+
+        ${tx.changeDue ? `
+          <div class="flex bold">
+            <span>ΡΕΣΤΑ:</span>
+            <span>€${Number(tx.changeDue).toFixed(2)}</span>
+          </div>
+        ` : ''}
+
+        ${tx.mydataMark ? `
+          <div class="divider"></div>
+          <div class="center bold" style="font-size: 10px;">myDATA MARK: ${tx.mydataMark}</div>${tx.mydataUid ? `<div class="center" style="font-size: 9px;">UID: ${tx.mydataUid}</div>` : ''}
+        ` : ''}
+
+        <div class="double-divider"></div>
+        <div class="center bold" style="font-size: 10px;">ΕΥΧΑΡΙΣΤΟΥΜΕ ΓΙΑ ΤΗΝ ΠΡΟΤΙΜΗΣΗ ΣΑΣ!</div>
+        <div class="center" style="font-size: 9px; margin-top: 4px;">maranth pos • digital receipt</div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `);
+    printWin.document.close();
   }
 
   public openEmployeeModal(): void {
@@ -1117,6 +1305,14 @@ public combinedPaymentTotal = computed(() => {
   }
 
   public selectProduct(product: Product): void {
+    // 1. Expired Guard -> Open Modal
+  if (product.expire && this.checkExpiryStatus(product.expire) === 'EXPIRED') {
+    this.pendingExpiredProduct.set(product);
+    this.showExpiredModal.set(true);
+    this.searchQuery.set('');
+    this.searchResults.set([]);
+    return;
+  }
     const currentStock = product.stockQuantity ?? 0;
 
     if (currentStock <= 0) {

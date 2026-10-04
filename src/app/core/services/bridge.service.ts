@@ -165,9 +165,6 @@ export class BridgeService implements OnDestroy {
   }
 
   /**
-   * Print X or Z Shift Report via maranth-bridge.exe
-   */
-  /**
    * Print X or Z Shift Report via maranth-bridge.exe with automatic browser fallback
    */
   public async printShiftReport(shift: any, reportType: 'X' | 'Z', companyProfile?: any): Promise<boolean> {

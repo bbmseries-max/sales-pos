@@ -1,0 +1,65 @@
+@if (isOpen && product) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+    <div class="bg-slate-900 border-2 border-amber-500/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 font-sans">
+      
+      <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-3xl mx-auto shadow-inner">
+        ⏳
+      </div>
+
+      <div class="text-center space-y-1">
+        <h3 class="text-lg font-black text-amber-400 uppercase tracking-wide">ΠΡΟΕΙΔΟΠΟΙΗΣΗ ΛΗΞΗΣ ΠΡΟΪΟΝΤΟΣ</h3>
+        <p class="text-xs font-mono text-slate-400">Το σύστημα δείχνει ότι το είδος έχει λήξει</p>
+      </div>
+
+      <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-1.5 font-mono text-xs">
+        <div class="text-sm font-bold text-white truncate">{{ product.name }}</div>
+        <div class="flex justify-between text-slate-400">
+          <span>Barcode:</span>
+          <span class="text-slate-200">{{ product.barcode || '—' }}</span>
+        </div>
+        <div class="flex justify-between text-slate-400">
+          <span>Καταχωρημένη Λήξη:</span>
+          <span class="text-rose-400 font-bold">{{ product.expire ? (product.expire | date:'dd/MM/yyyy') : '—' }}</span>
+        </div>
+      </div>
+
+      <!-- Quick Correction Section -->
+      <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-left space-y-2">
+        <label class="block text-xs font-bold text-slate-300">
+          Το προϊόν στο ράφι είναι εντάξει; Ενημέρωση νέας λήξης:
+        </label>
+        <div class="flex gap-2">
+          <input 
+            type="date" 
+            [ngModel]="newDate()" 
+            (ngModelChange)="newDate.set($event)" 
+            class="flex-1 h-11 bg-slate-900 border border-slate-700 focus:border-amber-500 rounded-xl px-3 font-mono text-xs text-white outline-none"
+          />
+          <button 
+            type="button" 
+            (click)="handleUpdateDate()" 
+            class="px-4 h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition cursor-pointer active:scale-95 shadow-md">
+            Αποθήκευση &amp; Προσθήκη
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex gap-2.5 pt-1">
+        <button 
+          type="button" 
+          (click)="cancel.emit()" 
+          class="flex-1 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer">
+          Ακύρωση
+        </button>
+        <button 
+          type="button" 
+          (click)="handleProceedAsIs()" 
+          class="flex-1 h-11 bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold rounded-xl text-xs transition cursor-pointer">
+          Προσθήκη ως έχει
+        </button>
+      </div>
+
+    </div>
+  </div>
+}

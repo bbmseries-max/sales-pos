@@ -214,6 +214,7 @@ export class ShelfLabelsComponent implements OnInit {
     const items = this.flattenedLabels();
     if (items.length === 0) return;
 
+    // 1. Hardware thermal printer bridge check
     if (this.labelSize() === 'THERMAL_ROLL' && this.bridge.isBridgeAvailable()) {
       try {
         this.isPrintingBridge.set(true);
@@ -229,18 +230,48 @@ export class ShelfLabelsComponent implements OnInit {
           }))
         );
 
-        if (printed) {
-          return;
-        }
+        if (printed) return;
       } catch (err) {
-        console.warn('[Bridge] Label TSPL streaming failed, falling back to browser print:', err);
+        console.warn('[Bridge] Label streaming failed, using browser fallback:', err);
       } finally {
         this.isPrintingBridge.set(false);
       }
     }
 
-    // Default Browser Print (A4 Sheet or fallback)
-    window.print();
+    // 2. Clear any old injected @page rule
+    const existing = document.getElementById('dynamic-page-print-size');
+    if (existing) {
+      existing.remove();
+    }
+
+    // 3. Inject strict Portrait page dimensions
+    const styleEl = document.createElement('style');
+    styleEl.id = 'dynamic-page-print-size';
+
+    if (this.labelSize() === 'THERMAL_ROLL') {
+      // 50mm width x 30mm height roll (strictly portrait feed)
+      styleEl.textContent = `
+        @page {
+          size: 50mm 30mm portrait;
+          margin: 0 !important;
+        }
+      `;
+    } else {
+      // Strict standard A4 Portrait sheet
+      styleEl.textContent = `
+        @page {
+          size: A4 portrait;
+          margin: 4mm 3mm !important;
+        }
+      `;
+    }
+
+    document.head.appendChild(styleEl);
+
+    // Allow CSS recalculation, then trigger print
+    setTimeout(() => {
+      window.print();
+    }, 60);
   }
 
   public backToPos(): void {
