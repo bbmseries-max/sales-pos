@@ -1,0 +1,64 @@
+@if (isOpen) {
+  <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+      
+      <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+        <h3 class="text-sm font-black text-amber-400 uppercase tracking-wider">🇬🇷 Ρυθμίσεις myDATA (ΑΑΔΕ)</h3>
+        <button (click)="close.emit()" class="text-slate-400 hover:text-slate-100 font-mono text-base cursor-pointer">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs font-mono">
+        <div>
+          <label class="block font-bold text-slate-400 mb-1">Περιβάλλον</label>
+          <select 
+            [ngModel]="form().environment" 
+            (ngModelChange)="form.set({ ...form(), environment: $event })" 
+            class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none cursor-pointer">
+            <option value="sandbox">Δοκιμαστικό (Sandbox Dev API)</option>
+            <option value="production">Παραγωγικό (Live Production AADE)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-400 mb-1">Α.Φ.Μ. Επιχείρησης</label>
+          <input 
+            type="text" 
+            [ngModel]="form().issuerAfm" 
+            (ngModelChange)="form.set({ ...form(), issuerAfm: $event })" 
+            class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
+          />
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-400 mb-1">aade-user-id</label>
+          <input 
+            type="text" 
+            [ngModel]="form().aadeUserId" 
+            (ngModelChange)="form.set({ ...form(), aadeUserId: $event })" 
+            class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
+          />
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-400 mb-1">Ocp-Apim-Subscription-Key</label>
+          <input 
+            type="password" 
+            [ngModel]="form().subscriptionKey" 
+            (ngModelChange)="form.set({ ...form(), subscriptionKey: $event })" 
+            class="w-full h-10 bg-slate-950 border border-slate-700 rounded-xl px-3 text-slate-200 font-bold outline-none"
+          />
+        </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-800 flex justify-end">
+        <button 
+          type="button" 
+          (click)="handleSave()" 
+          class="h-10 px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition cursor-pointer">
+          Αποθήκευση &amp; Κλείσιμο
+        </button>
+      </div>
+
+    </div>
+  </div>
+}

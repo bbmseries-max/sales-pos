@@ -1,0 +1,49 @@
+@if (isOpen && product) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+    <div class="bg-slate-900 border-2 border-rose-600/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 text-center animate-in zoom-in-95 duration-150">
+      
+      <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center text-3xl mx-auto shadow-lg shadow-rose-950/50">
+        ⚠️
+      </div>
+
+      <div class="space-y-1">
+        <h3 class="text-xl font-black text-rose-400 uppercase tracking-wide">ΕΞΑΝΤΛΗΜΕΝΟ ΑΠΟΘΕΜΑ</h3>
+        <p class="text-xs font-mono text-slate-400">Το προϊόν δεν μπορεί να προστεθεί στο καλάθι</p>
+      </div>
+
+      <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2">
+        <div class="flex items-center gap-3">
+          <div class="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
+            <img 
+              [src]="imageUrl" 
+              (error)="onImageError($event)" 
+              alt="" 
+              class="w-full h-full object-contain"
+            />
+          </div>
+          <div class="min-w-0 flex-1">
+            <span class="text-sm font-extrabold text-white block truncate">{{ product.name }}</span>
+            <span class="text-xs font-mono text-slate-400 block mt-0.5">{{ product.barcode || '—' }}</span>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center pt-2 border-t border-slate-800/80 text-xs font-mono">
+          <span class="text-slate-400">Διαθέσιμο Απόθεμα:</span>
+          <span class="px-2.5 py-1 rounded-lg font-black text-sm bg-rose-950 text-rose-400 border border-rose-800">
+            {{ product.stockQuantity }} {{ product.isWeighted ? 'kg' : 'τεμ' }}
+          </span>
+        </div>
+      </div>
+
+      <button 
+        type="button" 
+        (click)="close.emit()" 
+        class="w-full h-14 bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-base rounded-2xl transition cursor-pointer shadow-lg shadow-rose-600/30"
+        autofocus
+      >
+        ΕΝΤΑΞΕΙ (ΚΛΕΙΣΙΜΟ) [ENTER]
+      </button>
+
+    </div>
+  </div>
+}

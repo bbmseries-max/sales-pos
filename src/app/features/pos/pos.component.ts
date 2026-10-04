@@ -10,6 +10,11 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
+import { PosOutOfStockModalComponent } from './components/pos-out-of-stock-modal/pos-out-of-stock-modal.component';
+import { PosMydataModalComponent } from './components/pos-mydata-modal/pos-mydata-modal.component';
+import { PosWeightModalComponent } from './components/pos-weight-modal/pos-weight-modal.component';
+import { PosDiscountModalComponent } from './components/pos-discount-modal/pos-discount-modal.component';
+import { PosPaymentModalComponent, PaymentCompletionEvent } from './components/pos-payment-modal/pos-payment-modal/pos-payment-modal.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -34,6 +39,8 @@ import { CashierShiftService } from '../../core/services/cashier-shift.service';
 import { MarketCatalogService, ExternalProductMatch } from '../../core/services/market-catalog.service';
 import { CartService } from '../../core/services/cart.service';
 import { SyncService } from '../../core/services/sync.service';
+import { PosEmployeeModalComponent } from './components/pos-employee-modal/pos-employee-modal.component';
+import { PosNewShiftModalComponent, StartShiftPayload } from './components/pos-new-shift-modal/pos-new-shift-modal.component';
 import { ScaleBarcodeService } from '../../core/services/scale-barcode.service';
 import { MyDataService } from '../../core/services/mydata.service';
 import { CustomerLoyaltyService } from '../../core/services/customer-loyalty.service';
@@ -72,7 +79,12 @@ export interface ShiftPaymentSummary {
   },
   imports: [
     CommonModule, 
+    PosPaymentModalComponent,
     FormsModule,
+    PosEmployeeModalComponent,
+    PosNewShiftModalComponent,
+    PosOutOfStockModalComponent,
+    PosMydataModalComponent,
     PosQuickRegisterModalComponent,
     PosPriceCheckModalComponent,
     PosCustomerModalComponent,
@@ -81,6 +93,8 @@ export interface ShiftPaymentSummary {
     PosStoreSwitcherModalComponent,
     NewStoreModalComponent,
     PosDenominationModalComponent,
+    PosWeightModalComponent,
+    PosDiscountModalComponent,
     RouterLink
   ],
   templateUrl: './pos.component.html'
@@ -195,10 +209,14 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
     case 'DEBIT': return 'Debit';
    }
   }
-  
 
-  // Customer State
-// public customers = signal<Array<{ id: string; name: string; phone?: string; currentDebt: number }>>([]);
+  public async handleStartShiftModalSubmit(payload: StartShiftPayload): Promise<void> {
+  this.selectedShiftCashierId.set(payload.cashierId);
+  this.nextShiftCashierPin.set(payload.pin);
+  this.nextShiftFloat.set(payload.openingFloat);
+  await this.confirmStartNewShift();
+}
+  
 // public selectedCustomerId = signal<string | null>(null);
 public customerInputName = signal<string>('');
 public isCreatingCustomer = signal<boolean>(false);
@@ -238,7 +256,80 @@ public async createCustomerOnTheFly(): Promise<void> {
   }
 }
 
-// Cash remainder is automatically computed from the total
+public async handlePaymentComplete(event: PaymentCompletionEvent): Promise<void> {
+  if (this.isCompletingSale()) return;
+  this.isCompletingSale.set(true);
+
+  const mappedMethod: DbPaymentMethod = 
+    event.method === 'CARD' ? 'Card' : 
+    event.method === 'SPLIT' ? 'Split' : 
+    event.method === 'DEBIT' ? 'Debit' : 'Cash';
+
+  const cashierName = this.shiftService.currentCashier()?.name || 
+    `Ταμίας [${this.tenantConfig.activeShop()?.code || 'REG'}]`;
+
+  try {
+    // If a new customer name was entered on-the-fly for debit:
+    let targetCustomerId = event.customerId;
+    if (event.method === 'DEBIT' && !targetCustomerId && event.newCustomerName) {
+      const now = new Date().toISOString();
+      const newCust: Customer = {
+        id: `CUST-${Date.now().toString(36).toUpperCase()}`,
+        name: event.newCustomerName,
+        phone: '',
+        loyaltyPoints: 0,
+        totalSpent: 0,
+        totalVisits: 0,
+        lastVisit: now,
+        currentDebt: 0,
+        createdAt: now
+      };
+      await marketDb.customers.add(newCust);
+      await this.loadCustomers();
+      targetCustomerId = newCust.id;
+    }
+
+    // 1. Checkout Cart
+    const tx = await this.cart.checkout(
+      mappedMethod,
+      cashierName,
+      event.cashTendered,
+      event.changeDue
+    );
+
+    // 2. Record to Shift
+    const total = Number(tx.grandTotal) || 0;
+    await this.shiftService.recordSaleToShift(
+      total,
+      mappedMethod,
+      false,
+      event.splitDetails
+    );
+
+    // 3. Update Debit balance if DEBIT
+    if (event.method === 'DEBIT' && targetCustomerId) {
+      const customer = await marketDb.customers.get(targetCustomerId);
+      if (customer) {
+        const newDebt = parseFloat(((Number(customer.currentDebt) || 0) + total).toFixed(2));
+        await marketDb.customers.update(targetCustomerId, { currentDebt: newDebt });
+        await this.loadCustomers();
+      }
+    }
+
+    this.showPaymentModal.set(false);
+    await this.handleFiscalPostProcessing(tx);
+    this.flashFeedback('✔ Η πώληση ολοκληρώθηκε!', 'success');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[Sale Error]', msg);
+    this.flashFeedback('⛔ Σφάλμα: ' + msg, 'error');
+  } finally {
+    this.isCompletingSale.set(false);
+    this.focusBarcodeInput?.();
+  }
+}
+
+// OLD Code Cash remainder is automatically computed from the total
 public splitCashAmount = computed(() => {
   const total = Number(this.cartTotal() || 0);
   const card = Number(this.splitCardAmount() || 0);

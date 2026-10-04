@@ -1,0 +1,58 @@
+@if (isOpen) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+    <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-150">
+      
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-black text-amber-400 uppercase tracking-wide">
+          🏷 {{ scope === 'CART' ? 'ΕΚΠΤΩΣΗ ΣΥΝΟΛΟΥ ΚΑΛΑΘΙΟΥ' : 'ΕΚΠΤΩΣΗ ΕΙΔΟΥΣ' }}
+        </h3>
+        <button 
+          type="button" 
+          (click)="close.emit()" 
+          class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer transition">
+          ✕
+        </button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-2.5">
+        @for (pct of [5, 10, 20, 50]; track pct) {
+          <button 
+            type="button" 
+            (click)="applyPreset(pct)" 
+            class="h-14 bg-slate-950 border-2 border-slate-800 hover:border-amber-500 text-lg font-mono font-black text-slate-100 rounded-2xl transition cursor-pointer active:scale-95">
+            -{{ pct }}%
+          </button>
+        }
+      </div>
+
+      <div class="space-y-2">
+        <label class="text-xs font-bold text-slate-400 uppercase font-mono">Προσαρμοσμένο Ποσοστό (%)</label>
+        <div class="flex gap-2">
+          <input 
+            type="number" 
+            min="0" 
+            max="100" 
+            [ngModel]="customDiscount()" 
+            (ngModelChange)="customDiscount.set($event)" 
+            (keydown.enter)="applyCustom()"
+            class="flex-1 h-12 bg-slate-950 border border-slate-700 rounded-xl px-4 text-center font-mono font-black text-xl text-amber-400 focus:outline-none focus:border-amber-400"
+          />
+          <button 
+            type="button" 
+            (click)="applyCustom()" 
+            class="px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm transition cursor-pointer active:scale-95">
+            Εφαρμογή
+          </button>
+        </div>
+      </div>
+
+      <button 
+        type="button" 
+        (click)="applyPreset(0)" 
+        class="w-full h-11 bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 font-bold text-xs rounded-xl transition cursor-pointer">
+        Κατάργηση Έκπτωσης (0%)
+      </button>
+
+    </div>
+  </div>
+}
