@@ -72,6 +72,12 @@ export class MarketDatabase extends Dexie {
       goodsReceipts: 'id, supplierId, invoiceNumber, receivedAt, storeId, _syncStatus',
       stockLogs: 'id, productId, storeId, cashierId, timestamp, _syncStatus'
     });
+
+    // Version 2: Index loyalty card barcode and customer debt on customers, and customerId on transactions
+    this.version(2).stores({
+      customers: 'id, phone, cardBarcode, name, afm, currentDebt',
+      transactions: 'id, timestamp, paymentMethod, customerPhone, customerId, storeId, mydataMark, _syncStatus'
+    });
   }
 }
 

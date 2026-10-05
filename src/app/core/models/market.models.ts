@@ -30,9 +30,12 @@ export interface MarketCompanyProfile {
   hardwareSettings?: StoreHardwareSettings;
 }
 
+export type TransactionType = 'SALE' | 'RETURN' | 'DEBT_SETTLEMENT';
+
 export interface TransactionRecord {
   id: string;
   timestamp: string;
+  type?: TransactionType;     // Default 'SALE', or 'DEBT_SETTLEMENT' for debt payments
   storeId?: string;
   items: CartItem[];
   subtotal: number;
@@ -45,13 +48,16 @@ export interface TransactionRecord {
   changeDue?: number;
   vatBreakdown?: Record<string | number, { net: number; vat: number; gross: number }>;
 
-  // Customer & Loyalty
+  // Customer, Loyalty & Debt
   customerId?: string;
   customerPhone?: string;
   customerName?: string;
+  customerCardBarcode?: string;
   pointsEarned?: number;
   pointsRedeemed?: number;
   discountApplied?: number;
+  debtPreviousBalance?: number; // Snapshot of debt before this tx
+  debtRemainingBalance?: number;// Snapshot of debt after this tx
 
   // AADE myDATA
   mydataMark?: string;

@@ -10,6 +10,7 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
+import { PosCustomerHubModalComponent, DebitRepaymentEvent } from './components/pos-customer-hub-modal/pos-customer-hub-modal.component';
 import { PosExpiredModalComponent, ExpiredResolutionEvent } from './components/pos-expired-modal/pos-expired-modal.component';
 import { PosOutOfStockModalComponent } from './components/pos-out-of-stock-modal/pos-out-of-stock-modal.component';
 import { PosMydataModalComponent } from './components/pos-mydata-modal/pos-mydata-modal.component';
@@ -72,6 +73,7 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
   },
   imports: [
     CommonModule, 
+    PosCustomerHubModalComponent,
     PosPaymentModalComponent,
     FormsModule,
     PosEmployeeModalComponent,
@@ -195,6 +197,7 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   public selectedCustomerId = signal<string | null>(null);
   public customers = signal<Customer[]>([]);
   public showExpiredModal = signal<boolean>(false);
+  public showCustomerHubModal = signal<boolean>(false);
   public pendingExpiredProduct = signal<Product | null>(null);
 
   // Mapping to DB
@@ -207,6 +210,23 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
     default: return 'Cash';
    }
   }
+
+  public handleCustomerSelectedForCart(customer: Customer): void {
+  // If your cart service supports attaching customer:
+  if ((this.cart as any).setCustomer) {
+    (this.cart as any).setCustomer(customer);
+  }
+  this.flashFeedback(`✔ Επιλέχθηκε πελάτης: ${customer.name} (${customer.loyaltyPoints || 0} πόντοι)`, 'success');
+  this.focusBarcodeInput();
+}
+
+public handleDebitRepaymentCompleted(event: DebitRepaymentEvent): void {
+  this.flashFeedback(
+    `✔ Είσπραξη €${event.amountPaid.toFixed(2)} (${event.customer.name}) - Νέο Υπόλοιπο: €${event.remainingDebt.toFixed(2)}`,
+    'success'
+  );
+  this.focusBarcodeInput();
+}
 
   public handleExpiredProductResolution(event: ExpiredResolutionEvent): void {
   this.showExpiredModal.set(false);

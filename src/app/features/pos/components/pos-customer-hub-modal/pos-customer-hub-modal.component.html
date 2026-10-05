@@ -1,0 +1,289 @@
+@if (isOpen) {
+  <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150 font-sans">
+    <div class="bg-slate-900 border-2 border-slate-800 w-full max-w-5xl h-[680px] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+      
+      <!-- Header -->
+      <header class="h-16 px-6 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl">
+            👥
+          </div>
+          <div>
+            <h2 class="text-base font-black text-slate-100 uppercase tracking-wide">
+              Κέντρο Πελατών (Loyalty &amp; Βερεσέ)
+            </h2>
+            <span class="text-xs font-mono text-slate-400">Κάρτες Πιστότητας, Πόντοι &amp; Ανοιχτές Οφειλές</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button 
+            type="button" 
+            (click)="startNewCustomer()"
+            class="h-9 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow">
+            <span>+ Νέος Πελάτης</span>
+          </button>
+          <div class="h-6 w-px bg-slate-800"></div>
+          <button 
+            type="button" 
+            (click)="close.emit()" 
+            class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition">
+            ✕
+          </button>
+        </div>
+      </header>
+
+      <!-- Grid -->
+      <div class="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
+        
+        <!-- LEFT: Filters & Customer List (Col 7) -->
+        <section class="col-span-7 border-r border-slate-800 flex flex-col bg-slate-900/50 p-4 overflow-hidden">
+          
+          <!-- Filters & Search -->
+          <div class="space-y-2 mb-3">
+            <div class="relative">
+              <input 
+                type="text"
+                placeholder="Αναζήτηση με Όνομα, Τηλέφωνο, Barcode Κάρτας ή ΑΦΜ..."
+                [ngModel]="searchQuery()"
+                (ngModelChange)="searchQuery.set($event)"
+                class="w-full h-11 bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl pl-9 pr-3 text-xs text-white placeholder-slate-500 outline-none font-mono"
+              />
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">🔍</span>
+            </div>
+
+            <!-- Tab Pills -->
+            <div class="flex gap-2">
+              <button 
+                type="button" 
+                (click)="activeTab.set('ALL')"
+                [class.bg-slate-800]="activeTab() === 'ALL'"
+                [class.text-amber-400]="activeTab() === 'ALL'"
+                [class.text-slate-400]="activeTab() !== 'ALL'"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer">
+                Όλοι ({{ customers().length }})
+              </button>
+              <button 
+                type="button" 
+                (click)="activeTab.set('DEBTORS')"
+                [class.bg-slate-800]="activeTab() === 'DEBTORS'"
+                [class.text-rose-400]="activeTab() === 'DEBTORS'"
+                [class.text-slate-400]="activeTab() !== 'DEBTORS'"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5">
+                <span>Τεφτέρι / Οφειλές</span>
+                <span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px]">€{{ totalOutstandingDebt().toFixed(2) }}</span>
+              </button>
+              <button 
+                type="button" 
+                (click)="activeTab.set('LOYALTY')"
+                [class.bg-slate-800]="activeTab() === 'LOYALTY'"
+                [class.text-emerald-400]="activeTab() === 'LOYALTY'"
+                [class.text-slate-400]="activeTab() !== 'LOYALTY'"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer">
+                Loyalty Card
+              </button>
+            </div>
+          </div>
+
+          <!-- Customer Records -->
+          <div class="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
+            @for (c of filteredCustomers(); track c.id) {
+              <div 
+                (click)="selectCustomer(c)"
+                [class.border-amber-500]="selectedCustomer()?.id === c.id"
+                [class.bg-slate-800]="selectedCustomer()?.id === c.id"
+                [class.bg-slate-950]="selectedCustomer()?.id !== c.id"
+                class="p-3 rounded-2xl border border-slate-800 hover:border-slate-700 transition cursor-pointer flex items-center justify-between">
+                
+                <div class="min-w-0 flex-1 pr-3">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-100 truncate">{{ c.name }}</span>
+                    @if (c.cardBarcode) {
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-blue-500/20 text-blue-300 border border-blue-500/30">💳 {{ c.cardBarcode }}</span>
+                    }
+                  </div>
+                  <div class="text-[11px] font-mono text-slate-400 mt-0.5 flex gap-3">
+                    <span>📞 {{ c.phone }}</span>
+                    <span>🎁 {{ c.loyaltyPoints || 0 }} πόντοι</span>
+                  </div>
+                </div>
+
+                <div class="text-right font-mono">
+                  @if (Number(c.currentDebt || 0) > 0) {
+                    <span class="text-xs font-black text-rose-400 block">€{{ Number(c.currentDebt).toFixed(2) }}</span>
+                    <span class="text-[9px] text-rose-400/80 uppercase">Οφειλή</span>
+                  } @else {
+                    <span class="text-xs font-bold text-slate-500 block">€0.00</span>
+                    <span class="text-[9px] text-slate-600 uppercase">Καθαρό</span>
+                  }
+                </div>
+
+              </div>
+            } @empty {
+              <div class="text-center py-12 text-slate-500 text-xs font-mono">
+                Δεν βρέθηκαν πελάτες.
+              </div>
+            }
+          </div>
+
+        </section>
+
+        <!-- RIGHT: Detail / New / Settlement Panel (Col 5) -->
+        <section class="col-span-5 bg-slate-950 p-5 flex flex-col justify-between overflow-y-auto">
+          
+          <!-- Mode A: New Customer Form -->
+          @if (isCreatingCustomer()) {
+            <div class="space-y-3">
+              <h3 class="text-sm font-black text-amber-400 uppercase tracking-wide">Δημιουργία Νέου Πελάτη</h3>
+              
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Ονοματεπώνυμο *</label>
+                <input type="text" [(ngModel)]="newCust().name" class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500" placeholder="π.χ. Γιάννης Παπαδόπουλος" />
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Τηλέφωνο (Κλειδί Αναζήτησης) *</label>
+                <input type="text" [(ngModel)]="newCust().phone" class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500 font-mono" placeholder="69..." />
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Barcode / Αριθμός Κάρτας Loyalty</label>
+                <input type="text" [(ngModel)]="newCust().cardBarcode" class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs font-mono text-amber-400 outline-none focus:border-amber-500" placeholder="Σκανάρετε ή πληκτρολογήστε κάρτα..." />
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-slate-400 uppercase">ΑΦΜ (Προαιρετικό)</label>
+                  <input type="text" [(ngModel)]="newCust().afm" class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500 font-mono" placeholder="9 ψηφία" />
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-slate-400 uppercase">Όριο Πίστωσης (€)</label>
+                  <input type="number" [(ngModel)]="newCust().maxCreditLimit" class="w-full h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-xs text-white outline-none focus:border-amber-500 font-mono" placeholder="150" />
+                </div>
+              </div>
+
+              <div class="flex gap-2 pt-4">
+                <button type="button" (click)="isCreatingCustomer.set(false)" class="flex-1 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition">Ακύρωση</button>
+                <button type="button" (click)="saveNewCustomer()" [disabled]="!newCust().name || !newCust().phone" class="flex-1 h-11 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-black rounded-xl text-xs transition shadow-md">Αποθήκευση</button>
+              </div>
+            </div>
+
+          <!-- Mode B: Selected Customer Detail & Actions -->
+          } @else if (selectedCustomer(); as cust) {
+            <div class="space-y-4">
+              
+              <div class="border-b border-slate-800 pb-3">
+                <span class="text-[10px] font-mono uppercase text-slate-500 block">Καρτέλα Πελάτη</span>
+                <h3 class="text-base font-black text-amber-400 truncate">{{ cust.name }}</h3>
+                <div class="flex items-center gap-3 mt-1 text-xs font-mono text-slate-400">
+                  <span>📞 {{ cust.phone }}</span>
+                  @if (cust.cardBarcode) {
+                    <span>💳 {{ cust.cardBarcode }}</span>
+                  }
+                </div>
+              </div>
+
+              <!-- Metrics -->
+              <div class="grid grid-cols-2 gap-2">
+                <div class="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                  <span class="text-[10px] text-slate-500 block uppercase">Πόντοι Loyalty</span>
+                  <span class="text-base font-mono font-black text-emerald-400">{{ cust.loyaltyPoints || 0 }} pts</span>
+                </div>
+                <div class="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                  <span class="text-[10px] text-slate-500 block uppercase">Οφειλή Βερεσέ</span>
+                  <span class="text-base font-mono font-black text-rose-400">€{{ Number(cust.currentDebt || 0).toFixed(2) }}</span>
+                </div>
+              </div>
+
+              <!-- If in POS Mode: Attach to Active Cart -->
+              @if (mode === 'POS') {
+                <button 
+                  type="button" 
+                  (click)="attachToCartAndClose()"
+                  class="w-full h-11 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition shadow">
+                  <span>🛒 Σύνδεση με το Τρέχον Καλάθι</span>
+                </button>
+              }
+
+              <!-- Debt Settle Section (Only if debt > 0) -->
+              @if (Number(cust.currentDebt || 0) > 0) {
+                <div class="border-t border-slate-800 pt-3 space-y-2">
+                  <div class="flex justify-between items-center">
+                    <label class="text-[10px] font-black uppercase text-slate-400 block">Εξόφληση Οφειλής</label>
+                    <span class="text-[10px] font-mono text-slate-500">Όριο: €{{ cust.maxCreditLimit || 150 }}</span>
+                  </div>
+                  
+                  <div class="flex gap-2">
+                    <input 
+                      type="number" 
+                      min="0"
+                      [max]="Number(cust.currentDebt || 0)"
+                      [ngModel]="paymentAmount()"
+                      (ngModelChange)="paymentAmount.set($event)"
+                      class="flex-1 h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 font-mono font-black text-emerald-400 outline-none text-sm"
+                    />
+                    <button type="button" (click)="paymentAmount.set(Number(cust.currentDebt || 0))" class="px-2.5 h-10 bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono text-xs font-bold rounded-xl transition">Όλο</button>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <button 
+                      type="button" 
+                      (click)="paymentMethod.set('Cash')"
+                      [class.bg-emerald-600]="paymentMethod() === 'Cash'"
+                      [class.text-white]="paymentMethod() === 'Cash'"
+                      [class.bg-slate-900]="paymentMethod() !== 'Cash'"
+                      class="h-9 rounded-xl border border-slate-700 font-bold text-xs text-slate-400 cursor-pointer">
+                      💵 Μετρητά
+                    </button>
+                    <button 
+                      type="button" 
+                      (click)="paymentMethod.set('Card')"
+                      [class.bg-blue-600]="paymentMethod() === 'Card'"
+                      [class.text-white]="paymentMethod() === 'Card'"
+                      [class.bg-slate-900]="paymentMethod() !== 'Card'"
+                      class="h-9 rounded-xl border border-slate-700 font-bold text-xs text-slate-400 cursor-pointer">
+                      💳 Κάρτα
+                    </button>
+                  </div>
+
+                  <button 
+                    type="button" 
+                    (click)="handleSettleDebt()"
+                    [disabled]="paymentAmount() <= 0 || isSubmitting()"
+                    class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black text-xs uppercase rounded-xl transition shadow flex items-center justify-center gap-2 cursor-pointer mt-1">
+                    <span>✔ Είσπραξη &amp; Απόδειξη</span>
+                  </button>
+                </div>
+              }
+
+              <!-- Recent Receipts History -->
+              @if (customerTransactions().length > 0) {
+                <div class="border-t border-slate-800 pt-3">
+                  <span class="text-[10px] font-mono uppercase text-slate-400 block mb-1.5">Πρόσφατες Συναλλαγές</span>
+                  <div class="space-y-1 max-h-24 overflow-y-auto text-xs font-mono text-slate-300">
+                    @for (tx of customerTransactions(); track tx.id) {
+                      <div class="flex justify-between py-0.5 border-b border-slate-800/40">
+                        <span>{{ tx.timestamp | date:'dd/MM HH:mm' }}</span>
+                        <span class="text-slate-400">{{ tx.paymentMethod }}</span>
+                        <span class="font-bold text-emerald-400">€{{ (tx.grandTotal || 0).toFixed(2) }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+
+            </div>
+          } @else {
+            <div class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+              <span class="text-3xl mb-2">👈</span>
+              <p class="text-xs font-mono">Επιλέξτε πελάτη από τη λίστα ή πατήστε "+ Νέος Πελάτης" για να διαχειριστείτε πόντους, κάρτα και οφειλές.</p>
+            </div>
+          }
+
+        </section>
+
+      </div>
+
+    </div>
+  </div>
+}
