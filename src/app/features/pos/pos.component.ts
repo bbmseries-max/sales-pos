@@ -10,6 +10,7 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
+import { printA4InvoiceDocument } from '../../core/utils/invoice-a4-print.util';
 import { PosCustomerHubModalComponent, DebitRepaymentEvent } from './components/pos-customer-hub-modal/pos-customer-hub-modal.component';
 import { PosExpiredModalComponent, ExpiredResolutionEvent } from './components/pos-expired-modal/pos-expired-modal.component';
 import { PosOutOfStockModalComponent } from './components/pos-out-of-stock-modal/pos-out-of-stock-modal.component';
@@ -198,6 +199,8 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   public customers = signal<Customer[]>([]);
   public showExpiredModal = signal<boolean>(false);
   public showCustomerHubModal = signal<boolean>(false);
+  public activeCustomer = signal<Customer | null>(null);
+  private autoPrintAfterCustomerSelect = signal<boolean>(false);
   public pendingExpiredProduct = signal<Product | null>(null);
 
   // Mapping to DB
@@ -211,14 +214,102 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
    }
   }
 
-  public handleCustomerSelectedForCart(customer: Customer): void {
-  // If your cart service supports attaching customer:
-  if ((this.cart as any).setCustomer) {
-    (this.cart as any).setCustomer(customer);
+  public printCurrentOrLastInvoice(): void {
+    // 1. Resolve customer: check our signal first, then cart fallback
+    let selectedCustomer = this.activeCustomer();
+    if (!selectedCustomer) {
+      if (typeof (this.cart as any).customer === 'function') {
+        selectedCustomer = (this.cart as any).customer();
+      } else if (typeof (this.cart as any).selectedCustomer === 'function') {
+        selectedCustomer = (this.cart as any).selectedCustomer();
+      }
+    }
+
+    // If no customer connected yet, mark flag and open the hub
+    if (!selectedCustomer) {
+      this.autoPrintAfterCustomerSelect.set(true);
+      alert('Για έκδοση τιμολογίου απαιτείται επιλογή πελάτη. Επιλέξτε ή καταχωρήστε πελάτη.');
+      this.showCustomerHubModal.set(true);
+      return;
+    }
+
+    if (!selectedCustomer.afm || selectedCustomer.afm.trim() === '') {
+      this.autoPrintAfterCustomerSelect.set(true);
+      alert(`Ο πελάτης "${selectedCustomer.name}" δεν έχει ΑΦΜ. Παρακαλώ συμπληρώστε το ΑΦΜ του.`);
+      this.showCustomerHubModal.set(true);
+      return;
+    }
+
+    // 2. Cart verification
+    const cartItems = this.cart.items();
+    if (!cartItems || cartItems.length === 0) {
+      alert('Το καλάθι είναι άδειο. Προσθέστε προϊόντα πριν την εκτύπωση τιμολογίου.');
+      return;
+    }
+
+    // 3. Subtotal, Tax and Grand Total calculations
+    const grandTotal = typeof (this.cart as any).grandTotal === 'function' 
+      ? (this.cart as any).grandTotal() 
+      : typeof (this.cart as any).total === 'function' 
+        ? (this.cart as any).total() 
+        : cartItems.reduce((acc: number, item: any) => acc + (item.lineTotal || (item.unitPrice * item.quantity)), 0);
+
+    let calculatedSubtotal = 0;
+    let calculatedTax = 0;
+
+    for (const item of cartItems) {
+      const gross = Number(item.lineTotal ?? ((item.unitPrice ?? 0) * item.quantity));
+      const rate = Number(item.product?.vatRate ?? 24);
+      const net = rate === 0 ? gross : gross / (1 + rate / 100);
+      calculatedSubtotal += net;
+      calculatedTax += (gross - net);
+    }
+
+    const txSnapshot: TransactionRecord = {
+      id: 'TX-INV-' + Date.now(),
+      timestamp: new Date().toISOString(),
+      items: cartItems,
+      subtotal: parseFloat(calculatedSubtotal.toFixed(2)),
+      taxAmount: parseFloat(calculatedTax.toFixed(2)),
+      grandTotal: parseFloat(grandTotal.toFixed(2)),
+      paymentMethod: 'Cash',
+      cashierName: this.shiftService.currentCashier()?.name || 'Ταμίας',
+      customerId: selectedCustomer.id,
+      customerName: selectedCustomer.name,
+      customerPhone: selectedCustomer.phone,
+      _syncStatus: 'pending'
+    };
+
+    // 4. Print A4 Invoice
+    printA4InvoiceDocument({
+      transaction: txSnapshot,
+      company: this.getActiveCompanyProfile(),
+      customer: selectedCustomer,
+      documentTypeTitle: 'ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ - ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ',
+      series: 'ΤΔΑ-Α'
+    });
   }
-  this.flashFeedback(`✔ Επιλέχθηκε πελάτης: ${customer.name} (${customer.loyaltyPoints || 0} πόντοι)`, 'success');
-  this.focusBarcodeInput();
-}
+
+  public handleCustomerSelected(cust: Customer): void {
+    this.activeCustomer.set(cust);
+
+    // If cart has a customer setter, update it too
+    if (typeof (this.cart as any).setCustomer === 'function') {
+      (this.cart as any).setCustomer(cust);
+    }
+
+    this.flashFeedback(`✔ Συνδέθηκε ο πελάτης: ${cust.name}`, 'success');
+    this.showCustomerHubModal.set(false);
+    this.focusBarcodeInput();
+
+    // If the cashier clicked "Τιμολόγιο Α4" first, auto-print right after selecting the customer!
+    if (this.autoPrintAfterCustomerSelect()) {
+      this.autoPrintAfterCustomerSelect.set(false);
+      setTimeout(() => {
+        this.printCurrentOrLastInvoice();
+      }, 150);
+    }
+  }
 
 public handleDebitRepaymentCompleted(event: DebitRepaymentEvent): void {
   this.flashFeedback(

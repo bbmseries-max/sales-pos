@@ -130,9 +130,8 @@
   <!-- ================= 2. MAIN CASHIER WORKSPACE ================= -->
   <main class="flex-1 flex flex-col p-3.5 gap-3.5 overflow-hidden min-h-0">
 
-    <!-- FAST CASHIER FUNCTION BAR -->
-    <div class="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
-      
+  <!-- FAST CASHIER FUNCTION BAR (All 5 buttons in 1 single line on desktop) -->
+  <div class="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 shrink-0">
       <button 
   type="button" 
   (click)="showCustomerHubModal.set(true)"
@@ -145,6 +144,18 @@
     </div>
   </div>
 </button>
+
+<!-- 2. Invoice / Timologio A4 Button -->
+    <button 
+      type="button" 
+      (click)="printCurrentOrLastInvoice()"
+      class="h-12 px-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-amber-400 text-slate-100 flex items-center gap-2 cursor-pointer transition shadow">
+      <span class="text-base">📄</span>
+      <div class="text-left font-sans min-w-0">
+        <span class="text-xs font-bold block truncate leading-none">Τιμολόγιο A4</span>
+        <span class="text-[10px] font-mono text-amber-400 truncate block">myDATA QR &amp; ΔΑ</span>
+      </div>
+    </button>
 
       <!-- 1. Έλεγχος Τιμής [F2] -->
       <button 
@@ -682,7 +693,7 @@
   [isOpen]="showCustomerHubModal()"
   [mode]="'POS'"
   [companyProfile]="getActiveCompanyProfile()"
-  (selectForCart)="handleCustomerSelectedForCart($event)"
+  (selectForCart)="handleCustomerSelected($event)"
   (repaymentCompleted)="handleDebitRepaymentCompleted($event)"
   (close)="showCustomerHubModal.set(false); focusBarcodeInput()"
 />
