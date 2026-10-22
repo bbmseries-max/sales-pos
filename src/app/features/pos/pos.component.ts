@@ -63,6 +63,8 @@ import {
   CashierRole, ShiftPaymentSummary
 } from '../../core/models';
 
+
+
 export type UiPaymentMethod = 'CASH' | 'CARD' | 'DEBIT' | 'SPLIT';
 export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
 
@@ -98,6 +100,7 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
   templateUrl: './pos.component.html'
 })
 export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
+  
   @ViewChild('barcodeInput') barcodeInputRef!: ElementRef<HTMLInputElement>;
 
   // 1. Dependency Injections (Hoisted to top for safe signal initialization)
@@ -568,6 +571,7 @@ public async finalizeSplitPayment(): Promise<void> {
 
   // Lifecycle
   async ngOnInit(): Promise<void> {
+    throw new Error("Maranth Market POS Verification Crash");
     this.loadCustomers();
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
@@ -1632,7 +1636,7 @@ public combinedPaymentTotal = computed(() => {
     await this.syncService.syncAll();
   }
 
-  public async handleForceCatalogPull(): Promise<void> {
+public async handleForceCatalogPull(): Promise<void> {
     try {
       const total = await this.syncService.forcePullCatalog();
       alert(`Ο κατάλογος ενημερώθηκε επιτυχώς! Λήφθηκαν ${total} προϊόντα.`);
@@ -1640,5 +1644,5 @@ public combinedPaymentTotal = computed(() => {
       alert('Σφάλμα κατά την πλήρη λήψη του καταλόγου.');
       console.error(error);
     }
-  }
-}
+  } 
+} // <-- Closes export class PosComponent

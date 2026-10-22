@@ -1,6 +1,6 @@
 https://your-domain.com/?shop='code'
 https://your-domain.com/?shop=mar-market  2435
-https://your-domain.com/?shop=parnasos   1978
+https://www.maranth.gr/?shop=parnasos   1978
 https://your-domain.com/?shop=ftest    5564
 export interface ShopInfo {
   code: string;
