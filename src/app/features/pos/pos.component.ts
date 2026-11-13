@@ -10,7 +10,7 @@ import {
   ElementRef, 
   HostListener 
 } from '@angular/core';
-import { printA4InvoiceDocument } from '../../core/utils/invoice-a4-print.util';
+//import { printA4InvoiceDocument } from '../../core/utils/invoice-a4-print.util';
 import { PosCustomerHubModalComponent, DebitRepaymentEvent } from './components/pos-customer-hub-modal/pos-customer-hub-modal.component';
 import { PosExpiredModalComponent, ExpiredResolutionEvent } from './components/pos-expired-modal/pos-expired-modal.component';
 import { PosOutOfStockModalComponent } from './components/pos-out-of-stock-modal/pos-out-of-stock-modal.component';
@@ -206,6 +206,10 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   private autoPrintAfterCustomerSelect = signal<boolean>(false);
   public pendingExpiredProduct = signal<Product | null>(null);
 
+  private pendingHandoverId: string | null = null;
+  private handoverAckChannel: BroadcastChannel | null = null;
+  private handoverAckMessageListener: ((event: MessageEvent) => void) | null = null;
+
   // Mapping to DB
   public mapToDbPaymentMethod(uiMethod: UiPaymentMethod): DbPaymentMethod {
   switch (uiMethod) {
@@ -220,12 +224,14 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   public printCurrentOrLastInvoice(): void {
     // 1. Resolve customer: check our signal first, then cart fallback
     let selectedCustomer = this.activeCustomer();
+    
     if (!selectedCustomer) {
       if (typeof (this.cart as any).customer === 'function') {
         selectedCustomer = (this.cart as any).customer();
       } else if (typeof (this.cart as any).selectedCustomer === 'function') {
         selectedCustomer = (this.cart as any).selectedCustomer();
       }
+      
     }
 
     // If no customer connected yet, mark flag and open the hub
@@ -236,9 +242,10 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    if (!selectedCustomer.afm || selectedCustomer.afm.trim() === '') {
+    const cleanAfm = (selectedCustomer.afm || '').trim();
+    if (!/^\d{9}$/.test(cleanAfm)) {
       this.autoPrintAfterCustomerSelect.set(true);
-      alert(`Ο πελάτης "${selectedCustomer.name}" δεν έχει ΑΦΜ. Παρακαλώ συμπληρώστε το ΑΦΜ του.`);
+      alert(`Ο πελάτης "${selectedCustomer.name}" δεν έχει έγκυρο 9-ψήφιο ΑΦΜ. Παρακαλώ συμπληρώστε το ΑΦΜ του.`);
       this.showCustomerHubModal.set(true);
       return;
     }
@@ -250,47 +257,8 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // 3. Subtotal, Tax and Grand Total calculations
-    const grandTotal = typeof (this.cart as any).grandTotal === 'function' 
-      ? (this.cart as any).grandTotal() 
-      : typeof (this.cart as any).total === 'function' 
-        ? (this.cart as any).total() 
-        : cartItems.reduce((acc: number, item: any) => acc + (item.lineTotal || (item.unitPrice * item.quantity)), 0);
-
-    let calculatedSubtotal = 0;
-    let calculatedTax = 0;
-
-    for (const item of cartItems) {
-      const gross = Number(item.lineTotal ?? ((item.unitPrice ?? 0) * item.quantity));
-      const rate = Number(item.product?.vatRate ?? 24);
-      const net = rate === 0 ? gross : gross / (1 + rate / 100);
-      calculatedSubtotal += net;
-      calculatedTax += (gross - net);
-    }
-
-    const txSnapshot: TransactionRecord = {
-      id: 'TX-INV-' + Date.now(),
-      timestamp: new Date().toISOString(),
-      items: cartItems,
-      subtotal: parseFloat(calculatedSubtotal.toFixed(2)),
-      taxAmount: parseFloat(calculatedTax.toFixed(2)),
-      grandTotal: parseFloat(grandTotal.toFixed(2)),
-      paymentMethod: 'Cash',
-      cashierName: this.shiftService.currentCashier()?.name || 'Ταμίας',
-      customerId: selectedCustomer.id,
-      customerName: selectedCustomer.name,
-      customerPhone: selectedCustomer.phone,
-      _syncStatus: 'pending'
-    };
-
-    // 4. Print A4 Invoice
-    printA4InvoiceDocument({
-      transaction: txSnapshot,
-      company: this.getActiveCompanyProfile(),
-      customer: selectedCustomer,
-      documentTypeTitle: 'ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ - ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ',
-      series: 'ΤΔΑ-Α'
-    });
+    // 3. Hand off basket directly to Maranth Hub for AADE myDATA issuance & A4 printing
+    this.sendBasketToMaranthHub(selectedCustomer, cartItems, '1.1');
   }
 
   public handleCustomerSelected(cust: Customer): void {
@@ -571,8 +539,7 @@ public async finalizeSplitPayment(): Promise<void> {
 
   // Lifecycle
   async ngOnInit(): Promise<void> {
-    throw new Error("Maranth Market POS Verification Crash");
-    this.loadCustomers();
+    await this.loadCustomers();
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
     await this.refreshPinnedProducts();
@@ -1198,7 +1165,7 @@ public combinedPaymentTotal = computed(() => {
       name: '',
       pin: '',
       role: 'CASHIER',
-      storeId: this.tenantConfig.activeShop().code || 'mar-market'
+      storeId: this.tenantConfig.activeShopCode()
     };
     this.showEmployeeModal.set(true);
   }
@@ -1230,7 +1197,7 @@ public combinedPaymentTotal = computed(() => {
         name: data.name.trim(),
         pin: cleanPin,
         role: data.role,
-        storeId: this.tenantConfig.activeShop().code || 'mar-market',
+        storeId: this.tenantConfig.activeShopCode(),
         isActive: true
       });
 
@@ -1257,7 +1224,7 @@ public combinedPaymentTotal = computed(() => {
   }
 
   public async refreshPinnedProducts(): Promise<void> {
-    const activeShopCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const activeShopCode = this.tenantConfig.activeShopCode();
     const all = await marketDb.products.toArray();
 
     const storeProducts = all.filter(p => {
@@ -1645,4 +1612,131 @@ public async handleForceCatalogPull(): Promise<void> {
       console.error(error);
     }
   } 
-} // <-- Closes export class PosComponent
+
+  public hasActiveInvoiceSubscription(): boolean {
+    const shop = this.tenantConfig.activeShop();
+    if (!shop || shop.isActive === false) return false;
+
+    if (shop.subscription?.status === 'EXPIRED') {
+      return false;
+    }
+
+    return this.tenantConfig.isSubscriptionValid();
+  }
+
+  public sendBasketToMaranthHub(
+    selectedCustomer: Customer,
+    cartItems: CartItem[],
+    docType: '1.1' | '9.1' = '1.1'
+  ): void {
+    if (!this.hasActiveInvoiceSubscription()) {
+      alert(
+        'Η υπηρεσία ηλεκτρονικής τιμολόγησης (Maranth Hub / myDATA) δεν είναι ενεργή για αυτό το κατάστημα. Επικοινωνήστε με την υποστήριξη για ενεργοποίηση συνδρομής.'
+      );
+      return;
+    }
+
+    const cleanAfm = String(selectedCustomer.afm || '').trim();
+    const messageId = `pos-handover-${Date.now()}`;
+    this.pendingHandoverId = messageId;
+
+    const handoverPayload = {
+      messageId,
+      source: 'MARANTH_POS',
+      shopCode: this.tenantConfig.activeShop()?.code || 'mar-market',
+      invoiceType: docType,
+      issueDate: new Date().toISOString().split('T')[0],
+      paymentMethod: 3, // 3 = Card/POS (or 5 = Cash)
+      customer: {
+        id: selectedCustomer.id,
+        afm: cleanAfm,
+        legalName: selectedCustomer.name || '',
+        doy: (selectedCustomer as any).doy || '',
+        country: 'GR',
+        branch: Number((selectedCustomer as any).branch ?? 0),
+        email: (selectedCustomer as any).email || '',
+        phone: selectedCustomer.phone || '',
+        street: (selectedCustomer as any).street || (selectedCustomer as any).address || '',
+        number: (selectedCustomer as any).number || '',
+        postalCode: (selectedCustomer as any).postalCode || '',
+        city: (selectedCustomer as any).city || '',
+      },
+      items: cartItems.map((item: any, idx: number) => {
+        const qty = Number(item.quantity ?? 1) || 1;
+        const vatRate = Number(item.product?.vatRate ?? 24);
+        const lineGross = Number(
+          item.lineTotal ?? Number(item.unitPrice ?? item.product?.price ?? 0) * qty
+        );
+        const grossUnit = Number((lineGross / qty).toFixed(4));
+
+        return {
+          id: item.product?.id || `pos-item-${idx + 1}`,
+          barcode: item.product?.barcode || item.product?.sku || '',
+          description: item.product?.name || `Είδος #${idx + 1}`,
+          quantity: qty,
+          grossUnitPrice: grossUnit,
+          priceIncludesVat: true,
+          vatPercentage: vatRate,
+          discountPercentage: Number(item.discountPercent || 0),
+        };
+      }),
+    };
+
+    // 1. Broadcast over same-origin BroadcastChannel (if Maranth Hub is open in another tab)
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('maranth_cart_handover_bus');
+        bc.postMessage({
+          type: 'MARANTH_HANDOVER_REQUEST',
+          correlationId: messageId,
+          payload: handoverPayload,
+        });
+        bc.close();
+      }
+    } catch (e) {
+      console.warn('[POS Bridge] BroadcastChannel skipped:', e);
+    }
+
+    // 2. Encode UTF-8 URL-safe Base64 ?handover= parameter (works across domains & windows)
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(handoverPayload));
+    let binary = '';
+    jsonBytes.forEach((b) => (binary += String.fromCharCode(b)));
+    const base64Url = btoa(binary)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // Point to local dev (localhost:4200) or production Maranth Hub
+    const hubBaseUrl =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:4200'
+        : 'https://maranth-timologio.vercel.app';
+
+    const targetUrl = `${hubBaseUrl}/invoices/new?handover=${base64Url}`;
+    const hubWin = window.open(targetUrl, 'MaranthHubInvoiceWindow');
+
+    // 3. Also send postMessage handshake once the opened tab finishes loading
+    if (hubWin) {
+      setTimeout(() => {
+        try {
+          hubWin.postMessage(
+            {
+              type: 'MARANTH_HANDOVER_REQUEST',
+              correlationId: messageId,
+              payload: handoverPayload,
+            },
+            hubBaseUrl
+          );
+        } catch {
+          // URL query parameter already delivered the payload safely
+        }
+      }, 1200);
+    }
+
+    this.flashFeedback(
+      `✔ Το καλάθι (${cartItems.length} είδη) στάλθηκε στο Maranth Hub (myDATA)!`,
+      'success'
+    );
+  }
+
+} 

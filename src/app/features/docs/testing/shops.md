@@ -73,4 +73,41 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     allowStoreSwitch: false
   }
 ];
+hash creation console.log
+async function getHash(pin, salt) {
+  const enc = new TextEncoder().encode(`${salt}:${pin}`);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}  
 
+or 
+
+await tenantConfig.registerNewStore({
+  code: 'glyfada-store',
+  name: 'Maranth Glyfada',
+  afm: '999111222',
+  doy: 'GLYFADAS',
+  address: 'Metaxa 10',
+  adminPin: '1234' // <--- Set the plain 4-digit PIN here
+});
+
+
+
+,
+  {
+    code: 'new-store01',
+    name@: 'New Store01',
+    adminPinHash: 'ca4bd03986619a01a38d485124ce7b251f158431986027d2e915fb8ba459991f', // PIN: 5545
+    defaultFloat: 50,
+    defaultRegister: 'REG-01',
+    address: 'Αρησ 10',
+    afm: '887776554',
+    doy: 'ΚΕΦΟΔΕ',
+    phone: '22670-31111',
+    currency: 'EUR',
+    isActive: true,
+    allowStoreSwitch: false
+  }
+
+  iform firebase with 
+  await seedTenants();

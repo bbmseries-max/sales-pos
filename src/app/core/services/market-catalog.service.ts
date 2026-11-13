@@ -1,10 +1,16 @@
 import { Injectable, signal, inject } from '@angular/core';
-import { Firestore, collection, getDocs, query, where } from '@angular/fire/firestore';
+import { 
+  Firestore, 
+  collection, 
+  getDocs, 
+  doc, 
+  setDoc 
+} from '@angular/fire/firestore';
 import { marketDb } from '../db/market-db';
 import { 
   Product, 
   Category, 
-  normalizeDateToInput,
+  normalizeDateToInput, 
   SUPERMARKET_DEPARTMENTS, 
   MasterCategory 
 } from '../models/market.models';
@@ -32,30 +38,31 @@ export class MarketCatalogService {
   public isSearchingExternal = signal<boolean>(false);
 
   /**
-   * Syncs products from Firestore scoped to the active tenant/store
+   * Syncs products from Firestore scoped to the active tenant/store:
+   * /tenants/{shopSlug}/products
    */
   public async syncFromCloud(): Promise<number> {
     const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
-    console.log(`[MarketCatalog] Fetching catalog for store "${activeStoreCode}" from cloud...`);
+    console.log(`[MarketCatalog] Fetching subcollection /tenants/${activeStoreCode}/products...`);
     
-    // Scoped query by storeId to prevent cross-store data leakage
-    const colRef = collection(this.firestore, 'products');
-    const storeQuery = query(colRef, where('storeId', '==', activeStoreCode));
-    const snap = await getDocs(storeQuery);
+    // Direct subcollection reference (Clean, isolated, no where() filters required)
+    const subColRef = collection(this.firestore, 'tenants', activeStoreCode, 'products');
+    const snap = await getDocs(subColRef);
 
     if (snap.empty) {
-      console.warn(`[MarketCatalog] No products found for store "${activeStoreCode}" in cloud.`);
+      console.warn(`[MarketCatalog] No products found in /tenants/${activeStoreCode}/products.`);
       return 0;
     }
 
     const fetchedProducts: Product[] = [];
-    snap.forEach(doc => {
-      const raw = doc.data() as any;
+    snap.forEach(docSnap => {
+      const raw = docSnap.data() as any;
       const cleanDate = normalizeDateToInput(raw.statusDate || raw.expire || raw.expireDate);
       
       fetchedProducts.push({
         ...raw,
-        barcode: String(raw.barcode || raw.id || doc.id).trim(),
+        id: String(raw.id || docSnap.id),
+        barcode: String(raw.barcode || raw.id || docSnap.id).trim(),
         statusDate: cleanDate,
         expire: cleanDate,
         storeId: activeStoreCode,
@@ -82,9 +89,6 @@ export class MarketCatalogService {
     return found ? found.icon : '🥫';
   }
 
-  /**
-   * Loads catalog directly from this store's isolated IndexedDB sandbox
-   */
   public async loadInitialCatalog(): Promise<void> {
     const [allProds, cats] = await Promise.all([
       marketDb.products.toArray(),
@@ -110,9 +114,6 @@ export class MarketCatalogService {
     return this.products().find(p => p.barcode === clean);
   }
 
-  /**
-   * Safe identifier lookup: supports barcode, exact SKU/ID, and substring name search
-   */
   public getProductByAnyIdentifier(queryStr: string): Product | undefined {
     const q = queryStr.trim().toLowerCase();
     if (!q) return undefined;
@@ -145,9 +146,6 @@ export class MarketCatalogService {
     return this.getCategoryPlaceholderSvg(product.categoryId);
   }
 
-  /**
-   * Fast, resilient external lookup mapped directly to standard departments
-   */
   public async fetchFromOpenFoodFacts(barcode: string): Promise<ExternalProductMatch | null> {
     const clean = (barcode || '').trim();
     if (!clean || clean.length < 6) return null;
@@ -234,7 +232,7 @@ export class MarketCatalogService {
           };
         }
       } catch {
-        // Timed out or network error, proceed to fallback endpoint
+        // Fallback endpoint
       } finally {
         clearTimeout(timer);
       }
@@ -254,9 +252,10 @@ export class MarketCatalogService {
   }): Promise<Product> {
     const assignedCatId = params.categoryId || 'cat-pantry';
     const activeStoreCode = this.tenantConfig.activeShop().code || 'mar-market';
+    const prodId = `PROD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6)}`;
 
     const newProd: Product = {
-      id: `PROD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: prodId,
       barcode: params.barcode.trim(),
       sku: params.barcode.trim(),
       name: params.name.trim(),
@@ -277,7 +276,16 @@ export class MarketCatalogService {
       _syncStatus: 'dirty'
     };
 
+    // 1. Add to local IndexedDB
     await marketDb.products.add(newProd);
+
+    // 2. Write to Firestore subcollection: /tenants/{shopSlug}/products/{prodId}
+    try {
+      const prodDocRef = doc(this.firestore, 'tenants', activeStoreCode, 'products', prodId);
+      await setDoc(prodDocRef, newProd);
+    } catch (e) {
+      console.warn('[MarketCatalog] Could not immediately upload new product to Firestore subcollection:', e);
+    }
 
     await this.loadInitialCatalog();
     return newProd;
