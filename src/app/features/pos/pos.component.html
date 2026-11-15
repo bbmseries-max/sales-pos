@@ -55,28 +55,6 @@
     <!-- ADMIN ONLY CONTROLS -->
     @if (shiftService.isAdmin()) {
       
-      <!-- Store Switcher (Admin Only) -->
-      @if (tenantConfig.activeShop().allowStoreSwitch) {
-        <div class="flex items-center gap-1 bg-indigo-950/80 border border-indigo-500/50 p-1 rounded-xl shrink-0">
-          <select 
-            #storeSelect
-            [value]="tenantConfig.activeShop().code" 
-            (change)="handleStoreSwitch(storeSelect.value)"
-            class="bg-slate-900 border border-slate-700 text-indigo-200 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer max-w-[140px] truncate">
-            @for (s of tenantConfig.registeredShops(); track s.code) {
-              <option [value]="s.code" [selected]="s.code === tenantConfig.activeShop().code">
-                ⚡ {{ s.name }}
-              </option>
-            }
-          </select>
-          <button 
-            type="button" 
-            (click)="isNewStoreModalOpen.set(true)" 
-            class="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer">
-            ➕
-          </button>
-        </div>
-      }
 
       <!-- Warehouse / Inventory -->
       <button 
@@ -654,7 +632,7 @@
   [isOpen]="showEmployeeModal()"
   [cashiers]="shiftService.allCashiers()"
   [defaultStoreId]="tenantConfig.activeShop().code || 'SHOP-01'"
-  (saveEmployee)="handleSaveEmployee()"
+  (saveEmployee)="handleSaveEmployee($event)"
   (toggleCashier)="shiftService.toggleCashierStatus($event.cashierId, $event.status)"
   (close)="showEmployeeModal.set(false)"
 />
@@ -707,16 +685,6 @@
   (close)="showShiftHandoverModal.set(false)"
 />
 
-<app-pos-store-switcher-modal 
-  [isOpen]="showStoreModal()" 
-  (close)="showStoreModal.set(false)"
-/>
-
-<!-- New Store Modal -->
-@if (isNewStoreModalOpen()) {
-  <app-new-store-modal (close)="isNewStoreModalOpen.set(false)" />
-}
-
 <!-- 1. LOCK SCREEN (Absolute Priority: No Cashier or Terminal Locked) -->
 @if (shiftService.isLocked() || !shiftService.currentCashier()) {
   <app-pos-lock-screen 
@@ -736,3 +704,9 @@
   (lockTerminal)="showNewShiftModal.set(false); shiftService.lockTerminal()"
   (close)="showNewShiftModal.set(false)"
 />
+
+@if (!hasActiveInvoiceSubscription() && !tenantConfig.isTenantLoading()) {
+  <span class="px-2 py-0.5 rounded-lg bg-rose-950/90 border border-rose-700/70 text-[10px] font-mono font-bold text-rose-300">
+    ⚠️ Ανενεργή Συνδρομή Hub
+  </span>
+}

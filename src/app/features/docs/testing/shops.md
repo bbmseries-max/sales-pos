@@ -17,7 +17,6 @@ export interface ShopInfo {
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
-  allowStoreSwitch?: boolean;
   fiscalMode?: FiscalMode;
   fhmEndpoint?: string;
   providerApiKey?: string;
@@ -38,7 +37,6 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '210-6800000',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: true
   },
   {
     code: 'ftest',
@@ -54,7 +52,6 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '210-6001122',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: false
   },
   {
     code: 'parnasos',
@@ -70,7 +67,6 @@ const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '22670-31000',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: false
   }
 ];
 hash creation console.log
@@ -106,7 +102,6 @@ await tenantConfig.registerNewStore({
     phone: '22670-31111',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: false
   }
 
   iform firebase with 

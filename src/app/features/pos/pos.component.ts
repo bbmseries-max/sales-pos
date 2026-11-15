@@ -34,8 +34,8 @@ import {
   QuickRegisterConfirmEvent 
 } from './components/quick-register-modal.component';
 import { PosPriceCheckModalComponent } from './components/pos-price-check-modal.component';
-import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-modal.component';
-import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
+//import { PosStoreSwitcherModalComponent } from './components/pos-store-switcher-modal.component';
+//import { NewStoreModalComponent } from '../../shared/new-store-modal.component';
 import { PosCashDrawerModalComponent, CashLogEvent } from './components/pos-cash-drawer-modal.component';
 // Services
 import { StorageQuotaService } from '../../core/services/storage-quota.service';
@@ -90,8 +90,6 @@ export type DbPaymentMethod = 'Cash' | 'Card' | 'Debit' | 'Split';
     PosCustomerModalComponent,
     PosLockScreenComponent,
     PosShiftHandoverModalComponent,
-    PosStoreSwitcherModalComponent,
-    NewStoreModalComponent,
     PosDenominationModalComponent,
     PosWeightModalComponent,
     PosDiscountModalComponent,
@@ -133,7 +131,6 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   // 4. Drawer & Cash Management
   public cashMovementAmount = signal<number>(0);
   public cashMovementReason = signal<string>('Προσθήκη Μαγιάς / Εισαγωγή');
-  public isNewStoreModalOpen = signal<boolean>(false);
   public showDenominationModal = signal<boolean>(false);
   public cashLogType = signal<'IN' | 'OUT' | 'FLOAT' | 'DROP'>('IN');
   public cashLogAmount = signal<number>(50.0);
@@ -163,7 +160,6 @@ export class PosComponent implements OnInit, AfterViewInit, OnDestroy {
   public scanFeedback = signal<string | null>(null);
 
   // 7. Modals Visibility
-  public showStoreModal = signal<boolean>(false);
   public showCashDrawerModal = signal<boolean>(false);
   public showCustomerModal = signal<boolean>(false);
   public showPaymentModal = signal<boolean>(false);
@@ -539,6 +535,7 @@ public async finalizeSplitPayment(): Promise<void> {
 
   // Lifecycle
   async ngOnInit(): Promise<void> {
+    this.initHandoverAckListener();
     await this.loadCustomers();
     await this.catalogService.loadInitialCatalog();
     await this.shiftService.initialize();
@@ -555,6 +552,42 @@ public async finalizeSplitPayment(): Promise<void> {
       clearTimeout(this.feedbackTimer);
       this.feedbackTimer = null;
     }
+    if (this.handoverAckChannel) {
+      this.handoverAckChannel.close();
+      this.handoverAckChannel = null;
+    }
+    if (this.handoverAckMessageListener) {
+      window.removeEventListener('message', this.handoverAckMessageListener);
+      this.handoverAckMessageListener = null;
+    }
+  }
+
+  private initHandoverAckListener(): void {
+    const handleAck = (data: any) => {
+      if (
+        data?.type === 'MARANTH_HANDOVER_ACK' &&
+        data?.status === 'ACCEPTED' &&
+        this.pendingHandoverId &&
+        data?.correlationId === this.pendingHandoverId
+      ) {
+        this.pendingHandoverId = null;
+        this.cart.clear();
+        this.activeCustomer.set(null);
+        this.flashFeedback('✔ Το τιμολόγιο παραλήφθηκε από το Maranth Hub — το καλάθι καθαρίστηκε!', 'success');
+      }
+    };
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        this.handoverAckChannel = new BroadcastChannel('maranth_cart_handover_bus');
+        this.handoverAckChannel.onmessage = (event) => handleAck(event.data);
+      }
+    } catch (e) {
+      console.warn('[POS Bridge] BroadcastChannel ACK listener skipped:', e);
+    }
+
+    this.handoverAckMessageListener = (event: MessageEvent) => handleAck(event.data);
+    window.addEventListener('message', this.handoverAckMessageListener);
   }
 
   public getActiveCompanyProfile(): MarketCompanyProfile {
@@ -658,31 +691,6 @@ public async finalizeSplitPayment(): Promise<void> {
     if (confirmSwitch) {
       this.shiftService.lockTerminal();
     }
-  }
-
-  public confirmSwitch(targetShopCode: string, inputPin: string): boolean {
-    const targetShop = this.tenantConfig.registeredShops().find(s => s.code === targetShopCode);
-    if (!targetShop) return false;
-    return Boolean(targetShop.adminPinHash && inputPin.trim() === targetShop.adminPinHash.trim());
-  }
-
-  public async handleStoreSwitch(newStoreCode: string): Promise<void> {
-    const prev = this.tenantConfig.activeShop().code;
-    if (prev === newStoreCode) {
-      this.showStoreModal.set(false);
-      return;
-    }
-
-    this.shiftService.lockTerminal();
-    this.cart.clear();
-
-    this.tenantConfig.switchShop(newStoreCode);
-    this.showStoreModal.set(false);
-
-    await this.shiftService.initialize();
-    await this.refreshPinnedProducts();
-
-    this.flashFeedback(`Εναλλαγή στο κατάστημα: ${this.tenantConfig.activeShop().name}`, 'info');
   }
 
   public async handlePrintXReport(): Promise<void> {
@@ -1170,12 +1178,19 @@ public combinedPaymentTotal = computed(() => {
     this.showEmployeeModal.set(true);
   }
 
-  public async handleSaveEmployee(): Promise<void> {
+  public async handleSaveEmployee(payload?: {
+    name?: string;
+    pin?: string;
+    role?: CashierRole;
+    storeId?: string;
+  }): Promise<void> {
     if (this.isSavingEmployee()) return;
 
-    const data = this.employeeForm;
-    const cleanPin = data.pin.trim();
-    if (!data.name.trim()) {
+    const data = payload || this.employeeForm;
+    const cleanName = (data.name || '').trim();
+    const cleanPin = (data.pin || '').trim();
+
+    if (!cleanName) {
       alert('Συμπληρώστε όνομα υπαλλήλου.');
       return;
     }
@@ -1194,10 +1209,10 @@ public combinedPaymentTotal = computed(() => {
 
     try {
       const res = await this.shiftService.createCashier({
-        name: data.name.trim(),
+        name: cleanName,
         pin: cleanPin,
-        role: data.role,
-        storeId: this.tenantConfig.activeShopCode(),
+        role: data.role || 'CASHIER',
+        storeId: data.storeId || this.tenantConfig.activeShopCode(),
         isActive: true
       });
 
@@ -1213,7 +1228,7 @@ public combinedPaymentTotal = computed(() => {
         storeId: this.tenantConfig.activeShop().code || 'mar-market'
       };
       this.showEmployeeModal.set(false);
-      this.flashFeedback(`✔ Ο χρήστης "${data.name}" αποθηκεύτηκε!`, 'success');
+      this.flashFeedback(`✔ Ο χρήστης "${cleanName}" αποθηκεύτηκε!`, 'success');
     } catch (err) {
       console.error('Save employee error:', err);
       alert('Σφάλμα κατά την αποθήκευση.');
@@ -1241,10 +1256,9 @@ public combinedPaymentTotal = computed(() => {
       const isAnyModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
                              this.showPriceCheckModal() || this.showCashDrawerModal() || 
                              this.showCustomerModal() || this.showShiftHandoverModal() || 
-                             this.showStoreModal() || this.showWeightModal() || 
+                             this.showWeightModal() || 
                              this.showMyDataConfig() || this.showOutOfStockModal() || 
                              this.showEmployeeModal() || this.showDiscountModal() || 
-                             this.isNewStoreModalOpen() || 
                              this.shiftService.isLocked();
 
       if (this.barcodeInputRef?.nativeElement && !isAnyModalOpen) {
@@ -1270,10 +1284,9 @@ public combinedPaymentTotal = computed(() => {
     const isModalOpen = this.showQuickRegisterModal() || this.showPaymentModal() || 
                         this.showPriceCheckModal() || this.showCashDrawerModal() || 
                         this.showCustomerModal() || this.showShiftHandoverModal() || 
-                        this.showStoreModal() || this.showWeightModal() || 
+                        this.showWeightModal() || 
                         this.showMyDataConfig() || this.showOutOfStockModal() || 
                         this.showEmployeeModal() || this.showDiscountModal() || 
-                        this.isNewStoreModalOpen() || 
                         this.shiftService.isLocked();
 
     if (this.showOutOfStockModal() && (event.key === 'Enter' || event.key === 'Escape')) {
@@ -1614,10 +1627,17 @@ public async handleForceCatalogPull(): Promise<void> {
   } 
 
   public hasActiveInvoiceSubscription(): boolean {
-    const shop = this.tenantConfig.activeShop();
-    if (!shop || shop.isActive === false) return false;
+    if (this.tenantConfig.isTenantLoading()) {
+      return false;
+    }
 
-    if (shop.subscription?.status === 'EXPIRED') {
+    const shop = this.tenantConfig.activeShop();
+    if (!shop || shop.isActive === false) {
+      return false;
+    }
+
+    const status = String(shop.subscription?.status || '').trim().toUpperCase();
+    if (status === 'EXPIRED' || status === 'SUSPENDED' || status === 'NOT_FOUND') {
       return false;
     }
 
@@ -1629,21 +1649,31 @@ public async handleForceCatalogPull(): Promise<void> {
     cartItems: CartItem[],
     docType: '1.1' | '9.1' = '1.1'
   ): void {
+    if (this.tenantConfig.isTenantLoading()) {
+      this.flashFeedback('⏳ Έλεγχος συνδρομής καταστήματος σε εξέλιξη...', 'info');
+      return;
+    }
+
     if (!this.hasActiveInvoiceSubscription()) {
-      alert(
-        'Η υπηρεσία ηλεκτρονικής τιμολόγησης (Maranth Hub / myDATA) δεν είναι ενεργή για αυτό το κατάστημα. Επικοινωνήστε με την υποστήριξη για ενεργοποίηση συνδρομής.'
-      );
+      const subStatus = this.tenantConfig.activeShop()?.subscription?.status;
+      const reason =
+        subStatus === 'NOT_FOUND'
+          ? 'Το κατάστημα δεν βρέθηκε στο σύστημα συνδρομών.'
+          : 'Η συνδρομή ηλεκτρονικής τιμολόγησης (Maranth Hub / myDATA) έχει λήξει ή έχει ανασταλεί.';
+
+      alert(`${reason}\nΕπικοινωνήστε με την υποστήριξη για ενεργοποίηση συνδρομής.`);
       return;
     }
 
     const cleanAfm = String(selectedCustomer.afm || '').trim();
+    const shopCode = this.tenantConfig.activeShop()?.code || this.tenantConfig.activeShopCode();
     const messageId = `pos-handover-${Date.now()}`;
     this.pendingHandoverId = messageId;
 
     const handoverPayload = {
       messageId,
       source: 'MARANTH_POS',
-      shopCode: this.tenantConfig.activeShop()?.code || 'mar-market',
+      shopCode,
       invoiceType: docType,
       issueDate: new Date().toISOString().split('T')[0],
       paymentMethod: 3, // 3 = Card/POS (or 5 = Cash)
@@ -1697,7 +1727,7 @@ public async handleForceCatalogPull(): Promise<void> {
       console.warn('[POS Bridge] BroadcastChannel skipped:', e);
     }
 
-    // 2. Encode UTF-8 URL-safe Base64 ?handover= parameter (works across domains & windows)
+    // 2. Encode UTF-8 URL-safe Base64 ?handover= parameter
     const jsonBytes = new TextEncoder().encode(JSON.stringify(handoverPayload));
     let binary = '';
     jsonBytes.forEach((b) => (binary += String.fromCharCode(b)));
@@ -1706,13 +1736,10 @@ public async handleForceCatalogPull(): Promise<void> {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    // Point to local dev (localhost:4200) or production Maranth Hub
-    const hubBaseUrl =
-      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:4200'
-        : 'https://maranth-timologio.vercel.app';
+    // Point to local dev (localhost:4200) or production Maranth Hub with ?shop= bound
+    const hubBaseUrl = 'https://maranth-timologio.vercel.app';
 
-    const targetUrl = `${hubBaseUrl}/invoices/new?handover=${base64Url}`;
+    const targetUrl = `${hubBaseUrl}/invoices/new?shop=${encodeURIComponent(shopCode)}&handover=${base64Url}`;
     const hubWin = window.open(targetUrl, 'MaranthHubInvoiceWindow');
 
     // 3. Also send postMessage handshake once the opened tab finishes loading

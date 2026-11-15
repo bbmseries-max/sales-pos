@@ -20,7 +20,6 @@ export async function bootstrapTenantDocuments(firestore: Firestore): Promise<nu
       phone: shop.phone || '',
       currency: shop.currency || 'EUR',
       isActive: shop.isActive !== false,
-      allowStoreSwitch: shop.allowStoreSwitch ?? false,
       updatedAt: new Date().toISOString()
     };
 

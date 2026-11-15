@@ -1,10 +1,10 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
-import { Firestore, doc, getDoc, setDoc } from '@angular/fire/firestore';
+import { Injectable, signal, computed, inject, OnDestroy } from '@angular/core';
+import { Firestore, doc, onSnapshot, setDoc, Unsubscribe } from '@angular/fire/firestore';
 import { sha256Pin } from '../utils/crypto.utils';
 
 export type FiscalMode = 'FHM' | 'PROVIDER' | 'NONE';
-export type SubscriptionTier = 'TRIAL_7D' | 'TRIAL_30D' | 'PAID_MONTHLY' | 'PAID_ANNUAL' | 'LIFETIME';
-export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'GRACE_PERIOD';
+export type SubscriptionTier = 'TRIAL' | 'TRIAL_7D' | 'TRIAL_30D' | 'PAID_MONTHLY' | 'PAID_ANNUAL' | 'LIFETIME';
+export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'GRACE_PERIOD' | 'SUSPENDED' | 'NOT_FOUND';
 
 export interface ShopSubscription {
   tier: SubscriptionTier;
@@ -31,7 +31,6 @@ export interface ShopInfo {
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
-  allowStoreSwitch?: boolean;
   fiscalMode?: FiscalMode;
   fhmEndpoint?: string;
   providerApiKey?: string;
@@ -53,7 +52,6 @@ export const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '210-6800000',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: true
   },
   {
     code: 'ftest',
@@ -68,7 +66,6 @@ export const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '210-6001122',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: false
   },
   {
     code: 'parnasos',
@@ -83,13 +80,11 @@ export const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '22670-31000',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: false
   },
   {
     code: 'glyfada-store',
     name: 'Maranth Glyfada',
     adminPinSalt: 'glyfada-store',
-    // Hash of "glyfada-store:1234"
     adminPinHash: '0bc62e0a293bf66b7bb8eb90956b9c9f0b5d5ba6f0ee4957e841267b2d56a73c', // PIN: 1234
     defaultFloat: 50,
     defaultRegister: 'REG-01',
@@ -99,7 +94,6 @@ export const DEFAULT_SHOPS: ShopInfo[] = [
     phone: '210-8900000',
     currency: 'EUR',
     isActive: true,
-    allowStoreSwitch: true
   }
 ];
 
@@ -113,86 +107,150 @@ export function sanitizeStoreCode(raw: string): string {
 }
 
 @Injectable({ providedIn: 'root' })
-export class TenantConfigService {
+export class TenantConfigService implements OnDestroy {
   private firestore = inject(Firestore);
+  private tenantUnsub: Unsubscribe | null = null;
 
   public registeredShops = signal<ShopInfo[]>(this.getInitialRegisteredShops());
   public activeShopCode = signal<string>(this.resolveInitialShopCode());
+  public isTenantLoading = signal<boolean>(false);
 
-  public activeShop = computed(() => {
+  // Never falls back to mar-market if a specific unknown slug is requested
+  public activeShop = computed<ShopInfo>(() => {
     const code = this.activeShopCode();
     const found = this.registeredShops().find(s => s.code === code);
-    return found || this.registeredShops()[0] || DEFAULT_SHOPS[0];
+    if (found) return found;
+
+    return {
+      code,
+      name: code,
+      currency: 'EUR',
+      isActive: false,
+      subscription: {
+        tier: 'TRIAL',
+        status: 'NOT_FOUND',
+        activatedAt: new Date().toISOString(),
+        validUntil: null
+      }
+    };
   });
 
-  public isSubscriptionValid = computed(() => {
+  // Authoritative unified subscription check (isActive + status + validUntil)
+  public isSubscriptionValid = computed<boolean>(() => {
     const shop = this.activeShop();
-    if (!shop.subscription) return true;
-    if (shop.subscription.tier === 'LIFETIME' || !shop.subscription.validUntil) return true;
+    if (shop.isActive === false) return false;
 
-    const now = new Date().getTime();
+    const sub = shop.subscription;
+    if (!sub) {
+      // Allow built-in local defaults without a subscription object; block unknown unprovisioned tenants
+      return DEFAULT_SHOPS.some(d => d.code === shop.code);
+    }
+
+    const normalizedStatus = String(sub.status || '').trim().toUpperCase();
+    if (normalizedStatus === 'SUSPENDED' || normalizedStatus === 'EXPIRED' || normalizedStatus === 'NOT_FOUND') {
+      return false;
+    }
+
+    if (sub.tier === 'LIFETIME' || !sub.validUntil) {
+      return normalizedStatus === 'ACTIVE' || normalizedStatus === 'GRACE_PERIOD';
+    }
+
+    const expiry = new Date(sub.validUntil).getTime();
+    if (Number.isNaN(expiry)) return false;
+
+    return Date.now() <= expiry;
+  });
+
+  public daysRemaining = computed<number | null>(() => {
+    const shop = this.activeShop();
+    if (!shop.subscription?.validUntil) return null;
+
     const expiry = new Date(shop.subscription.validUntil).getTime();
-    return now <= expiry;
-  });
+    if (Number.isNaN(expiry)) return null;
 
-  public daysRemaining = computed(() => {
-    const shop = this.activeShop();
-    if (!shop.subscription || !shop.subscription.validUntil) return null;
-
-    const diffMs = new Date(shop.subscription.validUntil).getTime() - new Date().getTime();
+    const diffMs = expiry - Date.now();
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   });
 
   constructor() {
     this.syncStorage();
-    // Resolve tenant document from Firestore parent path: /tenants/{shopSlug}
-    this.fetchRemoteTenantMetadata(this.activeShopCode());
+    this.watchRemoteTenantMetadata(this.activeShopCode());
+  }
+
+  ngOnDestroy(): void {
+    if (this.tenantUnsub) {
+      this.tenantUnsub();
+      this.tenantUnsub = null;
+    }
   }
 
   /**
-   * Fetches the parent tenant document at /tenants/{shopSlug} from Firestore
+   * Subscribes in real time to /tenants/{shopSlug} so Dashboard suspensions/renewals apply immediately
    */
-  public async fetchRemoteTenantMetadata(shopSlug: string): Promise<ShopInfo | null> {
+  public watchRemoteTenantMetadata(shopSlug: string): void {
     const cleanCode = sanitizeStoreCode(shopSlug);
-    if (!cleanCode) return null;
+    if (!cleanCode) return;
 
-    try {
-      const tenantDocRef = doc(this.firestore, 'tenants', cleanCode);
-      const snap = await getDoc(tenantDocRef);
-
-      if (snap.exists()) {
-        const remoteData = snap.data() as Partial<ShopInfo>;
-        const merged: ShopInfo = {
-          ...this.activeShop(),
-          ...remoteData,
-          code: cleanCode,
-          name: remoteData.name || this.activeShop().name
-        };
-
-        await this.registerShop(merged, true);
-        return merged;
-      } else {
-        // Document does not exist yet; bootstrap it into /tenants/{shopSlug}
-        const currentLocal = this.activeShop();
-        if (currentLocal.code === cleanCode) {
-          await setDoc(tenantDocRef, {
-            ...currentLocal,
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        }
-      }
-    } catch (err) {
-      console.warn(`[TenantConfig] Could not sync parent doc for /tenants/${cleanCode}:`, err);
+    if (this.tenantUnsub) {
+      this.tenantUnsub();
+      this.tenantUnsub = null;
     }
-    return null;
+
+    this.isTenantLoading.set(true);
+    const tenantDocRef = doc(this.firestore, 'tenants', cleanCode);
+
+    this.tenantUnsub = onSnapshot(
+      tenantDocRef,
+      async (snap) => {
+        this.isTenantLoading.set(false);
+
+        if (snap.exists()) {
+          const remoteData = snap.data() as Partial<ShopInfo>;
+          const existingLocal = this.registeredShops().find(s => s.code === cleanCode);
+
+          const merged: ShopInfo = {
+            ...(existingLocal || {}),
+            ...remoteData,
+            code: cleanCode,
+            name: remoteData.name || existingLocal?.name || cleanCode,
+            isActive: remoteData.isActive !== false && String((remoteData as any).status || 'ACTIVE').toUpperCase() !== 'SUSPENDED'
+          };
+
+          await this.registerShop(merged, true);
+        } else {
+          // Document does not exist in Firestore: fail closed for non-default tenants
+          const isBuiltIn = DEFAULT_SHOPS.some(d => d.code === cleanCode);
+          if (!isBuiltIn) {
+            console.warn(`[TenantConfig] Tenant /tenants/${cleanCode} not found. Locking terminal.`);
+            await this.registerShop(
+              {
+                code: cleanCode,
+                name: cleanCode,
+                isActive: false,
+                subscription: {
+                  tier: 'TRIAL',
+                  status: 'NOT_FOUND',
+                  activatedAt: new Date().toISOString(),
+                  validUntil: null
+                }
+              },
+              true
+            );
+          }
+        }
+      },
+      (err) => {
+        this.isTenantLoading.set(false);
+        console.warn(`[TenantConfig] Real-time listener error for /tenants/${cleanCode}:`, err);
+      }
+    );
   }
 
   private resolveInitialShopCode(): string {
-    // 1. Inspect URL Query Param: ?shop=ftest or ?store=ftest
     if (typeof window !== 'undefined' && window.location) {
       const params = new URLSearchParams(window.location.search);
       const urlShop = params.get('shop') || params.get('store');
-      
+
       if (urlShop) {
         const cleanCode = sanitizeStoreCode(urlShop);
         if (cleanCode) {
@@ -202,13 +260,11 @@ export class TenantConfigService {
       }
     }
 
-    // 2. Local storage fallback
     const saved = localStorage.getItem('active_shop_code');
     if (saved) {
-      return saved;
+      return sanitizeStoreCode(saved);
     }
 
-    // 3. Fallback default
     return DEFAULT_SHOPS[0].code;
   }
 
@@ -230,24 +286,6 @@ export class TenantConfigService {
       }
     }
     return [...DEFAULT_SHOPS];
-  }
-
-  public switchShop(code: string): boolean {
-    const target = this.registeredShops().find(s => s.code === code);
-    if (!target) {
-      // If store is unknown locally, register it dynamically and fetch its /tenants/{code} parent
-      this.registerShop({ code, name: code }, true);
-    }
-
-    if (this.activeShop()?.allowStoreSwitch === false) {
-      console.warn('[Tenant] Store switching is restricted on this terminal.');
-      return false;
-    }
-
-    this.activeShopCode.set(code);
-    localStorage.setItem('active_shop_code', code);
-    this.fetchRemoteTenantMetadata(code);
-    return true;
   }
 
   private syncStorage(): void {
@@ -280,7 +318,6 @@ export class TenantConfigService {
       phone: shop.phone || '',
       currency: shop.currency || 'EUR',
       isActive: shop.isActive !== false,
-      allowStoreSwitch: shop.allowStoreSwitch ?? false,
       fiscalMode: shop.fiscalMode,
       fhmEndpoint: shop.fhmEndpoint,
       providerApiKey: shop.providerApiKey,
@@ -315,10 +352,12 @@ export class TenantConfigService {
     // 1. Update local state
     const res = await this.registerShop(updated, true);
 
-    // 2. Persist directly to parent /tenants/{targetCode} in Firestore
+    // 2. Strip protected subscription fields before syncing to Firestore so subscriptionUntouched() passes
+    const { subscription, isActive, status, plan, ...safeTenantMetadata } = updated as any;
+
     try {
       const docRef = doc(this.firestore, 'tenants', targetCode);
-      await setDoc(docRef, updated, { merge: true });
+      await setDoc(docRef, safeTenantMetadata, { merge: true });
     } catch (e) {
       console.warn(`[TenantConfig] Could not sync updated details to /tenants/${targetCode}:`, e);
     }
@@ -336,9 +375,5 @@ export class TenantConfigService {
     const updated = current.filter(s => s.code !== storeCode);
     this.registeredShops.set(updated);
     localStorage.setItem('registered_shops', JSON.stringify(updated));
-
-    if (this.activeShopCode() === storeCode) {
-      this.switchShop(updated[0].code);
-    }
   }
 }

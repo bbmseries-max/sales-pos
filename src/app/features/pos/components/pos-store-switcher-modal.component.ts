@@ -22,29 +22,6 @@ import { StoreTenant } from '../../../core/models/store-tenant.model';
             <button type="button" (click)="close.emit()" class="text-slate-400 hover:text-slate-100 font-mono text-lg cursor-pointer">✕</button>
           </div>
 
-          <!-- Active Store Selector -->
-          <div class="space-y-2">
-            <label class="text-[11px] font-bold text-slate-400 uppercase">Ενεργό Κατάστημα</label>
-            <div class="space-y-2">
-              @for (shop of tenantService.registeredShops(); track shop.code) {
-                <div 
-                  (click)="selectShop(shop.code)"
-                  [class.border-emerald-500]="tenantService.activeShop().code === shop.code"
-                  [class.bg-emerald-950/20]="tenantService.activeShop().code === shop.code"
-                  class="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between cursor-pointer hover:border-slate-700 transition"
-                >
-                  <div>
-                    <h4 class="text-xs font-black text-slate-100">{{ shop.name }}</h4>
-                    <span class="text-[10px] font-mono text-slate-400">Code: {{ shop.code }} • ΑΦΜ: {{ shop.afm }}</span>
-                  </div>
-                  @if (tenantService.activeShop().code === shop.code) {
-                    <span class="text-xs font-mono font-bold text-emerald-400 bg-emerald-950 px-2.5 py-1 rounded-lg border border-emerald-800/80">ΕΝΕΡΓΟ</span>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-
           <!-- Add New Shop Accordion / Form -->
           <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 font-mono text-xs">
             <span class="text-[11px] font-bold text-amber-400 uppercase block font-sans">➕ Προσθήκη Νέου Καταστήματος</span>
@@ -87,10 +64,6 @@ export class PosStoreSwitcherModalComponent {
   public newDoy = signal<string>('XALANDRIOU');
   public newAddress = signal<string>('Pentelis 45, Vrilissia');
 
-  public selectShop(code: string): void {
-    this.tenantService.switchShop(code);
-    this.close.emit();
-  }
 
   public onAddShop(): void {
     if (!this.newCode().trim() || !this.newName().trim()) return;

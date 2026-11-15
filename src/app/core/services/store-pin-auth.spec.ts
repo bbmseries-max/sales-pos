@@ -78,12 +78,6 @@ describe('Store PIN Authentication & Hash Integrity', () => {
       const shop = DEFAULT_SHOPS.find((s: ShopInfo) => s.code === 'mar-market');
       expect(shop).toBeDefined();
 
-      if (typeof (tenantConfig as any).switchShop === 'function') {
-        (tenantConfig as any).switchShop(shop!.code);
-      } else if (typeof (tenantConfig.activeShop as any)?.set === 'function') {
-        (tenantConfig.activeShop as any).set(shop!);
-      }
-
       const result = await shiftService.loginWithPin('2435');
       expect(result.success).toBe(true);
     });
