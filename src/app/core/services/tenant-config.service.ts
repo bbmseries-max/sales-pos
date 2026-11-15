@@ -3,15 +3,26 @@ import { Firestore, doc, onSnapshot, setDoc, Unsubscribe } from '@angular/fire/f
 import { sha256Pin } from '../utils/crypto.utils';
 
 export type FiscalMode = 'FHM' | 'PROVIDER' | 'NONE';
-export type SubscriptionTier = 'TRIAL' | 'TRIAL_7D' | 'TRIAL_30D' | 'PAID_MONTHLY' | 'PAID_ANNUAL' | 'LIFETIME';
-export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'GRACE_PERIOD' | 'SUSPENDED' | 'NOT_FOUND';
+export type SubscriptionTier =
+  | 'PUBLIC_DEMO_7D'
+  | 'TRIAL'
+  | 'TRIAL_7D'
+  | 'TRIAL_30D'
+  | 'STARTER'
+  | 'PRO'
+  | 'ENTERPRISE'
+  | 'PAID_MONTHLY'
+  | 'PAID_ANNUAL'
+  | 'LIFETIME';
+export type SubscriptionStatus = 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'GRACE_PERIOD' | 'SUSPENDED' | 'NOT_FOUND';
 
 export interface ShopSubscription {
   tier: SubscriptionTier;
   status: SubscriptionStatus;
-  activatedAt: string;       // ISO date, e.g. "2026-10-24T00:00:00Z"
-  validUntil: string | null; // ISO date, or null for LIFETIME
-  licenseKey?: string;       // Signature / verification key
+  activatedAt: string | null;       // ISO date, e.g. "2026-11-15T00:00:00Z"
+  validUntil: string | null;        // ISO date, or null for LIFETIME / unstarted trial
+  trialStartsOnFirstOpen?: boolean; // When true, stamps activatedAt & validUntil (+7d) on first open
+  licenseKey?: string;
   trialNoticeDismissed?: boolean;
 }
 
@@ -55,17 +66,23 @@ export const DEFAULT_SHOPS: ShopInfo[] = [
   },
   {
     code: 'ftest',
-    name: 'Epta Enteka',
+    name: 'Epta Enteka (Demo)',
     adminPinSalt: 'ftest',
     adminPinHash: '1198cab3e7bf1dead5c7e19e044821e281b17044e12d9b37b65a3e3b056b7b5b', // PIN: 5564
     defaultFloat: 50,
     defaultRegister: 'REG-01',
     address: 'Plateia Agias Paraskevis 12',
-    afm: '998877665',
+    afm: '',
     doy: 'AGIAS PARASKEVIS',
     phone: '210-6001122',
     currency: 'EUR',
     isActive: true,
+    subscription: {
+      tier: 'PUBLIC_DEMO_7D',
+      status: 'ACTIVE',
+      activatedAt: null,
+      validUntil: null
+    }
   },
   {
     code: 'parnasos',
@@ -110,6 +127,7 @@ export function sanitizeStoreCode(raw: string): string {
 export class TenantConfigService implements OnDestroy {
   private firestore = inject(Firestore);
   private tenantUnsub: Unsubscribe | null = null;
+  private isActivatingFirstOpen = false;
 
   public registeredShops = signal<ShopInfo[]>(this.getInitialRegisteredShops());
   public activeShopCode = signal<string>(this.resolveInitialShopCode());
@@ -135,14 +153,13 @@ export class TenantConfigService implements OnDestroy {
     };
   });
 
-  // Authoritative unified subscription check (isActive + status + validUntil)
+  // Authoritative unified subscription check (supports PUBLIC_DEMO_7D per-device & TRIAL_7D server-enforced)
   public isSubscriptionValid = computed<boolean>(() => {
     const shop = this.activeShop();
     if (shop.isActive === false) return false;
 
     const sub = shop.subscription;
     if (!sub) {
-      // Allow built-in local defaults without a subscription object; block unknown unprovisioned tenants
       return DEFAULT_SHOPS.some(d => d.code === shop.code);
     }
 
@@ -151,8 +168,19 @@ export class TenantConfigService implements OnDestroy {
       return false;
     }
 
+    // 1. Per-device 7-day public demo (each visitor gets their own 7-day clock in localStorage)
+    if (sub.tier === 'PUBLIC_DEMO_7D') {
+      const deviceExpiry = this.getOrStartDeviceTrialExpiry(shop.code);
+      return Date.now() <= deviceExpiry;
+    }
+
+    // 2. Named prospect 7-day trial waiting for first open
+    if (sub.trialStartsOnFirstOpen && !sub.validUntil) {
+      return normalizedStatus === 'ACTIVE' || normalizedStatus === 'TRIAL';
+    }
+
     if (sub.tier === 'LIFETIME' || !sub.validUntil) {
-      return normalizedStatus === 'ACTIVE' || normalizedStatus === 'GRACE_PERIOD';
+      return normalizedStatus === 'ACTIVE' || normalizedStatus === 'TRIAL' || normalizedStatus === 'GRACE_PERIOD';
     }
 
     const expiry = new Date(sub.validUntil).getTime();
@@ -163,9 +191,18 @@ export class TenantConfigService implements OnDestroy {
 
   public daysRemaining = computed<number | null>(() => {
     const shop = this.activeShop();
-    if (!shop.subscription?.validUntil) return null;
+    const sub = shop.subscription;
+    if (!sub) return null;
 
-    const expiry = new Date(shop.subscription.validUntil).getTime();
+    if (sub.tier === 'PUBLIC_DEMO_7D') {
+      const deviceExpiry = this.getOrStartDeviceTrialExpiry(shop.code);
+      const diffMs = deviceExpiry - Date.now();
+      return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    if (!sub.validUntil) return null;
+
+    const expiry = new Date(sub.validUntil).getTime();
     if (Number.isNaN(expiry)) return null;
 
     const diffMs = expiry - Date.now();
@@ -182,6 +219,25 @@ export class TenantConfigService implements OnDestroy {
       this.tenantUnsub();
       this.tenantUnsub = null;
     }
+  }
+
+  private getOrStartDeviceTrialExpiry(shopCode: string): number {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return Date.now() + 7 * 24 * 60 * 60 * 1000;
+    }
+
+    const key = `maranth_device_trial_until_${sanitizeStoreCode(shopCode)}`;
+    const saved = window.localStorage.getItem(key);
+    if (saved) {
+      const parsed = Number(saved);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    const expiryMs = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    window.localStorage.setItem(key, String(expiryMs));
+    return expiryMs;
   }
 
   /**
@@ -213,12 +269,47 @@ export class TenantConfigService implements OnDestroy {
             ...remoteData,
             code: cleanCode,
             name: remoteData.name || existingLocal?.name || cleanCode,
-            isActive: remoteData.isActive !== false && String((remoteData as any).status || 'ACTIVE').toUpperCase() !== 'SUSPENDED'
+            isActive:
+              remoteData.isActive !== false &&
+              String((remoteData as any).status || 'ACTIVE').toUpperCase() !== 'SUSPENDED'
           };
 
           await this.registerShop(merged, true);
+
+          // If this is a named prospect 7-day trial set to start on first open, stamp validUntil now
+          const sub = merged.subscription;
+          if (
+            sub &&
+            sub.trialStartsOnFirstOpen &&
+            !sub.validUntil &&
+            merged.isActive !== false &&
+            !this.isActivatingFirstOpen
+          ) {
+            this.isActivatingFirstOpen = true;
+            const nowIso = new Date().toISOString();
+            const sevenDaysIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+            try {
+              await setDoc(
+                tenantDocRef,
+                {
+                  subscription: {
+                    ...sub,
+                    status: 'ACTIVE',
+                    activatedAt: nowIso,
+                    validUntil: sevenDaysIso,
+                    trialStartsOnFirstOpen: false
+                  },
+                  updatedAt: nowIso
+                },
+                { merge: true }
+              );
+            } catch (err) {
+              console.warn(`[TenantConfig] Could not stamp first-open trial window for /tenants/${cleanCode}:`, err);
+            } finally {
+              this.isActivatingFirstOpen = false;
+            }
+          }
         } else {
-          // Document does not exist in Firestore: fail closed for non-default tenants
           const isBuiltIn = DEFAULT_SHOPS.some(d => d.code === cleanCode);
           if (!isBuiltIn) {
             console.warn(`[TenantConfig] Tenant /tenants/${cleanCode} not found. Locking terminal.`);
@@ -276,7 +367,14 @@ export class TenantConfigService implements OnDestroy {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const mergedDefaults = DEFAULT_SHOPS.map(def => {
             const found = parsed.find(p => p.code === def.code);
-            return found ? { ...found, adminPinHash: def.adminPinHash, adminPinSalt: def.adminPinSalt } : def;
+            return found
+              ? {
+                  ...found,
+                  adminPinHash: def.adminPinHash,
+                  adminPinSalt: def.adminPinSalt,
+                  subscription: found.subscription || def.subscription
+                }
+              : def;
           });
           const customShops = parsed.filter(p => !DEFAULT_SHOPS.some(def => def.code === p.code));
           return [...mergedDefaults, ...customShops];
@@ -349,10 +447,7 @@ export class TenantConfigService implements OnDestroy {
       updatedAt: new Date().toISOString()
     };
 
-    // 1. Update local state
     const res = await this.registerShop(updated, true);
-
-    // 2. Strip protected subscription fields before syncing to Firestore so subscriptionUntouched() passes
     const { subscription, isActive, status, plan, ...safeTenantMetadata } = updated as any;
 
     try {

@@ -7,8 +7,21 @@
   <div class="flex items-center gap-2.5 shrink-0 py-1">
     
     <!-- Store Name Badge -->
-    <div class="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-slate-200">
-      🏪 {{ tenantConfig.activeShop().name }}
+    <!-- Store Name Badge -->
+    <div class="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-slate-200 flex items-center gap-2">
+      <span>🏪 {{ tenantConfig.activeShop().name }}</span>
+
+      @if (!tenantConfig.isTenantLoading() && tenantConfig.isSubscriptionValid() && tenantConfig.daysRemaining() !== null && tenantConfig.daysRemaining()! <= 7) {
+        <span class="px-2 py-0.5 rounded-lg bg-amber-950/90 border border-amber-600/60 text-[10px] font-mono font-bold text-amber-300">
+          ⏳ Trial: {{ tenantConfig.daysRemaining() }} ημ.
+        </span>
+      }
+
+      @if (!hasActiveInvoiceSubscription() && !tenantConfig.isTenantLoading()) {
+        <span class="px-2 py-0.5 rounded-lg bg-rose-950/90 border border-rose-700/70 text-[10px] font-mono font-bold text-rose-300">
+          ⚠️ Ανενεργή Συνδρομή Hub
+        </span>
+      }
     </div>
 
     <!-- Sync Pill -->
@@ -127,11 +140,13 @@
     <button 
       type="button" 
       (click)="printCurrentOrLastInvoice()"
-      class="h-12 px-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-amber-400 text-slate-100 flex items-center gap-2 cursor-pointer transition shadow">
-      <span class="text-base">📄</span>
-      <div class="text-left font-sans min-w-0">
-        <span class="text-xs font-bold block truncate leading-none">Τιμολόγιο A4</span>
-        <span class="text-[10px] font-mono text-amber-400 truncate block">myDATA QR &amp; ΔΑ</span>
+      class="h-14 px-4 rounded-2xl bg-gradient-to-r from-amber-950/80 to-slate-900 border-2 border-amber-700/50 hover:border-amber-400 text-slate-100 transition-all cursor-pointer flex items-center justify-between shadow-md">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-xl">📄</span>
+        <div class="text-left min-w-0">
+          <span class="text-xs font-black uppercase tracking-wider block text-slate-100 truncate">Τιμολόγιο A4</span>
+          <span class="text-[10px] font-mono text-amber-400 block truncate">myDATA QR &amp; ΔΑ</span>
+        </div>
       </div>
     </button>
 
@@ -705,8 +720,27 @@
   (close)="showNewShiftModal.set(false)"
 />
 
-@if (!hasActiveInvoiceSubscription() && !tenantConfig.isTenantLoading()) {
-  <span class="px-2 py-0.5 rounded-lg bg-rose-950/90 border border-rose-700/70 text-[10px] font-mono font-bold text-rose-300">
-    ⚠️ Ανενεργή Συνδρομή Hub
-  </span>
+<!-- 3. SUBSCRIPTION / 7-DAY TRIAL EXPIRATION LOCK (Absolute Top Priority) -->
+@if (!tenantConfig.isTenantLoading() && !tenantConfig.isSubscriptionValid()) {
+  <div class="fixed inset-0 z-[9999] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-6 text-center select-none">
+    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-5">
+      <div class="w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center text-3xl mx-auto">
+        🔒
+      </div>
+      <h2 class="text-xl font-black text-white tracking-tight">
+        Η Άδεια Χρήσης Έληξε ή Δεν Είναι Ενεργή
+      </h2>
+      <p class="text-sm text-slate-400 leading-relaxed">
+        Η δοκιμαστική περίοδος 7 ημερών ή η συνδρομή για το κατάστημα
+        <span class="font-mono text-slate-200 bg-slate-800 px-2 py-0.5 rounded">{{ tenantConfig.activeShopCode() }}</span>
+        έχει ολοκληρωθεί.
+      </p>
+      <a
+        href="https://www.maranth.gr"
+        class="inline-block w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl text-sm uppercase tracking-wider transition shadow-lg shadow-emerald-500/20"
+      >
+        Ενεργοποίηση Συνδρομής • maranth.gr
+      </a>
+    </div>
+  </div>
 }
